@@ -1,0 +1,49 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "fce-escalquens",
+	"main": "src/worker.ts",
+	"compatibility_date": "2026-08-31",
+	"assets": {
+		"directory": "./dist",
+		"binding": "ASSETS",
+		"run_worker_first": [
+			"/api/*",
+			"/admin-api/*",
+			"/media/*"
+		]
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "fce-escalquens",
+			"database_id": "883401b1-f229-4c0e-9e25-6493f8d01b93"
+		},
+		{
+			"binding": "fce_escalquens",
+			"database_name": "fce-escalquens",
+			"database_id": "883401b1-f229-4c0e-9e25-6493f8d01b93",
+			"remote": true
+		}
+	],
+	"r2_buckets": [
+		{
+			"binding": "MEDIA",
+			"bucket_name": "fce-escalquens-media"
+		},
+		{
+			"bucket_name": "fce-escalquens-media",
+			"binding": "fce_escalquens_media",
+			"remote": true
+		}
+	],
+	"triggers": {
+		"crons": [
+			"17 3 * * *"
+		]
+	},
+	"vars": {
+		"FFF_API_BASE": "https://api-dofa.prd-aws.fff.fr/api",
+		"FFF_CLUB_NO": "101544",
+		"FFF_CLUB_CODE": "550350"
+	}
+}
