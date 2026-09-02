@@ -1,0 +1,5 @@
+---
+const nav=[['Le club','/'],['Équipes','/equipes/'],['Matchs & résultats','/matchs/'],['Tournois','/tournois/'],['Planning','/planning/'],['Contacts','/contacts/'],['Mécénat','/mecenat/']];
+---
+<header class="site-header"><a class="brand" href="/"><img class="club-logo" src="/logo-fce.png" alt="FC Escalquens"><span><b>FC ESCALQUENS</b><small>Un maillot. Une famille.</small></span></a><nav>{nav.map(([label,href])=><a href={href}>{label}</a>)}</nav><a class="join" href="/contacts/">Nous rejoindre</a><button class="menu-button" aria-label="Ouvrir le menu" aria-expanded="false"><i></i><i></i><i></i></button></header>
+<script is:inline>document.querySelector('.menu-button')?.addEventListener('click',event=>{const open=document.querySelector('.site-header nav')?.classList.toggle('open');event.currentTarget.setAttribute('aria-expanded',String(Boolean(open)))})</script>

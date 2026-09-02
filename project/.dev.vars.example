@@ -1,0 +1,6 @@
+DEV_ADMIN_TOKEN=changez-moi
+# Facultatif en local. En production, définir TEST_SITE_PASSWORD avec `wrangler secret put`.
+TEST_SITE_USER=fce
+TEST_SITE_PASSWORD=
+INSTAGRAM_ACCESS_TOKEN=
+INSTAGRAM_USER_ID=
