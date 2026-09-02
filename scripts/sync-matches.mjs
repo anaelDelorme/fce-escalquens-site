@@ -1,4 +1,4 @@
-const SYNC_VERSION='2026.09.02-7',CLUB_NO='101544',CLUB_CODE='550350';
+const SYNC_VERSION='2026.09.02-8',CLUB_NO='101544',CLUB_CODE='550350';
 console.log(`Collecteur FCE ${SYNC_VERSION}`);
 const endpoint=process.env.FCE_SITE_URL?.replace(/\/$/,'')+'/internal/sync/matches';
 const token=process.env.FCE_SYNC_TOKEN;
@@ -25,28 +25,37 @@ const epreuvesPayloadFromHtml=html=>{
   const match=String(html||'').match(/<script[^>]+id=["']ng-state["'][^>]*>([\s\S]*?)<\/script>/i);
   return match?epreuvesPayloadFromState(parseJson(match[1],'ng-state')):null;
 };
-const epreuvesPayloadFromZenRows=(body,targetUrl)=>{
+const epreuvesPayloadFromZenRows=body=>{
   let result;
   try{result=JSON.parse(body)}catch{return epreuvesPayloadFromHtml(body)}
   if(result?.['hydra:member'])return result;
-  const expected=new URL(targetUrl);
   const xhr=(result?.xhr||[]).filter(item=>{
     try{const url=new URL(item.url,'https://epreuves.fff.fr');return url.pathname==='/api/data/matches'&&url.searchParams.get('clNo')===CLUB_NO}catch{return false}
   });
-  const exact=xhr.find(item=>{
-    try{const url=new URL(item.url,'https://epreuves.fff.fr');return url.searchParams.get('dateDebut')===expected.searchParams.get('dateDebut')&&url.searchParams.get('dateFin')===expected.searchParams.get('dateFin')}catch{return false}
-  });
-  const selected=exact||xhr.at(-1);
-  if(selected?.status_code===200)return parseJson(selected.body,'XHR FFF');
+  const payloadByPeriod=new Map();
+  for(const item of xhr.filter(item=>item.status_code===200))try{
+    const url=new URL(item.url,'https://epreuves.fff.fr');
+    const period=`${url.searchParams.get('dateDebut')}|${url.searchParams.get('dateFin')}`;
+    payloadByPeriod.set(period,parseJson(item.body,'XHR FFF'));
+  }catch{}
+  const payloads=[...payloadByPeriod.values()];
+  if(payloads.length)return {
+    '@context':'/api/contexts/Match','@id':'/api/matches','@type':'hydra:Collection',
+    'hydra:totalItems':payloads.reduce((total,payload)=>total+payloadItems(payload).length,0),
+    'hydra:member':payloads.flatMap(payloadItems),
+    '_fce_months_received':payloads.length
+  };
   return epreuvesPayloadFromHtml(result?.html);
 };
-async function fetchZenRows(targetUrl){
+async function fetchZenRows(targetUrls){
   const apiKey=process.env.ZENROWS_API_KEY;
   if(!apiKey)throw new Error('ZENROWS_API_KEY absent');
   const clubPage=`https://epreuves.fff.fr/competition/club/${CLUB_CODE}-f-c-escalquens/club`;
+  const fetchScript=`Promise.all(${JSON.stringify(targetUrls)}.map(url=>fetch(url,{credentials:'include',headers:{accept:'application/ld+json, application/json'}}).catch(()=>null))).finally(()=>document.documentElement.setAttribute('data-fce-sync-done','1'));`;
   const instructions=[
-    {evaluate:`fetch(${JSON.stringify(targetUrl)},{credentials:'include',headers:{accept:'application/ld+json, application/json'}}).catch(()=>null);`},
-    {wait:8000}
+    {evaluate:fetchScript},
+    {wait_for:'html[data-fce-sync-done="1"]'},
+    {wait:1000}
   ];
   const url=new URL('https://api.zenrows.com/v1/');
   url.searchParams.set('apikey',apiKey);
@@ -59,14 +68,17 @@ async function fetchZenRows(targetUrl){
   const response=await fetch(url,{headers:{accept:'application/json'},redirect:'follow'});
   const body=await response.text();
   if(!response.ok)throw new Error(`ZenRows HTTP ${response.status}${body?` — ${body.replace(/\s+/g,' ').slice(0,180)}`:''}`);
-  const cost=response.headers.get('x-request-cost')||response.headers.get('x-request-credits');
-  if(cost)console.log(`ZenRows : ${cost} crédit(s) consommé(s).`);
-  const payload=epreuvesPayloadFromZenRows(body,targetUrl);
+  const credits=response.headers.get('x-request-credits');
+  const cost=response.headers.get('x-request-cost');
+  if(credits)console.log(`ZenRows : ${credits} crédit(s) consommé(s).`);
+  if(cost)console.log(`ZenRows : coût indiqué ${cost}.`);
+  const payload=epreuvesPayloadFromZenRows(body);
   if(!payload)throw new Error(`ZenRows a chargé la page, mais aucun JSON de matchs exploitable n'a été trouvé`);
+  if(payload._fce_months_received)console.log(`FFF : ${payload._fce_months_received}/${targetUrls.length} mois capturés dans la session ZenRows.`);
   return payload;
 }
 
-async function fetchEpreuves(targetUrl){
+async function fetchEpreuves(targetUrl,monthlyUrls){
   try{
     return {payload:await fetchOk(targetUrl,'json',{
       accept:'application/ld+json, application/json',
@@ -74,7 +86,7 @@ async function fetchEpreuves(targetUrl){
     }),transport:'direct'};
   }catch(directError){
     console.log(`Accès FFF direct indisponible, essai via ZenRows : ${String(directError?.message||directError).replace(/\r?\n/g,' ')}`);
-    try{return {payload:await fetchZenRows(targetUrl),transport:'zenrows-browser'}}
+    try{return {payload:await fetchZenRows(monthlyUrls),transport:'zenrows-browser'}}
     catch(zenrowsError){throw new Error(`FFF direct : ${directError?.message||directError} ; ZenRows : ${zenrowsError?.message||zenrowsError}`)}
   }
 }
@@ -125,7 +137,17 @@ async function collectEpreuvesFFF(){
     clNo:CLUB_NO,itemsPerPage:'1000',pagination:'true'
   });
   const targetUrl=`https://epreuves.fff.fr/api/data/matches?${query}`;
-  const {payload,transport}=await fetchEpreuves(targetUrl);
+  const monthlyUrls=Array.from({length:12},(_,offset)=>{
+    const monthStart=new Date(Date.UTC(seasonYear,6+offset,1));
+    const monthEnd=new Date(Date.UTC(seasonYear,7+offset,0,23,59,59));
+    const monthQuery=new URLSearchParams({
+      dateDebut:monthStart.toISOString().replace('.000Z','+00:00'),
+      dateFin:monthEnd.toISOString().replace('.000Z','+00:00'),
+      clNo:CLUB_NO,itemsPerPage:'100',pagination:'true'
+    });
+    return `https://epreuves.fff.fr/api/data/matches?${monthQuery}`;
+  });
+  const {payload,transport}=await fetchEpreuves(targetUrl,monthlyUrls);
   const items=payloadItems(payload);
   const total=Number(payload['hydra:totalItems']??items.length);
   if(total>items.length)throw new Error(`FFF annonce ${total} matchs mais n'en renvoie que ${items.length}; pagination à ajouter avant import`);
