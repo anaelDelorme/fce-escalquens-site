@@ -21,4 +21,5 @@ jobs:
         env:
           FCE_SITE_URL: ${{ secrets.FCE_SITE_URL }}
           FCE_SYNC_TOKEN: ${{ secrets.FCE_SYNC_TOKEN }}
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
           FORCE_SYNC: ${{ github.event_name == 'workflow_dispatch' }}
