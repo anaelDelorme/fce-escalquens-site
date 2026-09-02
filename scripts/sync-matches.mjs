@@ -1,4 +1,4 @@
-const SYNC_VERSION='2026.09.02-5',CLUB_NO='101544',CLUB_CODE='550350';
+const SYNC_VERSION='2026.09.02-7',CLUB_NO='101544',CLUB_CODE='550350';
 console.log(`Collecteur FCE ${SYNC_VERSION}`);
 const endpoint=process.env.FCE_SITE_URL?.replace(/\/$/,'')+'/internal/sync/matches';
 const token=process.env.FCE_SYNC_TOKEN;
@@ -16,19 +16,54 @@ const iso=(date,time='')=>{if(!date)return '';const raw=String(date);if(raw.incl
 const cleanUrl=value=>{const raw=String(value||''),markdown=raw.match(/^\[[^\]]+\]\((https?:\/\/[^)]+)\)$/);return markdown?markdown[1]:raw};
 async function fetchOk(url,kind='json',extraHeaders={}){const response=await fetch(url,{headers:{...headers,...extraHeaders},redirect:'follow'});if(!response.ok){const detail=(await response.text()).replace(/\s+/g,' ').slice(0,180);throw new Error(`${new URL(url).hostname} HTTP ${response.status}${detail?` — ${detail}`:''}`)}return kind==='text'?response.text():response.json()}
 const payloadItems=payload=>Array.isArray(payload)?payload:payload['hydra:member']||payload.items||payload.data||payload.matches||[];
+const parseJson=(value,label='réponse')=>{try{return typeof value==='string'?JSON.parse(value):value}catch{throw new Error(`${label} JSON invalide`)}};
+const epreuvesPayloadFromState=state=>{
+  const entry=Object.entries(state||{}).find(([key,value])=>key.includes('analog_GET|/api/data/matches?')&&value?.status===200&&value?.body);
+  return entry?.[1]?.body||null;
+};
+const epreuvesPayloadFromHtml=html=>{
+  const match=String(html||'').match(/<script[^>]+id=["']ng-state["'][^>]*>([\s\S]*?)<\/script>/i);
+  return match?epreuvesPayloadFromState(parseJson(match[1],'ng-state')):null;
+};
+const epreuvesPayloadFromZenRows=(body,targetUrl)=>{
+  let result;
+  try{result=JSON.parse(body)}catch{return epreuvesPayloadFromHtml(body)}
+  if(result?.['hydra:member'])return result;
+  const expected=new URL(targetUrl);
+  const xhr=(result?.xhr||[]).filter(item=>{
+    try{const url=new URL(item.url,'https://epreuves.fff.fr');return url.pathname==='/api/data/matches'&&url.searchParams.get('clNo')===CLUB_NO}catch{return false}
+  });
+  const exact=xhr.find(item=>{
+    try{const url=new URL(item.url,'https://epreuves.fff.fr');return url.searchParams.get('dateDebut')===expected.searchParams.get('dateDebut')&&url.searchParams.get('dateFin')===expected.searchParams.get('dateFin')}catch{return false}
+  });
+  const selected=exact||xhr.at(-1);
+  if(selected?.status_code===200)return parseJson(selected.body,'XHR FFF');
+  return epreuvesPayloadFromHtml(result?.html);
+};
 async function fetchZenRows(targetUrl){
   const apiKey=process.env.ZENROWS_API_KEY;
   if(!apiKey)throw new Error('ZENROWS_API_KEY absent');
+  const clubPage=`https://epreuves.fff.fr/competition/club/${CLUB_CODE}-f-c-escalquens/club`;
+  const instructions=[
+    {evaluate:`fetch(${JSON.stringify(targetUrl)},{credentials:'include',headers:{accept:'application/ld+json, application/json'}}).catch(()=>null);`},
+    {wait:8000}
+  ];
   const url=new URL('https://api.zenrows.com/v1/');
   url.searchParams.set('apikey',apiKey);
-  url.searchParams.set('url',targetUrl);
-  url.searchParams.set('mode','auto');
+  url.searchParams.set('url',clubPage);
+  url.searchParams.set('js_render','true');
+  url.searchParams.set('premium_proxy','true');
   url.searchParams.set('proxy_country','fr');
-  url.searchParams.set('original_status','true');
-  const response=await fetch(url,{headers:{accept:'application/ld+json, application/json'},redirect:'follow'});
+  url.searchParams.set('json_response','true');
+  url.searchParams.set('js_instructions',JSON.stringify(instructions));
+  const response=await fetch(url,{headers:{accept:'application/json'},redirect:'follow'});
   const body=await response.text();
   if(!response.ok)throw new Error(`ZenRows HTTP ${response.status}${body?` — ${body.replace(/\s+/g,' ').slice(0,180)}`:''}`);
-  try{return JSON.parse(body)}catch{throw new Error(`ZenRows n'a pas renvoyé du JSON — ${body.replace(/\s+/g,' ').slice(0,180)}`)}
+  const cost=response.headers.get('x-request-cost')||response.headers.get('x-request-credits');
+  if(cost)console.log(`ZenRows : ${cost} crédit(s) consommé(s).`);
+  const payload=epreuvesPayloadFromZenRows(body,targetUrl);
+  if(!payload)throw new Error(`ZenRows a chargé la page, mais aucun JSON de matchs exploitable n'a été trouvé`);
+  return payload;
 }
 
 async function fetchEpreuves(targetUrl){
@@ -39,7 +74,7 @@ async function fetchEpreuves(targetUrl){
     }),transport:'direct'};
   }catch(directError){
     console.log(`Accès FFF direct indisponible, essai via ZenRows : ${String(directError?.message||directError).replace(/\r?\n/g,' ')}`);
-    try{return {payload:await fetchZenRows(targetUrl),transport:'zenrows'}}
+    try{return {payload:await fetchZenRows(targetUrl),transport:'zenrows-browser'}}
     catch(zenrowsError){throw new Error(`FFF direct : ${directError?.message||directError} ; ZenRows : ${zenrowsError?.message||zenrowsError}`)}
   }
 }
