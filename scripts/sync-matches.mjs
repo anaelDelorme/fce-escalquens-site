@@ -1,4 +1,4 @@
-const SYNC_VERSION='2026.09.02-10',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+const SYNC_VERSION='2026.09.02-11',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 console.log(`Collecteur FCE ${SYNC_VERSION}`);
 const endpoint=process.env.FCE_SITE_URL?.replace(/\/$/,'')+'/internal/sync/matches';
 const token=process.env.FCE_SYNC_TOKEN;
@@ -33,30 +33,48 @@ const embeddedPayloadFromHtml=(html,id)=>{
   const envelope=parseJson(match[1],id);
   return parseJson(envelope.body,id);
 };
+const mergeMatchPayloads=payloads=>{
+  const unique=new Map();
+  for(const wrapper of payloads.flatMap(payloadItems)){
+    const item=wrapper?.donneesFormatees||wrapper;
+    const id=String(item?.maNo||wrapper?.id||wrapper?.['@id']||'');
+    if(id)unique.set(id,wrapper);
+  }
+  return {'@context':'/api/contexts/Match','@id':'/api/matches','@type':'hydra:Collection','hydra:totalItems':unique.size,'hydra:member':[...unique.values()]};
+};
+const mergeFalPayloads=payloads=>{
+  const sites=new Map(),epreuves=new Map(),sitesWithoutDate=new Map();
+  for(const payload of payloads){
+    for(const item of payload?.epreuves||[])epreuves.set(String(item.epNo||item['@id']),item);
+    for(const site of payload?.sites||[])sites.set(`${site.epreuve?.epNo}:${site.phNo}:${site.joNo}:${site.siNo}`,site);
+    for(const site of payload?.sitesWithoutDate||[])sitesWithoutDate.set(`${site.epreuve?.epNo}:${site.phNo}:${site.joNo}:${site.siNo}`,site);
+  }
+  const sample=payloads.find(Boolean)||{};
+  return {...sample,epreuves:[...epreuves.values()],sites:[...sites.values()],sitesWithoutDate:[...sitesWithoutDate.values()]};
+};
 const epreuvesPayloadFromZenRows=body=>{
   let result;
   try{result=JSON.parse(body)}catch{result={html:body}}
   const html=result?.html||'';
-  const initial=epreuvesPayloadsFromHtml(html);
-  const annualMatches=embeddedPayloadFromHtml(html,'fce-matches-payload');
-  const annualFal=embeddedPayloadFromHtml(html,'fce-fal-payload');
+  const matchPayloads=Array.from({length:12},(_,index)=>embeddedPayloadFromHtml(html,`fce-matches-${index}`)).filter(Boolean);
+  const falPayloads=Array.from({length:12},(_,index)=>embeddedPayloadFromHtml(html,`fce-fal-${index}`)).filter(Boolean);
   return {
-    matches:annualMatches||initial.matches,
-    fal:annualFal||initial.fal,
-    annualMatches:Boolean(annualMatches),annualFal:Boolean(annualFal)
+    matches:mergeMatchPayloads(matchPayloads),fal:mergeFalPayloads(falPayloads),
+    matchMonths:matchPayloads.length,falMonths:falPayloads.length
   };
 };
 async function fetchZenRows(targetUrls){
   const apiKey=process.env.ZENROWS_API_KEY;
   if(!apiKey)throw new Error('ZENROWS_API_KEY absent');
   const clubPage=`https://epreuves.fff.fr/competition/club/${CLUB_CODE}-f-c-escalquens/club`;
-  // Deux navigations JSON sont ouvertes dans des iframes de même origine. Elles
-  // réutilisent la session FFF créée par la page publique sans contourner son
-  // intercepteur Angular et sans payer douze navigations mensuelles ZenRows.
-  const iframeScript=`(()=>{const targets=${JSON.stringify([
-    ['fce-matches-payload',targetUrls.matches],
-    ['fce-fal-payload',targetUrls.fal]
-  ])};let pending=targets.length;const finish=(id,frame)=>{const output=document.createElement('script');output.type='application/json';output.id=id;let content='';try{content=frame.contentDocument.body.innerText}catch(error){content=JSON.stringify({fce_error:String(error)})}output.textContent=JSON.stringify({body:content});document.body.appendChild(output);frame.remove();if(--pending===0)document.documentElement.setAttribute('data-fce-sync-done','1')};for(const [id,src] of targets){const frame=document.createElement('iframe');frame.hidden=true;frame.onload=()=>finish(id,frame);frame.src=src;document.body.appendChild(frame)}setTimeout(()=>{if(pending>0)document.documentElement.setAttribute('data-fce-sync-timeout','1')},15000)})();`;
+  // Les plages annuelles de l'API renvoient une collection vide. Les 24 flux
+  // mensuels (12 matchs + 12 FAL) sont donc chargés dans une seule session
+  // navigateur ZenRows : une seule requête facturée, puis déduplication locale.
+  const iframeTargets=[
+    ...targetUrls.matches.map((src,index)=>[`fce-matches-${index}`,src]),
+    ...targetUrls.fal.map((src,index)=>[`fce-fal-${index}`,src])
+  ];
+  const iframeScript=`(()=>{const targets=${JSON.stringify(iframeTargets)};let pending=targets.length;const finish=(id,frame)=>{const output=document.createElement('script');output.type='application/json';output.id=id;let content='';try{content=frame.contentDocument.body.innerText}catch(error){content=JSON.stringify({fce_error:String(error)})}output.textContent=JSON.stringify({body:content});document.body.appendChild(output);frame.remove();if(--pending===0)document.documentElement.setAttribute('data-fce-sync-done','1')};for(const [id,src] of targets){const frame=document.createElement('iframe');frame.hidden=true;frame.onload=()=>finish(id,frame);frame.src=src;document.body.appendChild(frame)}setTimeout(()=>{if(pending>0)document.documentElement.setAttribute('data-fce-sync-timeout','1')},25000)})();`;
   const instructions=[
     {wait_for:'app-match app-matches-wrapper'},
     {wait:500},
@@ -80,16 +98,21 @@ async function fetchZenRows(targetUrls){
   if(credits)console.log(`ZenRows : ${credits} crédit(s) consommé(s).`);
   if(cost)console.log(`ZenRows : coût indiqué ${cost}.`);
   const payloads=epreuvesPayloadFromZenRows(body);
-  if(!payloads.annualMatches)throw new Error(`ZenRows a chargé la page, mais le calendrier annuel n'a pas été renvoyé`);
-  if(!payloads.annualFal)throw new Error(`ZenRows a chargé la page, mais les plateaux annuels n'ont pas été renvoyés`);
+  console.log(`FFF : ${payloads.matchMonths}/12 mois de matchs et ${payloads.falMonths}/12 mois de plateaux capturés.`);
+  if(payloads.matchMonths!==12||payloads.falMonths!==12)throw new Error(`calendrier incomplet : matchs ${payloads.matchMonths}/12, plateaux ${payloads.falMonths}/12`);
   return payloads;
 }
 
 async function fetchEpreuves(targetUrls){
   try{
     const extraHeaders={accept:'application/ld+json, application/json',referer:`https://epreuves.fff.fr/competition/club/${CLUB_CODE}-escalquens-fc/club`};
-    const [matches,fal]=await Promise.all([fetchOk(targetUrls.matches,'json',extraHeaders),fetchOk(targetUrls.fal,'json',extraHeaders)]);
-    return {payloads:{matches,fal},transport:'direct'};
+    const probeIndex=targetUrls.probeIndex;
+    const probe=await fetchOk(targetUrls.matches[probeIndex],'json',extraHeaders);
+    const [matches,fal]=await Promise.all([
+      Promise.all(targetUrls.matches.map((url,index)=>index===probeIndex?probe:fetchOk(url,'json',extraHeaders))),
+      Promise.all(targetUrls.fal.map(url=>fetchOk(url,'json',extraHeaders)))
+    ]);
+    return {payloads:{matches:mergeMatchPayloads(matches),fal:mergeFalPayloads(fal)},transport:'direct'};
   }catch(directError){
     console.log(`Accès FFF direct indisponible, essai via ZenRows : ${String(directError?.message||directError).replace(/\r?\n/g,' ')}`);
     try{return {payloads:await fetchZenRows(targetUrls),transport:'zenrows-browser'}}
@@ -166,27 +189,29 @@ function normalizeEpreuvesFal(payload){
 async function collectEpreuvesFFF(){
   const now=new Date();
   const seasonYear=now.getUTCMonth()>=6?now.getUTCFullYear():now.getUTCFullYear()-1;
-  const start=new Date(Date.UTC(seasonYear,6,1));
-  // On couvre aussi juillet suivant : les calendriers tardifs et les reports
-  // restent rattachés à la saison qui vient de se terminer.
-  const end=new Date(Date.UTC(seasonYear+1,7,1,23,59,59));
-  const query=new URLSearchParams({
-    dateDebut:start.toISOString().replace('.000Z','+00:00'),
-    dateFin:end.toISOString().replace('.000Z','+00:00'),
-    clNo:CLUB_NO,itemsPerPage:'1000',pagination:'true'
-  });
-  const falQuery=new URLSearchParams({
-    dateDebut:start.toISOString().slice(0,10),dateFin:end.toISOString().slice(0,10)
+  const probeIndex=Math.max(0,Math.min(11,(now.getUTCFullYear()-seasonYear)*12+now.getUTCMonth()-6));
+  const periods=Array.from({length:12},(_,offset)=>{
+    const start=new Date(Date.UTC(seasonYear,6+offset,1));
+    const end=new Date(Date.UTC(seasonYear,7+offset,0,23,59,59));
+    return {start,end};
   });
   const targetUrls={
-    matches:`https://epreuves.fff.fr/api/data/matches?${query}`,
-    fal:`https://epreuves.fff.fr/api/fal/cdg/${DISTRICT_NO}/club/${CLUB_NO}/sites?${falQuery}`
+    probeIndex,
+    matches:periods.map(({start,end})=>{
+      const query=new URLSearchParams({dateDebut:start.toISOString().replace('.000Z','+00:00'),dateFin:end.toISOString().replace('.000Z','+00:00'),clNo:CLUB_NO,itemsPerPage:'100',pagination:'true'});
+      return `https://epreuves.fff.fr/api/data/matches?${query}`;
+    }),
+    fal:periods.map(({start,end})=>{
+      const query=new URLSearchParams({dateDebut:start.toISOString().slice(0,10),dateFin:end.toISOString().slice(0,10)});
+      return `https://epreuves.fff.fr/api/fal/cdg/${DISTRICT_NO}/club/${CLUB_NO}/sites?${query}`;
+    })
   };
   const {payloads,transport}=await fetchEpreuves(targetUrls);
   const items=payloadItems(payloads.matches);
   const total=Number(payloads.matches['hydra:totalItems']??items.length);
   if(total>items.length)throw new Error(`FFF annonce ${total} matchs mais n'en renvoie que ${items.length}; pagination à ajouter avant import`);
   const matches=normalizeEpreuves(items),plateaux=normalizeEpreuvesFal(payloads.fal);
+  if(!matches.length&&!plateaux.length)throw new Error('FFF a renvoyé zéro match et zéro plateau sur les douze mois');
   console.log(`FFF : ${matches.length} matchs et ${plateaux.length} plateaux reçus via ${transport}.`);
   return [...matches,...plateaux];
 }
