@@ -1,8 +1,9 @@
-const SYNC_VERSION='2026.09.02-4',CLUB_NO='101544',CLUB_CODE='550350';
+const SYNC_VERSION='2026.09.02-5',CLUB_NO='101544',CLUB_CODE='550350';
 console.log(`Collecteur FCE ${SYNC_VERSION}`);
 const endpoint=process.env.FCE_SITE_URL?.replace(/\/$/,'')+'/internal/sync/matches';
 const token=process.env.FCE_SYNC_TOKEN;
 const force=process.env.FORCE_SYNC==='true';
+const PROXY_URL=process.env.FCE_PROXY_URL; // ex: https://api.scraperapi.com/?api_key=XXX&url= (optionnel)
 const parts=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Paris',weekday:'short',hour:'2-digit',hourCycle:'h23'}).formatToParts(new Date()).map(part=>[part.type,part.value]));
 const hour=Number(parts.hour),day=parts.weekday;
 const scheduled=hour===22||(day==='Fri'&&hour>=16&&(hour-16)%4===0)||((day==='Sat'||day==='Sun')&&hour%4===0)||(day==='Mon'&&hour<=14&&hour%4===0);
@@ -14,7 +15,29 @@ const text=value=>typeof value==='string'?value:value?.name||value?.label||value
 const entityName=entity=>text(first(entity?.short_name_federation,entity?.short_name_ligue,entity?.short_name,entity?.name,entity?.label,entity?.nom,entity?.code));
 const iso=(date,time='')=>{if(!date)return '';const raw=String(date);if(raw.includes('T'))return raw;const normalized=String(time||'12:00').replace('h',':').padEnd(5,'0');return `${raw}T${/^\d{1,2}:\d{2}$/.test(normalized)?normalized:'12:00'}:00`};
 const cleanUrl=value=>{const raw=String(value||''),markdown=raw.match(/^\[[^\]]+\]\((https?:\/\/[^)]+)\)$/);return markdown?markdown[1]:raw};
-async function fetchOk(url,kind='json',extraHeaders={}){const response=await fetch(url,{headers:{...headers,...extraHeaders},redirect:'follow'});if(!response.ok){const detail=(await response.text()).replace(/\s+/g,' ').slice(0,180);throw new Error(`${new URL(url).hostname} HTTP ${response.status}${detail?` — ${detail}`:''}`)}return kind==='text'?response.text():response.json()}
+
+async function fetchOk(url,kind='json',extraHeaders={}){
+  const response=await fetch(url,{headers:{...headers,...extraHeaders},redirect:'follow'});
+  if(!response.ok){
+    const detail=(await response.text()).replace(/\s+/g,' ').slice(0,180);
+    console.log(`::debug::${url} -> HTTP ${response.status} cf-ray=${response.headers.get('cf-ray')||'-'} cf-mitigated=${response.headers.get('cf-mitigated')||'-'}`);
+    throw new Error(`${new URL(url).hostname} HTTP ${response.status}${detail?` — ${detail}`:''}`)
+  }
+  return kind==='text'?response.text():response.json()
+}
+
+// Repli via proxy anti-bot (optionnel) : n'agit que si FCE_PROXY_URL est défini.
+// Sans ce secret, se comporte exactement comme fetchOk.
+async function fetchViaProxyIfNeeded(url,kind='json',extraHeaders={}){
+  try{
+    return await fetchOk(url,kind,extraHeaders);
+  }catch(error){
+    if(!PROXY_URL)throw error;
+    console.log(`::notice title=Repli proxy::Tentative via proxy pour ${new URL(url).hostname}`);
+    return fetchOk(`${PROXY_URL}${encodeURIComponent(url)}`,kind);
+  }
+}
+
 const FFF_BASES=['https://api-dofa.fff.fr/api','https://api-dofa.prd-aws.fff.fr/api'];
 const KNOWN_COMPETITIONS=[{competition:'454408',stage:'1',group:'3',label:'Senior Départemental 4 - 11teamsports POULE C'}];
 const payloadItems=payload=>Array.isArray(payload)?payload:payload['hydra:member']||payload.items||payload.data||payload.matches||[];
@@ -70,7 +93,7 @@ async function collectEpreuvesFFF(){
       dateFin:end.toISOString().replace('.000Z','+00:00'),
       clNo:CLUB_NO,itemsPerPage:'100',pagination:'true'
     });
-    const payload=await fetchOk(`https://epreuves.fff.fr/api/data/matches?${query}`,'json',{
+    const payload=await fetchViaProxyIfNeeded(`https://epreuves.fff.fr/api/data/matches?${query}`,'json',{
       accept:'application/ld+json, application/json',
       referer:`https://epreuves.fff.fr/competition/club/${CLUB_CODE}-escalquens-fc/club`
     });
