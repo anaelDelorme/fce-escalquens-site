@@ -1,4 +1,4 @@
-const SYNC_VERSION='2026.09.02-8',CLUB_NO='101544',CLUB_CODE='550350';
+const SYNC_VERSION='2026.09.02-9',CLUB_NO='101544',CLUB_CODE='550350';
 console.log(`Collecteur FCE ${SYNC_VERSION}`);
 const endpoint=process.env.FCE_SITE_URL?.replace(/\/$/,'')+'/internal/sync/matches';
 const token=process.env.FCE_SYNC_TOKEN;
@@ -25,6 +25,15 @@ const epreuvesPayloadFromHtml=html=>{
   const match=String(html||'').match(/<script[^>]+id=["']ng-state["'][^>]*>([\s\S]*?)<\/script>/i);
   return match?epreuvesPayloadFromState(parseJson(match[1],'ng-state')):null;
 };
+const epreuvesPayloadPeriod=payload=>{
+  const iri=payload?.['hydra:view']?.['@id']||payload?.['@id'];
+  if(!iri)return '';
+  try{
+    const url=new URL(iri,'https://epreuves.fff.fr');
+    const start=url.searchParams.get('dateDebut'),end=url.searchParams.get('dateFin');
+    return start&&end?`${start}|${end}`:'';
+  }catch{return ''}
+};
 const epreuvesPayloadFromZenRows=body=>{
   let result;
   try{result=JSON.parse(body)}catch{return epreuvesPayloadFromHtml(body)}
@@ -33,6 +42,8 @@ const epreuvesPayloadFromZenRows=body=>{
     try{const url=new URL(item.url,'https://epreuves.fff.fr');return url.pathname==='/api/data/matches'&&url.searchParams.get('clNo')===CLUB_NO}catch{return false}
   });
   const payloadByPeriod=new Map();
+  const initialPayload=epreuvesPayloadFromHtml(result?.html);
+  if(initialPayload)payloadByPeriod.set(epreuvesPayloadPeriod(initialPayload)||'initial',initialPayload);
   for(const item of xhr.filter(item=>item.status_code===200))try{
     const url=new URL(item.url,'https://epreuves.fff.fr');
     const period=`${url.searchParams.get('dateDebut')}|${url.searchParams.get('dateFin')}`;
@@ -41,22 +52,27 @@ const epreuvesPayloadFromZenRows=body=>{
   const payloads=[...payloadByPeriod.values()];
   if(payloads.length)return {
     '@context':'/api/contexts/Match','@id':'/api/matches','@type':'hydra:Collection',
-    'hydra:totalItems':payloads.reduce((total,payload)=>total+payloadItems(payload).length,0),
+    'hydra:totalItems':payloads.reduce((total,payload)=>total+Number(payload?.['hydra:totalItems']??payloadItems(payload).length),0),
     'hydra:member':payloads.flatMap(payloadItems),
     '_fce_months_received':payloads.length
   };
-  return epreuvesPayloadFromHtml(result?.html);
+  return initialPayload;
 };
-async function fetchZenRows(targetUrls){
+async function fetchZenRows(targetUrls,currentSeasonMonth){
   const apiKey=process.env.ZENROWS_API_KEY;
   if(!apiKey)throw new Error('ZENROWS_API_KEY absent');
   const clubPage=`https://epreuves.fff.fr/competition/club/${CLUB_CODE}-f-c-escalquens/club`;
-  const fetchScript=`Promise.all(${JSON.stringify(targetUrls)}.map(url=>fetch(url,{credentials:'include',headers:{accept:'application/ld+json, application/json'}}).catch(()=>null))).finally(()=>document.documentElement.setAttribute('data-fce-sync-done','1'));`;
-  const instructions=[
-    {evaluate:fetchScript},
-    {wait_for:'html[data-fce-sync-done="1"]'},
-    {wait:1000}
-  ];
+  const calendar='app-match app-matches-wrapper';
+  const instructions=[{wait_for:`${calendar} button.next-button`}];
+  // La page possède déjà le jeton interne FFF. Ses boutons officiels déclenchent
+  // donc les requêtes autorisées que ZenRows enregistre dans `xhr`.
+  for(let month=currentSeasonMonth;month>0;month--){
+    instructions.push({click:`${calendar} button.prev-button`},{wait:850});
+  }
+  for(let month=1;month<targetUrls.length;month++){
+    instructions.push({click:`${calendar} button.next-button`},{wait:850});
+  }
+  instructions.push({wait:1200});
   const url=new URL('https://api.zenrows.com/v1/');
   url.searchParams.set('apikey',apiKey);
   url.searchParams.set('url',clubPage);
@@ -74,11 +90,13 @@ async function fetchZenRows(targetUrls){
   if(cost)console.log(`ZenRows : coût indiqué ${cost}.`);
   const payload=epreuvesPayloadFromZenRows(body);
   if(!payload)throw new Error(`ZenRows a chargé la page, mais aucun JSON de matchs exploitable n'a été trouvé`);
-  if(payload._fce_months_received)console.log(`FFF : ${payload._fce_months_received}/${targetUrls.length} mois capturés dans la session ZenRows.`);
+  const receivedMonths=Number(payload._fce_months_received||0);
+  console.log(`FFF : ${receivedMonths}/${targetUrls.length} mois capturés dans la session ZenRows.`);
+  if(receivedMonths!==targetUrls.length)throw new Error(`calendrier FFF incomplet : ${receivedMonths}/${targetUrls.length} mois capturés`);
   return payload;
 }
 
-async function fetchEpreuves(targetUrl,monthlyUrls){
+async function fetchEpreuves(targetUrl,monthlyUrls,currentSeasonMonth){
   try{
     return {payload:await fetchOk(targetUrl,'json',{
       accept:'application/ld+json, application/json',
@@ -86,7 +104,7 @@ async function fetchEpreuves(targetUrl,monthlyUrls){
     }),transport:'direct'};
   }catch(directError){
     console.log(`Accès FFF direct indisponible, essai via ZenRows : ${String(directError?.message||directError).replace(/\r?\n/g,' ')}`);
-    try{return {payload:await fetchZenRows(monthlyUrls),transport:'zenrows-browser'}}
+    try{return {payload:await fetchZenRows(monthlyUrls,currentSeasonMonth),transport:'zenrows-browser'}}
     catch(zenrowsError){throw new Error(`FFF direct : ${directError?.message||directError} ; ZenRows : ${zenrowsError?.message||zenrowsError}`)}
   }
 }
@@ -129,6 +147,7 @@ function normalizeEpreuves(items){
 async function collectEpreuvesFFF(){
   const now=new Date();
   const seasonYear=now.getUTCMonth()>=6?now.getUTCFullYear():now.getUTCFullYear()-1;
+  const currentSeasonMonth=Math.max(0,Math.min(11,(now.getUTCFullYear()-seasonYear)*12+now.getUTCMonth()-6));
   const start=new Date(Date.UTC(seasonYear,6,1));
   const end=new Date(Date.UTC(seasonYear+1,5,30,23,59,59));
   const query=new URLSearchParams({
@@ -147,7 +166,7 @@ async function collectEpreuvesFFF(){
     });
     return `https://epreuves.fff.fr/api/data/matches?${monthQuery}`;
   });
-  const {payload,transport}=await fetchEpreuves(targetUrl,monthlyUrls);
+  const {payload,transport}=await fetchEpreuves(targetUrl,monthlyUrls,currentSeasonMonth);
   const items=payloadItems(payload);
   const total=Number(payload['hydra:totalItems']??items.length);
   if(total>items.length)throw new Error(`FFF annonce ${total} matchs mais n'en renvoie que ${items.length}; pagination à ajouter avant import`);
