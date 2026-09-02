@@ -1,0 +1,23 @@
+name: Synchroniser les matchs
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 * * * *"
+concurrency:
+  group: sync-matches
+  cancel-in-progress: false
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Collecter et importer
+        run: node scripts/sync-matches.mjs
+        env:
+          FCE_SITE_URL: ${{ secrets.FCE_SITE_URL }}
+          FCE_SYNC_TOKEN: ${{ secrets.FCE_SYNC_TOKEN }}
+          FORCE_SYNC: ${{ github.event_name == 'workflow_dispatch' }}

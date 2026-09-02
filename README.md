@@ -61,11 +61,18 @@ Ajoutez ensuite dans GitHub → Settings → Secrets : `CLOUDFLARE_API_TOKEN` et
 
 ## Synchronisation automatique
 
-Le cron Cloudflare est déclenché chaque heure, puis le Worker ne lance la synchronisation qu'aux horaires utiles en heure de Paris : tous les jours à 22 h, puis toutes les quatre heures du vendredi 16 h au lundi 14 h. Cette porte horaire interne gère automatiquement l'heure d'été et l'heure d'hiver.
+Les serveurs FFF et District pouvant refuser les appels provenant directement du réseau Cloudflare, la collecte est effectuée par `.github/workflows/sync-matches.yml`. L'action est réveillée chaque heure, puis le script ne travaille qu'aux horaires utiles en heure de Paris : tous les jours à 22 h, puis toutes les quatre heures du vendredi 16 h au lundi 14 h. Cette porte horaire interne gère automatiquement l'heure d'été et l'heure d'hiver.
 
 La synchronisation récupère les calendriers et résultats FFF du club `clNo=101544`, ainsi que les compétitions et plateaux publiés par le District de Haute-Garonne. Elle met à jour les lignes existantes au lieu de les dupliquer et conserve l'historique des saisons. Les logos domicile et extérieur sont enregistrés sous forme d'URL officielles ; une initiale est affichée lorsqu'un logo n'est pas fourni.
 
-Après déploiement, le bouton « Actualiser les matchs » de l'administration permet de tester immédiatement les deux sources. Un message distinct signale si seule la FFF ou le District a répondu.
+Créez une valeur secrète longue, enregistrez-la dans Cloudflare, puis ajoutez la même valeur dans GitHub → Settings → Secrets and variables → Actions sous le nom `FCE_SYNC_TOKEN` :
+
+```bash
+openssl rand -hex 32
+npx wrangler secret put FCE_SYNC_TOKEN
+```
+
+Ajoutez également le secret GitHub `FCE_SITE_URL`, contenant l'origine du site sans barre finale, par exemple `https://fce-escalquens.votre-sous-domaine.workers.dev`. Après le déploiement, lancez Actions → « Synchroniser les matchs » → Run workflow. Le journal indique séparément les réponses de la FFF, du District et l'import D1.
 
 Instagram sera synchronisé par le même Worker dès que le compte professionnel et le jeton Meta seront disponibles. Les variables sensibles se configurent avec `wrangler secret put`, jamais dans GitHub ou le code.
 
