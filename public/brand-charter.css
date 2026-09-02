@@ -87,3 +87,25 @@ footer{display:grid;grid-template-columns:1.45fr .7fr .7fr 1fr;gap:48px;align-it
 @media(max-width:520px){footer{grid-template-columns:1fr;gap:28px}.footer-brand img{width:72px;height:72px}}
 .contact-routing{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:28px}.contact-routing article{display:grid;gap:8px;padding:20px;background:#fff;border-left:6px solid #811244}.contact-routing article:last-child{border-left-color:#ffd000}.contact-routing small{font-size:10px;font-weight:900;text-transform:uppercase;color:#6f5c63}.contact-routing a{font-weight:900;color:#811244}
 @media(max-width:650px){.contact-routing{grid-template-columns:1fr}.contact-routing a{font-size:14px}}
+
+/* Accueil mobile : en-tête explicite et photo sans masque */
+@media(max-width:600px){
+  .site-header .brand>span{display:grid!important;line-height:1.05}
+  .site-header .brand b{font-size:11px;letter-spacing:.02em;white-space:nowrap}
+  .site-header .brand small{display:none}
+  .site-header .brand{gap:8px}
+  .club-logo{width:52px;height:52px}
+  .punch{gap:0;padding-bottom:0}
+  .punch .photo{height:205px;min-height:205px;margin:0;border:0;border-radius:0;box-shadow:none;overflow:hidden}
+  .punch .photo img{height:205px;min-height:205px;object-fit:cover;object-position:center 47%}
+  .punch .photo:after{inset:0;background:linear-gradient(180deg,#0000000a,transparent 55%,#18030a1f);pointer-events:none}
+  .punch .slash{display:none}
+  .punch .photo i{display:none}
+}
+
+/* Logos des clubs dans le calendrier */
+.match-team{display:flex;align-items:center;justify-content:center;gap:10px;min-width:0}
+.match-logo{width:46px;height:46px;object-fit:contain;flex:none}
+.match-logo.fallback{display:grid;place-items:center;border-radius:50%;background:#eee5dc;color:var(--wine);font-weight:900}
+.match-team b{min-width:0}
+@media(max-width:600px){.match-logo{width:38px;height:38px}.match-team{flex-direction:column;gap:5px}.match-team b{font-size:12px}}

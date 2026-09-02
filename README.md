@@ -1,6 +1,6 @@
 # FC Escalquens — Astro + Cloudflare
 
-Le dépôt complet du futur site : Astro génère les pages statiques, un Cloudflare Worker sert les assets et l’API, D1 contient les données, R2 les photos/PDF, et le même Worker synchronise la FFF chaque nuit.
+Le dépôt complet du futur site : Astro génère les pages statiques, un Cloudflare Worker sert les assets et l’API, D1 contient les données, R2 les photos/PDF, et le même Worker synchronise les rencontres FFF et les plateaux du District.
 
 ## Voir le site en local
 
@@ -61,7 +61,11 @@ Ajoutez ensuite dans GitHub → Settings → Secrets : `CLOUDFLARE_API_TOKEN` et
 
 ## Synchronisation automatique
 
-Le cron `17 3 * * *` de `wrangler.jsonc` appelle chaque nuit l’API FFF pour le club `clNo=101544`. Chaque exécution est enregistrée dans `sync_runs`; les erreurs restent consultables.
+Le cron Cloudflare est déclenché chaque heure, puis le Worker ne lance la synchronisation qu'aux horaires utiles en heure de Paris : tous les jours à 22 h, puis toutes les quatre heures du vendredi 16 h au lundi 14 h. Cette porte horaire interne gère automatiquement l'heure d'été et l'heure d'hiver.
+
+La synchronisation récupère les calendriers et résultats FFF du club `clNo=101544`, ainsi que les compétitions et plateaux publiés par le District de Haute-Garonne. Elle met à jour les lignes existantes au lieu de les dupliquer et conserve l'historique des saisons. Les logos domicile et extérieur sont enregistrés sous forme d'URL officielles ; une initiale est affichée lorsqu'un logo n'est pas fourni.
+
+Après déploiement, le bouton « Actualiser les matchs » de l'administration permet de tester immédiatement les deux sources. Un message distinct signale si seule la FFF ou le District a répondu.
 
 Instagram sera synchronisé par le même Worker dès que le compte professionnel et le jeton Meta seront disponibles. Les variables sensibles se configurent avec `wrangler secret put`, jamais dans GitHub ou le code.
 

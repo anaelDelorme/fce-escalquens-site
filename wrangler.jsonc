@@ -17,14 +17,8 @@
 			"binding": "DB",
 			"database_name": "fce-escalquens",
 			"database_id": "883401b1-f229-4c0e-9e25-6493f8d01b93"
-		},
-		{
-			"binding": "fce_escalquens",
-			"database_name": "fce-escalquens",
-			"database_id": "883401b1-f229-4c0e-9e25-6493f8d01b93",
-			"remote": true
 		}
-	],
+		],
 	"r2_buckets": [
 		{
 			"binding": "MEDIA",
