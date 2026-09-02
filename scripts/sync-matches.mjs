@@ -1,4 +1,4 @@
-const SYNC_VERSION='2026.09.02-11',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+const SYNC_VERSION='2026.09.02-12',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 console.log(`Collecteur FCE ${SYNC_VERSION}`);
 const endpoint=process.env.FCE_SITE_URL?.replace(/\/$/,'')+'/internal/sync/matches';
 const token=process.env.FCE_SYNC_TOKEN;
@@ -31,6 +31,7 @@ const embeddedPayloadFromHtml=(html,id)=>{
   const match=String(html||'').match(new RegExp(`<script[^>]+id=["']${id}["'][^>]*>([\\s\\S]*?)<\\/script>`,'i'));
   if(!match)return null;
   const envelope=parseJson(match[1],id);
+  if(envelope.status!==200)throw new Error(`${id} HTTP ${envelope.status||'inconnu'}`);
   return parseJson(envelope.body,id);
 };
 const mergeMatchPayloads=payloads=>{
@@ -67,18 +68,17 @@ async function fetchZenRows(targetUrls){
   const apiKey=process.env.ZENROWS_API_KEY;
   if(!apiKey)throw new Error('ZENROWS_API_KEY absent');
   const clubPage=`https://epreuves.fff.fr/competition/club/${CLUB_CODE}-f-c-escalquens/club`;
-  // Les plages annuelles de l'API renvoient une collection vide. Les 24 flux
-  // mensuels (12 matchs + 12 FAL) sont donc chargés dans une seule session
-  // navigateur ZenRows : une seule requête facturée, puis déduplication locale.
-  const iframeTargets=[
+  // L'application Angular lit un jeton dynamique dans ng-state et l'envoie
+  // dans X-Competition. Sans cet en-tête, l'API répond 200 avec des listes vides.
+  const browserTargets=[
     ...targetUrls.matches.map((src,index)=>[`fce-matches-${index}`,src]),
     ...targetUrls.fal.map((src,index)=>[`fce-fal-${index}`,src])
   ];
-  const iframeScript=`(()=>{const targets=${JSON.stringify(iframeTargets)};let pending=targets.length;const finish=(id,frame)=>{const output=document.createElement('script');output.type='application/json';output.id=id;let content='';try{content=frame.contentDocument.body.innerText}catch(error){content=JSON.stringify({fce_error:String(error)})}output.textContent=JSON.stringify({body:content});document.body.appendChild(output);frame.remove();if(--pending===0)document.documentElement.setAttribute('data-fce-sync-done','1')};for(const [id,src] of targets){const frame=document.createElement('iframe');frame.hidden=true;frame.onload=()=>finish(id,frame);frame.src=src;document.body.appendChild(frame)}setTimeout(()=>{if(pending>0)document.documentElement.setAttribute('data-fce-sync-timeout','1')},25000)})();`;
+  const fetchScript=`(()=>{const targets=${JSON.stringify(browserTargets)};const node=document.querySelector('#ng-state');let state;try{state=JSON.parse(node?.textContent||'[]')}catch{}const roots=Array.isArray(state)?state:[state];const entries=roots.flatMap(item=>Object.entries(item||{}));const securityToken=entries.find(([key])=>key==='VLJAXE')?.[1]||entries.find(([key,value])=>key.includes('/api/app-security-token/')&&value?.body?.token)?.[1]?.body?.token;if(!securityToken){document.documentElement.setAttribute('data-fce-sync-error','token-X-Competition-introuvable');return}Promise.all(targets.map(async([id,src])=>{let status=0,body='';try{const response=await fetch(src,{credentials:'include',headers:{Accept:'application/json, text/plain, */*','X-Competition':String(securityToken)}});status=response.status;body=await response.text()}catch(error){body=JSON.stringify({fce_error:String(error)})}const output=document.createElement('script');output.type='application/json';output.id=id;output.textContent=JSON.stringify({status,body});document.body.appendChild(output)})).finally(()=>document.documentElement.setAttribute('data-fce-sync-done','1'))})();`;
   const instructions=[
     {wait_for:'app-match app-matches-wrapper'},
     {wait:500},
-    {evaluate:iframeScript},
+    {evaluate:fetchScript},
     {wait_for:'html[data-fce-sync-done="1"]'},
     {wait:500}
   ];
