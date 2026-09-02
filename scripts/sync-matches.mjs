@@ -1,4 +1,4 @@
-const SYNC_VERSION='2026.09.02-9',CLUB_NO='101544',CLUB_CODE='550350';
+const SYNC_VERSION='2026.09.02-10',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 console.log(`Collecteur FCE ${SYNC_VERSION}`);
 const endpoint=process.env.FCE_SITE_URL?.replace(/\/$/,'')+'/internal/sync/matches';
 const token=process.env.FCE_SYNC_TOKEN;
@@ -17,62 +17,53 @@ const cleanUrl=value=>{const raw=String(value||''),markdown=raw.match(/^\[[^\]]+
 async function fetchOk(url,kind='json',extraHeaders={}){const response=await fetch(url,{headers:{...headers,...extraHeaders},redirect:'follow'});if(!response.ok){const detail=(await response.text()).replace(/\s+/g,' ').slice(0,180);throw new Error(`${new URL(url).hostname} HTTP ${response.status}${detail?` — ${detail}`:''}`)}return kind==='text'?response.text():response.json()}
 const payloadItems=payload=>Array.isArray(payload)?payload:payload['hydra:member']||payload.items||payload.data||payload.matches||[];
 const parseJson=(value,label='réponse')=>{try{return typeof value==='string'?JSON.parse(value):value}catch{throw new Error(`${label} JSON invalide`)}};
-const epreuvesPayloadFromState=state=>{
-  const entry=Object.entries(state||{}).find(([key,value])=>key.includes('analog_GET|/api/data/matches?')&&value?.status===200&&value?.body);
-  return entry?.[1]?.body||null;
+const epreuvesPayloadsFromState=state=>{
+  const values=(Array.isArray(state)?state:[state]).flatMap(item=>Object.entries(item||{}));
+  const matches=values.find(([key,value])=>key.includes('analog_GET|/api/data/matches?')&&value?.status===200&&value?.body)?.[1]?.body||null;
+  const fal=values.find(([key,value])=>key.includes(`/api/fal/cdg/${DISTRICT_NO}/club/${CLUB_NO}/sites?`)&&value?.status===200&&value?.body)?.[1]?.body||null;
+  return {matches,fal};
 };
-const epreuvesPayloadFromHtml=html=>{
+const epreuvesPayloadsFromHtml=html=>{
   const match=String(html||'').match(/<script[^>]+id=["']ng-state["'][^>]*>([\s\S]*?)<\/script>/i);
-  return match?epreuvesPayloadFromState(parseJson(match[1],'ng-state')):null;
+  return match?epreuvesPayloadsFromState(parseJson(match[1],'ng-state')):{matches:null,fal:null};
 };
-const epreuvesPayloadPeriod=payload=>{
-  const iri=payload?.['hydra:view']?.['@id']||payload?.['@id'];
-  if(!iri)return '';
-  try{
-    const url=new URL(iri,'https://epreuves.fff.fr');
-    const start=url.searchParams.get('dateDebut'),end=url.searchParams.get('dateFin');
-    return start&&end?`${start}|${end}`:'';
-  }catch{return ''}
+const embeddedPayloadFromHtml=(html,id)=>{
+  const match=String(html||'').match(new RegExp(`<script[^>]+id=["']${id}["'][^>]*>([\\s\\S]*?)<\\/script>`,'i'));
+  if(!match)return null;
+  const envelope=parseJson(match[1],id);
+  return parseJson(envelope.body,id);
 };
 const epreuvesPayloadFromZenRows=body=>{
   let result;
-  try{result=JSON.parse(body)}catch{return epreuvesPayloadFromHtml(body)}
-  if(result?.['hydra:member'])return result;
-  const xhr=(result?.xhr||[]).filter(item=>{
-    try{const url=new URL(item.url,'https://epreuves.fff.fr');return url.pathname==='/api/data/matches'&&url.searchParams.get('clNo')===CLUB_NO}catch{return false}
-  });
-  const payloadByPeriod=new Map();
-  const initialPayload=epreuvesPayloadFromHtml(result?.html);
-  if(initialPayload)payloadByPeriod.set(epreuvesPayloadPeriod(initialPayload)||'initial',initialPayload);
-  for(const item of xhr.filter(item=>item.status_code===200))try{
-    const url=new URL(item.url,'https://epreuves.fff.fr');
-    const period=`${url.searchParams.get('dateDebut')}|${url.searchParams.get('dateFin')}`;
-    payloadByPeriod.set(period,parseJson(item.body,'XHR FFF'));
-  }catch{}
-  const payloads=[...payloadByPeriod.values()];
-  if(payloads.length)return {
-    '@context':'/api/contexts/Match','@id':'/api/matches','@type':'hydra:Collection',
-    'hydra:totalItems':payloads.reduce((total,payload)=>total+Number(payload?.['hydra:totalItems']??payloadItems(payload).length),0),
-    'hydra:member':payloads.flatMap(payloadItems),
-    '_fce_months_received':payloads.length
+  try{result=JSON.parse(body)}catch{result={html:body}}
+  const html=result?.html||'';
+  const initial=epreuvesPayloadsFromHtml(html);
+  const annualMatches=embeddedPayloadFromHtml(html,'fce-matches-payload');
+  const annualFal=embeddedPayloadFromHtml(html,'fce-fal-payload');
+  return {
+    matches:annualMatches||initial.matches,
+    fal:annualFal||initial.fal,
+    annualMatches:Boolean(annualMatches),annualFal:Boolean(annualFal)
   };
-  return initialPayload;
 };
-async function fetchZenRows(targetUrls,currentSeasonMonth){
+async function fetchZenRows(targetUrls){
   const apiKey=process.env.ZENROWS_API_KEY;
   if(!apiKey)throw new Error('ZENROWS_API_KEY absent');
   const clubPage=`https://epreuves.fff.fr/competition/club/${CLUB_CODE}-f-c-escalquens/club`;
-  const calendar='app-match app-matches-wrapper';
-  const instructions=[{wait_for:`${calendar} button.next-button`}];
-  // La page possède déjà le jeton interne FFF. Ses boutons officiels déclenchent
-  // donc les requêtes autorisées que ZenRows enregistre dans `xhr`.
-  for(let month=currentSeasonMonth;month>0;month--){
-    instructions.push({click:`${calendar} button.prev-button`},{wait:850});
-  }
-  for(let month=1;month<targetUrls.length;month++){
-    instructions.push({click:`${calendar} button.next-button`},{wait:850});
-  }
-  instructions.push({wait:1200});
+  // Deux navigations JSON sont ouvertes dans des iframes de même origine. Elles
+  // réutilisent la session FFF créée par la page publique sans contourner son
+  // intercepteur Angular et sans payer douze navigations mensuelles ZenRows.
+  const iframeScript=`(()=>{const targets=${JSON.stringify([
+    ['fce-matches-payload',targetUrls.matches],
+    ['fce-fal-payload',targetUrls.fal]
+  ])};let pending=targets.length;const finish=(id,frame)=>{const output=document.createElement('script');output.type='application/json';output.id=id;let content='';try{content=frame.contentDocument.body.innerText}catch(error){content=JSON.stringify({fce_error:String(error)})}output.textContent=JSON.stringify({body:content});document.body.appendChild(output);frame.remove();if(--pending===0)document.documentElement.setAttribute('data-fce-sync-done','1')};for(const [id,src] of targets){const frame=document.createElement('iframe');frame.hidden=true;frame.onload=()=>finish(id,frame);frame.src=src;document.body.appendChild(frame)}setTimeout(()=>{if(pending>0)document.documentElement.setAttribute('data-fce-sync-timeout','1')},15000)})();`;
+  const instructions=[
+    {wait_for:'app-match app-matches-wrapper'},
+    {wait:500},
+    {evaluate:iframeScript},
+    {wait_for:'html[data-fce-sync-done="1"]'},
+    {wait:500}
+  ];
   const url=new URL('https://api.zenrows.com/v1/');
   url.searchParams.set('apikey',apiKey);
   url.searchParams.set('url',clubPage);
@@ -88,23 +79,20 @@ async function fetchZenRows(targetUrls,currentSeasonMonth){
   const cost=response.headers.get('x-request-cost');
   if(credits)console.log(`ZenRows : ${credits} crédit(s) consommé(s).`);
   if(cost)console.log(`ZenRows : coût indiqué ${cost}.`);
-  const payload=epreuvesPayloadFromZenRows(body);
-  if(!payload)throw new Error(`ZenRows a chargé la page, mais aucun JSON de matchs exploitable n'a été trouvé`);
-  const receivedMonths=Number(payload._fce_months_received||0);
-  console.log(`FFF : ${receivedMonths}/${targetUrls.length} mois capturés dans la session ZenRows.`);
-  if(receivedMonths!==targetUrls.length)throw new Error(`calendrier FFF incomplet : ${receivedMonths}/${targetUrls.length} mois capturés`);
-  return payload;
+  const payloads=epreuvesPayloadFromZenRows(body);
+  if(!payloads.annualMatches)throw new Error(`ZenRows a chargé la page, mais le calendrier annuel n'a pas été renvoyé`);
+  if(!payloads.annualFal)throw new Error(`ZenRows a chargé la page, mais les plateaux annuels n'ont pas été renvoyés`);
+  return payloads;
 }
 
-async function fetchEpreuves(targetUrl,monthlyUrls,currentSeasonMonth){
+async function fetchEpreuves(targetUrls){
   try{
-    return {payload:await fetchOk(targetUrl,'json',{
-      accept:'application/ld+json, application/json',
-      referer:`https://epreuves.fff.fr/competition/club/${CLUB_CODE}-escalquens-fc/club`
-    }),transport:'direct'};
+    const extraHeaders={accept:'application/ld+json, application/json',referer:`https://epreuves.fff.fr/competition/club/${CLUB_CODE}-escalquens-fc/club`};
+    const [matches,fal]=await Promise.all([fetchOk(targetUrls.matches,'json',extraHeaders),fetchOk(targetUrls.fal,'json',extraHeaders)]);
+    return {payloads:{matches,fal},transport:'direct'};
   }catch(directError){
     console.log(`Accès FFF direct indisponible, essai via ZenRows : ${String(directError?.message||directError).replace(/\r?\n/g,' ')}`);
-    try{return {payload:await fetchZenRows(monthlyUrls,currentSeasonMonth),transport:'zenrows-browser'}}
+    try{return {payloads:await fetchZenRows(targetUrls),transport:'zenrows-browser'}}
     catch(zenrowsError){throw new Error(`FFF direct : ${directError?.message||directError} ; ZenRows : ${zenrowsError?.message||zenrowsError}`)}
   }
 }
@@ -144,39 +132,80 @@ function normalizeEpreuves(items){
   }
   return [...matches.values()];
 }
+function normalizeEpreuvesFal(payload){
+  const rows=new Map();
+  for(const site of [...(payload?.sites||[]),...(payload?.sitesWithoutDate||[])]){
+    const epreuve=site.epreuve||{};
+    const clubTeam=(site.equipes||[]).find(team=>String(team.club?.clNo)===CLUB_NO);
+    if(!clubTeam||!site.date)continue;
+    const sourceId=[epreuve.epNo,site.phNo,site.joNo].filter(value=>value!==undefined&&value!==null&&value!=='').join(':');
+    const organizer=site.organisateur?.clNom||'';
+    const opponents=(site.equipes||[]).filter(team=>String(team.club?.clNo)!==CLUB_NO).map(team=>team.club?.clNom||team.eqNom).filter(Boolean);
+    const terrain=[site.terrain?.nom,...(site.terrain?.adresse||[])].filter(Boolean).join(' — ');
+    const competition=[epreuve.epNom,site.phLib,site.seLib,site.poLib].filter(Boolean).join(' · ');
+    const organizerIsClub=String(site.organisateur?.clNo)===CLUB_NO;
+    const awayLabel=organizerIsClub
+      ?`Plateau · ${opponents.length?opponents.join(', '):'participants à confirmer'}`
+      :`Plateau à ${organizer||'confirmer'}`;
+    const row={
+      source:'district_fal',source_id:sourceId,
+      category:epreuve.caCod||clubTeam.caCod||'',competition,
+      starts_at:site.date,venue:terrain||organizer,
+      home_team:'FC Escalquens',away_team:awayLabel,
+      status:site.isCancelled?'cancelled':'scheduled',event_type:'plateau',
+      source_url:`https://epreuves.fff.fr/competition/club/${CLUB_CODE}-escalquens-fc/club`,
+      external_updated_at:null,
+      home_logo_url:cleanUrl(payload?.logo),
+      away_logo_url:organizerIsClub?'':cleanUrl(site.organisateur?.logo),
+      raw_json:site
+    };
+    if(sourceId)rows.set(sourceId,row);
+  }
+  return [...rows.values()];
+}
 async function collectEpreuvesFFF(){
   const now=new Date();
   const seasonYear=now.getUTCMonth()>=6?now.getUTCFullYear():now.getUTCFullYear()-1;
-  const currentSeasonMonth=Math.max(0,Math.min(11,(now.getUTCFullYear()-seasonYear)*12+now.getUTCMonth()-6));
   const start=new Date(Date.UTC(seasonYear,6,1));
-  const end=new Date(Date.UTC(seasonYear+1,5,30,23,59,59));
+  // On couvre aussi juillet suivant : les calendriers tardifs et les reports
+  // restent rattachés à la saison qui vient de se terminer.
+  const end=new Date(Date.UTC(seasonYear+1,7,1,23,59,59));
   const query=new URLSearchParams({
     dateDebut:start.toISOString().replace('.000Z','+00:00'),
     dateFin:end.toISOString().replace('.000Z','+00:00'),
     clNo:CLUB_NO,itemsPerPage:'1000',pagination:'true'
   });
-  const targetUrl=`https://epreuves.fff.fr/api/data/matches?${query}`;
-  const monthlyUrls=Array.from({length:12},(_,offset)=>{
-    const monthStart=new Date(Date.UTC(seasonYear,6+offset,1));
-    const monthEnd=new Date(Date.UTC(seasonYear,7+offset,0,23,59,59));
-    const monthQuery=new URLSearchParams({
-      dateDebut:monthStart.toISOString().replace('.000Z','+00:00'),
-      dateFin:monthEnd.toISOString().replace('.000Z','+00:00'),
-      clNo:CLUB_NO,itemsPerPage:'100',pagination:'true'
-    });
-    return `https://epreuves.fff.fr/api/data/matches?${monthQuery}`;
+  const falQuery=new URLSearchParams({
+    dateDebut:start.toISOString().slice(0,10),dateFin:end.toISOString().slice(0,10)
   });
-  const {payload,transport}=await fetchEpreuves(targetUrl,monthlyUrls,currentSeasonMonth);
-  const items=payloadItems(payload);
-  const total=Number(payload['hydra:totalItems']??items.length);
+  const targetUrls={
+    matches:`https://epreuves.fff.fr/api/data/matches?${query}`,
+    fal:`https://epreuves.fff.fr/api/fal/cdg/${DISTRICT_NO}/club/${CLUB_NO}/sites?${falQuery}`
+  };
+  const {payloads,transport}=await fetchEpreuves(targetUrls);
+  const items=payloadItems(payloads.matches);
+  const total=Number(payloads.matches['hydra:totalItems']??items.length);
   if(total>items.length)throw new Error(`FFF annonce ${total} matchs mais n'en renvoie que ${items.length}; pagination à ajouter avant import`);
-  console.log(`FFF : ${items.length} matchs reçus via ${transport}.`);
-  return normalizeEpreuves(items);
+  const matches=normalizeEpreuves(items),plateaux=normalizeEpreuvesFal(payloads.fal);
+  console.log(`FFF : ${matches.length} matchs et ${plateaux.length} plateaux reçus via ${transport}.`);
+  return [...matches,...plateaux];
 }
 async function collectFFF(){
   return collectEpreuvesFFF();
 }
 async function collectDistrict(){const base='https://haute-garonne.fff.fr/football-animation-et-loisirs/',html=await fetchOk(base,'text',{accept:'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',referer:'https://haute-garonne.fff.fr/','sec-fetch-dest':'document','sec-fetch-mode':'navigate','sec-fetch-site':'same-origin','upgrade-insecure-requests':'1'}),match=html.match(/<div id=["']animation-data["'][^>]*>\s*([\s\S]*?)\s*<\/div>/i);if(!match)throw new Error('District : animation-data introuvable');const data=JSON.parse(match[1]),rows=[];for(const competition of data){if(!competition.clubs?.some(club=>Number(club.cl_no)===Number(CLUB_NO)&&Number(club.cl_cod)===Number(CLUB_CODE)))continue;for(const phase of competition.phases||[])for(const journey of phase.journees||[]){const sites=(phase.secteurs||[]).flatMap(sector=>sector.poules||[]).flatMap(pool=>pool.journees||[]).find(item=>item.fa_jo_no===journey.fa_jo_no)?.sites||[],site=sites.find(item=>Number(item.club_organisateur?.cl_no)===Number(CLUB_NO)||(item.equipes||[]).some(club=>Number(first(club.cl_no,club.club?.cl_no))===Number(CLUB_NO))),kind=phase.fa_mr_cod==='P'?'plateau':'animation';rows.push({source:'district_fal',source_id:`${competition.fa_ep_no}:${phase.fa_ph_no}:${journey.fa_jo_no}`,category:String(competition.fa_ca_lib||competition.fa_ca_cod||''),competition:`${competition.fa_ep_nom} · ${phase.fa_ph_lib}`,starts_at:iso(first(site?.fa_si_date,journey.fa_jo_date),first(site?.fa_si_ho_cod,journey.fa_ho_cod)),venue:text(first(site?.installation,site?.club_organisateur)),home_team:'FC Escalquens',away_team:kind==='plateau'?'Plateau – participants à confirmer':'Rencontre – adversaire à confirmer',status:site?.fa_si_cancelled?'cancelled':'scheduled',event_type:kind,source_url:`${base}?fal_id=${competition.fa_ep_no}&type=fa&clNo=${CLUB_NO}&clCod=${CLUB_CODE}&checkDate=false`,external_updated_at:competition.date_maj,raw_json:{competition:{id:competition.fa_ep_no,name:competition.fa_ep_nom},phase:{id:phase.fa_ph_no,name:phase.fa_ph_lib},journey,site:site||null}})}}return rows.filter(row=>row.starts_at)}
-const attempts=await Promise.allSettled([collectFFF(),collectDistrict()]),names=['fff','district'],sources=attempts.map((result,index)=>result.status==='fulfilled'?{source:names[index],status:'ok',count:result.value.length}:{source:names[index],status:'error',error:String(result.reason?.message||result.reason)}),rows=attempts.flatMap(result=>result.status==='fulfilled'?result.value:[]);
+let rows=[],sources=[];
+try{
+  rows=await collectFFF();
+  sources.push({source:'fff',status:'ok',count:rows.length});
+}catch(error){
+  sources.push({source:'fff',status:'error',error:String(error?.message||error)});
+  try{
+    rows=await collectDistrict();
+    sources.push({source:'district',status:'ok',count:rows.length});
+  }catch(districtError){
+    sources.push({source:'district',status:'error',error:String(districtError?.message||districtError)});
+  }
+}
 if(!rows.length)throw new Error(`Aucune donnée collectée : ${sources.map(item=>item.status==='ok'?`${item.source} OK (${item.count} rencontre)`: `${item.source} ERREUR — ${item.error}`).join(' ; ')}`);
 const response=await fetch(endpoint,{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({rows,sources})}),raw=await response.text();if(!response.ok)throw new Error(`Import Cloudflare HTTP ${response.status}: ${raw}`);console.log(raw);console.table(sources);for(const source of sources.filter(item=>item.status==='error'))console.log(`::warning title=Source ${source.source} indisponible::${String(source.error).replace(/\r?\n/g,' ')}`);
