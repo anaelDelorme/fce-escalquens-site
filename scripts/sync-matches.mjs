@@ -1,4 +1,4 @@
-const SYNC_VERSION='2026.09.03-15',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+const SYNC_VERSION='2026.09.03-16',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 console.log(`Collecteur FCE ${SYNC_VERSION}`);
 const endpoint=process.env.FCE_SITE_URL?.replace(/\/$/,'')+'/internal/sync/matches';
 const token=process.env.FCE_SYNC_TOKEN;
@@ -19,7 +19,15 @@ const entityName=entity=>text(first(entity?.short_name_federation,entity?.short_
 const iso=(date,time='')=>{if(!date)return '';const raw=String(date);if(raw.includes('T'))return raw;const normalized=String(time||'12:00').replace('h',':').padEnd(5,'0');return `${raw}T${/^\d{1,2}:\d{2}$/.test(normalized)?normalized:'12:00'}:00`};
 const cleanUrl=value=>{const raw=String(value||''),markdown=raw.match(/^\[[^\]]+\]\((https?:\/\/[^)]+)\)$/);return markdown?markdown[1]:raw};
 const numberOrNull=value=>value===undefined||value===null||value===''?null:Number(value);
-const addressText=value=>Array.isArray(value)?value.filter(Boolean).join(' · '):text(value);
+const addressText=value=>{
+  if(Array.isArray(value))return value.filter(Boolean).join(' · ');
+  if(typeof value==='string')return value;
+  if(!value||typeof value!=='object')return '';
+  return first(
+    value.formatted,value.libelle,value.label,value.adresseComplete,value.fullAddress,
+    [value.adresse1,value.adresse2,value.codePostal||value.cp,value.ville].filter(Boolean).join(' · ')
+  )||'';
+};
 async function fetchOk(url,kind='json',extraHeaders={}){const response=await fetch(url,{headers:{...headers,...extraHeaders},redirect:'follow'});if(!response.ok){const detail=(await response.text()).replace(/\s+/g,' ').slice(0,180);throw new Error(`${new URL(url).hostname} HTTP ${response.status}${detail?` — ${detail}`:''}`)}return kind==='text'?response.text():response.json()}
 const payloadItems=payload=>Array.isArray(payload)?payload:payload['hydra:member']||payload.items||payload.data||payload.matches||[];
 const parseJson=(value,label='réponse')=>{try{return typeof value==='string'?JSON.parse(value):value}catch{throw new Error(`${label} JSON invalide`)}};
@@ -54,7 +62,17 @@ const mergeMatchPayloads=payloads=>{
     for(const wrapper of wrappers){
     const item=wrapper?.donneesFormatees||wrapper;
     const id=String(item?.maNo||wrapper?.id||wrapper?.['@id']||'');
-    if(id)unique.set(id,wrapper);
+    if(id){
+      const previous=unique.get(id);
+      const venueScore=value=>{
+        const detail=value?.donneesFormatees||value||{};
+        const serialized=JSON.stringify(detail);
+        return Number(Boolean(detail.terrain||detail.installation||detail.stade||detail.site?.terrain||detail.rencontre?.terrain))*10+
+          Number(/"(?:terrain|installation|stade)"\s*:/.test(serialized))*5+
+          Number(Boolean(detail.lieu||detail.adresse));
+      };
+      if(!previous||venueScore(wrapper)>=venueScore(previous))unique.set(id,wrapper);
+    }
     }
   }
   return {'@context':'/api/contexts/Match','@id':'/api/matches','@type':'hydra:Collection','hydra:totalItems':unique.size,'hydra:member':[...unique.values()]};
@@ -76,9 +94,14 @@ const epreuvesPayloadFromZenRows=body=>{
   const matchPayloads=Array.from({length:12},(_,index)=>embeddedPayloadFromHtml(html,`fce-matches-${index}`)).filter(Boolean);
   const falPayloads=Array.from({length:12},(_,index)=>embeddedPayloadFromHtml(html,`fce-fal-${index}`)).filter(Boolean);
   const detailPayloads=embeddedPayloadsByPrefix(html,'fce-detail-');
+  const venueDetails=detailPayloads.filter(payload=>{
+    const item=payload?.donneesFormatees||payload||{};
+    return /"(?:terrain|installation|stade)"\s*:/.test(JSON.stringify(item));
+  }).length;
   return {
     matches:mergeMatchPayloads([...matchPayloads,...detailPayloads]),fal:mergeFalPayloads(falPayloads),
-    matchMonths:matchPayloads.length,falMonths:falPayloads.length
+    matchMonths:matchPayloads.length,falMonths:falPayloads.length,
+    detailCount:detailPayloads.length,venueDetailCount:venueDetails
   };
 };
 async function fetchZenRows(targetUrls){
@@ -91,7 +114,44 @@ async function fetchZenRows(targetUrls){
     ...targetUrls.matches.map((src,index)=>[`fce-matches-${index}`,src]),
     ...targetUrls.fal.map((src,index)=>[`fce-fal-${index}`,src])
   ];
-  const fetchScript=`(async()=>{const targets=${JSON.stringify(browserTargets)};const node=document.querySelector('#ng-state');let state;try{state=JSON.parse(node?.textContent||'[]')}catch{}const roots=Array.isArray(state)?state:[state];const entries=roots.flatMap(item=>Object.entries(item||{}));const securityToken=entries.find(([key])=>key==='VLJAXE')?.[1]||entries.find(([key,value])=>key.includes('/api/app-security-token/')&&value?.body?.token)?.[1]?.body?.token;if(!securityToken){document.documentElement.setAttribute('data-fce-sync-error','token-X-Competition-introuvable');return}const saved=[];const fetchOne=async(id,src)=>{let status=0,body='';try{const response=await fetch(src,{credentials:'include',headers:{Accept:'application/json, text/plain, */*','X-Competition':String(securityToken)}});status=response.status;body=await response.text()}catch(error){body=JSON.stringify({fce_error:String(error)})}const output=document.createElement('script');output.type='application/json';output.id=id;output.textContent=JSON.stringify({status,body});document.body.appendChild(output);saved.push({id,status,body})};await Promise.all(targets.map(([id,src])=>fetchOne(id,src)));const min=Date.now()-7*86400000,max=Date.now()+45*86400000,details=new Map();for(const result of saved.filter(item=>item.id.startsWith('fce-matches-')&&item.status===200)){try{const payload=JSON.parse(result.body),members=payload['hydra:member']||payload.items||[];for(const wrapper of members){const item=wrapper.donneesFormatees||wrapper,date=new Date(item.date).getTime();if(date<min||date>max)continue;const matchId=item.maNo||wrapper.id;if(matchId)details.set(String(matchId),wrapper['@id']||'/api/matches/'+matchId)}}catch{}}await Promise.all([...details].map(([id,path])=>fetchOne('fce-detail-'+id,new URL(path,'https://epreuves.fff.fr').href)));document.documentElement.setAttribute('data-fce-sync-done','1')})()`;
+  const fetchScript=`(async()=>{
+    const targets=${JSON.stringify(browserTargets)};
+    const node=document.querySelector('#ng-state');
+    let state;
+    try{state=JSON.parse(node?.textContent||'[]')}catch{}
+    const roots=Array.isArray(state)?state:[state];
+    const entries=roots.flatMap(item=>Object.entries(item||{}));
+    const securityToken=entries.find(([key])=>key==='VLJAXE')?.[1]||entries.find(([key,value])=>key.includes('/api/app-security-token/')&&value?.body?.token)?.[1]?.body?.token;
+    if(!securityToken){document.documentElement.setAttribute('data-fce-sync-error','token-X-Competition-introuvable');return}
+    const saved=[];
+    const fetchOne=async(id,src)=>{
+      let status=0,body='';
+      try{
+        const response=await fetch(src,{credentials:'include',headers:{Accept:'application/json, text/plain, */*','X-Competition':String(securityToken)}});
+        status=response.status;body=await response.text();
+      }catch(error){body=JSON.stringify({fce_error:String(error)})}
+      const output=document.createElement('script');
+      output.type='application/json';output.id=id;output.textContent=JSON.stringify({status,body});
+      document.body.appendChild(output);saved.push({id,status,body});
+    };
+    await Promise.all(targets.map(([id,src])=>fetchOne(id,src)));
+    const min=Date.now()-7*86400000,max=Date.now()+45*86400000,details=new Map();
+    for(const result of saved.filter(item=>item.id.startsWith('fce-matches-')&&item.status===200)){
+      try{
+        const payload=JSON.parse(result.body),members=payload['hydra:member']||payload.items||[];
+        for(const wrapper of members){
+          const item=wrapper.donneesFormatees||wrapper,date=new Date(item.date).getTime();
+          if(date<min||date>max)continue;
+          const matchId=String(item.maNo||wrapper.id||'');
+          if(!matchId)continue;
+          const candidates=[wrapper['@id'],\`/api/matches/\${matchId}\`,\`/api/data/matches/\${matchId}\`].filter(Boolean);
+          details.set(matchId,[...new Set(candidates)]);
+        }
+      }catch{}
+    }
+    await Promise.all([...details].flatMap(([id,paths])=>paths.map((path,index)=>fetchOne(\`fce-detail-\${id}-\${index}\`,new URL(path,'https://epreuves.fff.fr').href))));
+    document.documentElement.setAttribute('data-fce-sync-done','1');
+  })()`;
   const instructions=[
     {wait_for:'app-match app-matches-wrapper'},
     {wait:500},
@@ -116,6 +176,7 @@ async function fetchZenRows(targetUrls){
   if(cost)console.log(`ZenRows : coût indiqué ${cost}.`);
   const payloads=epreuvesPayloadFromZenRows(body);
   console.log(`FFF : ${payloads.matchMonths}/12 mois de matchs et ${payloads.falMonths}/12 mois de plateaux capturés.`);
+  console.log(`FFF : ${payloads.detailCount} détail(s) de match reçu(s), dont ${payloads.venueDetailCount} avec un terrain.`);
   if(payloads.matchMonths!==12||payloads.falMonths!==12)throw new Error(`calendrier incomplet : matchs ${payloads.matchMonths}/12, plateaux ${payloads.falMonths}/12`);
   return payloads;
 }
@@ -152,7 +213,11 @@ function normalizeEpreuves(items){
     const sourceId=String(item.maNo||wrapper.id||'');
     const played=Boolean(item.joue);
     const statusLabel=String(item.maStatutLib||'').toLowerCase();
-    const venueData=first(item.terrain,item.installation,item.stade,item.site?.terrain,item.rencontre?.terrain)||{};
+    const venueData=first(
+      item.terrain,item.installation,item.stade,item.site?.terrain,item.site?.installation,
+      item.rencontre?.terrain,item.rencontre?.installation,item.match?.terrain,item.match?.installation,
+      item.donnees?.terrain,item.donnees?.installation
+    )||{};
     const venue=text(first(venueData,item.lieu,item.site?.nom));
     const venueAddress=addressText(first(venueData.adresse,venueData.address,item.adresse,item.site?.adresse));
     const participants=[
