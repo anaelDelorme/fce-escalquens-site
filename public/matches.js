@@ -1,7 +1,7 @@
 const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const logo=(url,name)=>url
   ?`<img class="match-logo" src="${esc(url)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
-  :`<span class="match-logo fallback" aria-hidden="true">${esc(String(name||'?').trim().charAt(0))}</span>`;
+  :'<span class="match-logo fallback" aria-hidden="true">⚽</span>';
 const dateFormat=new Intl.DateTimeFormat('fr-FR',{timeZone:'Europe/Paris',weekday:'long',day:'numeric',month:'long',year:'numeric'});
 const timeFormat=new Intl.DateTimeFormat('fr-FR',{timeZone:'Europe/Paris',hour:'2-digit',minute:'2-digit'});
 const statusLabels={postponed:'Reporté',cancelled:'Annulé'};
@@ -14,10 +14,18 @@ const mapsUrl=row=>row.latitude!=null&&row.longitude!=null
   :row.venue||row.venue_address
     ?`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([row.venue,row.venue_address].filter(Boolean).join(' '))}`
     :'';
-const rawParticipants=row=>{
+const rawSource=row=>{
   let raw={};
   try{raw=typeof row.raw_json==='string'?JSON.parse(row.raw_json||'{}'):row.raw_json||{}}catch{}
-  const source=raw.site||raw;
+  return raw.site||raw;
+};
+const canonicalClubName=value=>String(value||'')
+  .normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('fr')
+  .replace(/[^a-z0-9]+/g,' ').trim().split(/\s+/)
+  .filter(token=>token&&!['a','c','e','f','j','o','s','t','u','ao','es','fc','js','ts','us','club','football'].includes(token))
+  .join(' ');
+const rawParticipants=row=>{
+  const source=rawSource(row);
   return (source.equipes||source.participants||[]).map(item=>({
     name:item.eqNom||item.name||item.label||item.club?.clNom||item.club?.nom||item.club_name||'',
     club_number:item.club?.clNo||item.cl_no||'',team_number:item.eqCod||item.eqNo||item.team_number||'',
@@ -35,11 +43,34 @@ const matchParticipants=row=>{
   // Les données normalisées sont prioritaires. Le JSON brut ne sert que de
   // secours pour les anciens plateaux afin d'éviter les doublons de libellés
   // (par exemple « Cugnaux Js » et « J.S. CUGNAUX »).
-  const all=saved.length?saved:[...rawParticipants(row),...labelParticipants(row)];
+  const raw=rawParticipants(row);
+  const all=saved.length?saved:(raw.length?raw:labelParticipants(row));
   if(!all.some(item=>Number(item.is_club)===1)&&row.event_type!=='match')all.unshift({name:'FC Escalquens',club_number:'101544',team_number:'',logo_url:row.home_logo_url||'',is_club:1});
   const unique=new Map();
-  all.forEach((item,index)=>{const key=`${String(item.name).trim().toLocaleLowerCase('fr')}|${item.team_number||''}`;if(item.name&&!unique.has(key))unique.set(key,{...item,display_order:item.display_order??index})});
-  return [...unique.values()].sort((a,b)=>a.display_order-b.display_order);
+  all.forEach((item,index)=>{
+    const key=canonicalClubName(item.name)||String(item.name).trim().toLocaleLowerCase('fr');
+    const previous=unique.get(key);
+    if(!item.name)return;
+    if(!previous)unique.set(key,{...item,display_order:item.display_order??index});
+    else unique.set(key,{
+      ...previous,
+      club_number:previous.club_number||item.club_number||'',
+      team_number:previous.team_number||item.team_number||'',
+      logo_url:previous.logo_url||item.logo_url||'',
+      is_club:Number(previous.is_club)===1||Number(item.is_club)===1?1:0
+    });
+  });
+  const source=rawSource(row),organizer=source.organisateur||source.organizer||{};
+  const organizerNumber=String(organizer.clNo||organizer.cl_no||'');
+  const organizerName=canonicalClubName(organizer.clNom||organizer.nom||organizer.name||'');
+  const place=canonicalClubName(`${row.venue||''} ${row.venue_address||''}`);
+  return [...unique.values()].map(item=>{
+    const itemName=canonicalClubName(item.name);
+    const byNumber=organizerNumber&&String(item.club_number||'')===organizerNumber;
+    const byName=organizerName&&itemName&&(organizerName.includes(itemName)||itemName.includes(organizerName));
+    const byPlace=!organizerNumber&&!organizerName&&itemName&&place.includes(itemName);
+    return {...item,is_host:Boolean(byNumber||byName||byPlace)};
+  }).sort((a,b)=>a.display_order-b.display_order);
 };
 const scoreOrTime=row=>{
   if(statusLabels[row.status])return `<span class="match-status ${esc(row.status)}">${statusLabels[row.status]}</span>`;
@@ -48,8 +79,8 @@ const scoreOrTime=row=>{
   return `<strong class="kickoff">${timeFormat.format(new Date(row.starts_at))}</strong>`;
 };
 const participantList=(row,rows=matchParticipants(row))=>{
-  return `<div class="plateau-participants"><small>Équipes participantes</small>${rows.length
-    ?`<div>${rows.map(item=>`<span class="${Number(item.is_club)===1?'our-team':''}">${logo(item.logo_url,item.name)}<b>${esc(item.name)}</b></span>`).join('')}</div>`
+  return `<div class="plateau-participants"><small>${rows.length===1?'Équipe participante':'Équipes participantes'}</small>${rows.length
+    ?`<div>${rows.map(item=>`<span class="${[Number(item.is_club)===1?'our-team':'',item.is_host?'host-team':''].filter(Boolean).join(' ')}">${logo(item.logo_url,item.name)}<span class="participant-copy"><b>${esc(item.name)}</b>${item.is_host?'<small>Organisateur</small>':''}</span></span>`).join('')}</div>`
     :'<p class="participant-empty">La liste complète des équipes sera publiée dès sa confirmation par le District.</p>'}</div>`;
 };
 const matchCard=row=>{
@@ -64,7 +95,7 @@ const matchCard=row=>{
     </header>
     <p class="competition-name">${esc(row.competition||row.category||'Rencontre du club')}</p>
     ${plateau?`
-      <div class="event-summary">${scoreOrTime(row)}<div><b>${plateauTeams.length?`${plateauTeams.length} équipes annoncées`:'Équipes à confirmer'}</b><span>${esc(row.category||'Football animation')}</span></div></div>
+      <div class="event-summary">${scoreOrTime(row)}<div><b>${plateauTeams.length?`${plateauTeams.length} équipe${plateauTeams.length>1?'s':''} annoncée${plateauTeams.length>1?'s':''}`:'Équipes à confirmer'}</b><span>${esc(row.category||'Football animation')}</span></div></div>
       ${participantList(row,plateauTeams)}
     `:`
       <div class="scoreboard">

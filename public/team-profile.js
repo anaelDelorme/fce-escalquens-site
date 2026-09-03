@@ -1,13 +1,14 @@
 const slug=new URLSearchParams(location.search).get('slug');
 const set=(selector,value)=>{const node=document.querySelector(selector);if(node)node.textContent=value||'À renseigner'};
 const esc=value=>String(value??'').replace(/[&<>'"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
-const logo=(url,name)=>url?`<img class="match-logo" src="${esc(url)}" alt="" loading="lazy" referrerpolicy="no-referrer">`:`<span class="match-logo fallback" aria-hidden="true">${esc(String(name||'?').trim().charAt(0))}</span>`;
+const logo=(url,name)=>url?`<img class="match-logo" src="${esc(url)}" alt="" loading="lazy" referrerpolicy="no-referrer">`:'<span class="match-logo fallback" aria-hidden="true">⚽</span>';
 const roleLabels={coach_referent:'Coach référent',coach:'Coach',dirigeant:'Dirigeant',arbitre:'Arbitre'};
 const api=resource=>fetch(`/api/${resource}`).then(async response=>{if(!response.ok)throw new Error(`${resource}: ${response.status}`);const data=await response.json();return Array.isArray(data)?data:[]});
-const dateFormat=new Intl.DateTimeFormat('fr-FR',{timeZone:'Europe/Paris',day:'numeric',month:'long'});
+const dateFormat=new Intl.DateTimeFormat('fr-FR',{timeZone:'Europe/Paris',weekday:'long',day:'numeric',month:'long'});
 const timeFormat=new Intl.DateTimeFormat('fr-FR',{timeZone:'Europe/Paris',hour:'2-digit',minute:'2-digit'});
+const displayDate=value=>{const label=dateFormat.format(new Date(value));return label.charAt(0).toLocaleUpperCase('fr')+label.slice(1)};
 const miniMatch=(match,future=false)=>`<article class="team-match-row">
-  <time>${dateFormat.format(new Date(match.starts_at))}</time>
+  <time>${displayDate(match.starts_at)}</time>
   <small>${esc(match.event_type==='plateau'?'Plateau':match.competition)}</small>
   <div class="match-team">${logo(match.home_logo_url,match.home_team)}<b>${esc(match.home_team)}</b></div>
   <strong>${future?(Number(match.time_confirmed)===0?'À confirmer':timeFormat.format(new Date(match.starts_at))):`${match.home_score??'–'} : ${match.away_score??'–'}`}</strong>
