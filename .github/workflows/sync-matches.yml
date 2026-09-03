@@ -2,7 +2,13 @@ name: Synchroniser les matchs
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 * * * *"
+    # Deux heures UTC candidates par créneau : le script conserve uniquement
+    # celle qui correspond à l'heure de Paris (été ou hiver).
+    - cron: "0 19,20 * * 3"
+    - cron: "0 14,15 * * 5"
+    - cron: "0 7,8,18,19 * * 6"
+    - cron: "0 18,19 * * 0"
+    - cron: "0 18,19 * * 1"
 concurrency:
   group: sync-matches
   cancel-in-progress: false

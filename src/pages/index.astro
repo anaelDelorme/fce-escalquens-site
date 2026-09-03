@@ -1,11 +1,38 @@
 ---
-import Header from '../components/Header.astro';import Footer from '../components/Footer.astro';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
 ---
-<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>FC Escalquens - Le site du club</title><meta name="description" content="Équipes, entraînements, matchs, résultats et actualités du FC Escalquens"><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/enhancements.css"><link rel="stylesheet" href="/brand-charter.css"></head><body><Header/><main>
-<section class="hero punch"><div class="hero-copy"><p class="eyebrow">Football féminin et masculin</p><h1>Jouer.<br><em>Grandir.</em><br>Ensemble.</h1><p>De l’école de foot aux seniors, le FC Escalquens réunit filles et garçons autour du plaisir de jouer, de progresser et de grandir ensemble.</p><div class="actions"><a href="/equipes/">Trouver mon équipe →</a><a href="/planning/">Voir le planning</a></div><div class="hero-numbers"><span><b>15</b> équipes</span><span><b>100%</b> passion</span></div></div><div class="photo"><img src="/equipe-collectif.webp" alt="Une équipe du FC Escalquens réunie en cercle avant le match"><div class="slash">LE FOOT POUR TOUS</div><i></i><i></i><i></i></div></section>
-<section class="match-strip"><div><p class="eyebrow">Ce week-end</p><h2>À vous de jouer.</h2></div><div id="matches-list"><p>Chargement des rencontres…</p></div><a href="/matchs/" class="circle-arrow" aria-label="Tous les matchs">→</a></section>
-<section class="content teams-home"><div class="section-heading"><div><p class="eyebrow">Du premier ballon aux seniors</p><h2>Toutes nos équipes</h2></div><a href="/equipes/">Tout voir →</a></div><div class="team-rail" id="teams-list"></div></section>
-<section class="story-panel"><div><p class="eyebrow">Un club qui compte</p><h2>Un terrain.<br>Des centaines<br>d’histoires.</h2></div><div class="story-photo"><img src="/action-foot.webp" alt="Une joueuse du FC Escalquens dispute le ballon en match"></div><blockquote>« Ici, on apprend à jouer. Mais surtout à se faire confiance, à se relever et à avancer ensemble. »</blockquote></section>
-<section class="practical"><div><p class="eyebrow">Besoin d’une information ?</p><h2>Allez droit au but.</h2></div><div class="links"><a href="/planning/">Planning des entraînements <span>→</span></a><a href="/contacts/">Contacts détaillés <span>→</span></a><a href="/matchs/">Calendrier & résultats <span>→</span></a><a href="/tournois/">Tournois du club <span>→</span></a><a href="/mecenat/">Devenir mécène <span>→</span></a></div></section>
-<section class="sponsor-teaser"><div><p class="eyebrow">Entreprises & acteurs locaux</p><h2>Faites grandir<br>le jeu avec nous.</h2><a href="/mecenat/">Découvrir le mécénat →</a></div><strong>60<sup>%</sup><small>de réduction d’impôt selon les conditions de l’article 238 bis du CGI</small></strong></section>
-</main><Footer/><script is:inline src="/site.js"></script></body></html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width">
+    <title>FC Escalquens - Le site du club</title>
+    <meta name="description" content="Équipes, entraînements, matchs, résultats et actualités du FC Escalquens">
+    <link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/enhancements.css"><link rel="stylesheet" href="/brand-charter.css"><link rel="stylesheet" href="/home-extra.css">
+  </head>
+  <body>
+    <Header/>
+    <main>
+      <section class="hero punch">
+        <div class="hero-copy">
+          <p class="eyebrow">Football féminin et masculin</p>
+          <h1>Jouer.<br><em>Grandir.</em><br>Ensemble.</h1>
+          <p>De l’école de foot aux seniors, le FC Escalquens réunit filles et garçons autour du plaisir de jouer, de progresser et de grandir ensemble.</p>
+          <div class="actions"><a href="/equipes/">Trouver mon équipe →</a><a href="/planning/">Voir le planning</a></div>
+          <div class="hero-numbers"><span><b>15</b> équipes</span><span><b>100%</b> passion</span></div>
+        </div>
+        <div class="photo"><img src="/equipe-collectif.webp" alt="Une équipe du FC Escalquens réunie en cercle avant le match"><div class="slash">LE FOOT POUR TOUS</div><i></i><i></i><i></i></div>
+      </section>
+      <section class="match-strip"><div><p class="eyebrow">Ce week-end</p><h2>À vous de jouer.</h2></div><div id="matches-list"><p>Chargement des rencontres…</p></div><a href="/matchs/" class="circle-arrow" aria-label="Tous les matchs">→</a></section>
+      <section class="content teams-home"><div class="section-heading"><div><p class="eyebrow">Du premier ballon aux seniors</p><h2>Toutes nos équipes</h2></div><a href="/equipes/">Tout voir →</a></div><div class="team-rail" id="teams-list"></div></section>
+      <section class="story-panel"><div><p class="eyebrow">Un club qui compte</p><h2>Un terrain.<br>Des centaines<br>d’histoires.</h2></div><div class="story-photo"><img src="/action-foot.webp" alt="Une joueuse du FC Escalquens dispute le ballon en match"></div><blockquote>« Ici, on apprend à jouer. Mais surtout à se faire confiance, à se relever et à avancer ensemble. »</blockquote></section>
+      <section class="practical"><div><p class="eyebrow">Besoin d’une information ?</p><h2>Allez droit au but.</h2></div><div class="links"><a href="/planning/">Planning des entraînements <span>→</span></a><a href="/contacts/">Contacts détaillés <span>→</span></a><a href="/matchs/">Calendrier & résultats <span>→</span></a><a href="/tournois/">Tournois du club <span>→</span></a><a href="/mecenat/">Devenir mécène <span>→</span></a></div></section>
+      <section class="social home-social"><div class="section-heading"><div><p class="eyebrow">La vie du club</p><h2>Dernières actualités</h2></div><a href="https://www.instagram.com/fcescalquens/" target="_blank" rel="noopener">Suivre le club →</a></div><div id="instagram-posts" class="instagram-grid"><p>Les actualités arrivent bientôt.</p></div></section>
+      <section class="sponsor-teaser"><div><p class="eyebrow">Entreprises, familles & acteurs locaux</p><h2>Faites grandir<br>le jeu avec nous.</h2><a href="/mecenat/">Entreprises et particuliers : découvrir le mécénat →</a></div><strong>60<sup>%</sup><small>pour les entreprises, sous réserve de l’éligibilité fiscale du club et des conditions légales</small></strong></section>
+      <section class="content club-sponsors"><div class="section-heading"><div><p class="eyebrow">Ils jouent collectif avec nous</p><h2>Nos partenaires</h2></div><a href="/mecenat/">Rejoindre l’équipe →</a></div><div id="sponsors-list" class="sponsor-logos"><p>Les partenaires seront bientôt présentés ici.</p></div></section>
+    </main>
+    <Footer/>
+    <script is:inline src="/site.js"></script>
+    <script is:inline src="/instagram.js"></script>
+    <script is:inline src="/sponsors.js"></script>
+  </body>
+</html>

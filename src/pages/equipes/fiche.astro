@@ -1,4 +1,27 @@
 ---
-import Header from '../../components/Header.astro';import Footer from '../../components/Footer.astro';
+import Header from '../../components/Header.astro';
+import Footer from '../../components/Footer.astro';
 ---
-<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Fiche équipe - FC Escalquens</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/enhancements.css"><link rel="stylesheet" href="/brand-charter.css"></head><body><Header/><main id="team-profile"><section class="page-hero wine"><p class="eyebrow">Fiche équipe</p><h1 id="team-name">Chargement…</h1><p id="team-description"></p></section><section class="profile-layout content"><div class="team-visual"><img id="team-photo" src="/equipe-collectif.webp" alt="Photo de l’équipe"></div><div class="profile-stats"><span><b id="player-count">—</b> <span id="player-label">licenciés pratiquants</span></span><span><b id="team-level">—</b> niveau</span></div><div class="staff" id="team-staff"><p>Encadrement à venir.</p></div><div><p class="eyebrow">Entraînements</p><h2>Les rendez-vous</h2><div id="team-training" class="rows"></div></div><div class="team-results"><p class="eyebrow">Compétitions</p><h2>Derniers résultats</h2><div id="team-results" class="match-calendar"></div><a class="all-results" href="/matchs/">Voir tout le calendrier →</a></div></section></main><Footer/><script is:inline src="/team-profile.js"></script></body></html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width">
+    <title>Fiche équipe - FC Escalquens</title>
+    <link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/enhancements.css"><link rel="stylesheet" href="/brand-charter.css"><link rel="stylesheet" href="/match-cards.css">
+  </head>
+  <body>
+    <Header/>
+    <main id="team-profile">
+      <section class="page-hero wine"><p class="eyebrow">Fiche équipe</p><h1 id="team-name">Chargement…</h1><p id="team-description"></p></section>
+      <section class="profile-layout content">
+        <div class="team-visual"><img id="team-photo" src="/team-default.webp" alt="Photo du groupe"></div>
+        <div class="profile-stats"><span><b id="player-count">—</b> <span id="player-label">licenciés pratiquants</span></span><span><b id="team-level">—</b> engagements</span></div>
+        <div class="staff" id="team-staff"><p>Encadrement à venir.</p></div>
+        <div><p class="eyebrow">Entraînements</p><h2>Les rendez-vous de la semaine</h2><div id="team-training" class="rows"></div></div>
+        <div class="team-results"><p class="eyebrow">Calendrier</p><h2>Les prochains rendez-vous</h2><div id="team-upcoming" class="team-match-list"></div></div>
+        <div class="team-results"><p class="eyebrow">Compétitions</p><h2>Derniers résultats</h2><div id="team-results" class="team-match-list"></div><a class="all-results" href="/matchs/">Voir tout le calendrier →</a></div>
+      </section>
+    </main>
+    <Footer/>
+    <script is:inline src="/team-profile.js"></script>
+  </body>
+</html>

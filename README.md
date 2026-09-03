@@ -1,10 +1,12 @@
 # FC Escalquens — Astro + Cloudflare
 
-Le dépôt complet du futur site : Astro génère les pages statiques, un Cloudflare Worker sert les assets et l’API, D1 contient les données, R2 les photos/PDF, et le même Worker synchronise les rencontres FFF et les plateaux du District.
+Site du club construit avec Astro, Cloudflare Workers, D1 pour les données,
+R2 pour les photos et PDF, Cloudflare Access pour l'administration et GitHub
+Actions pour le déploiement et les synchronisations.
 
-## Voir le site en local
+## Lancer le site en local
 
-Prérequis : Node.js 22 et npm.
+Prérequis : Node.js 24 et npm.
 
 ```bash
 cp .dev.vars.example .dev.vars
@@ -12,92 +14,143 @@ npm install
 npm run local
 ```
 
-Ouvrez ensuite :
-
 - site : http://127.0.0.1:8787
 - administration : http://127.0.0.1:8787/admin/
 
-Dans l’administration locale, cliquez sur « Connexion locale » et saisissez la valeur `DEV_ADMIN_TOKEN` de `.dev.vars`. En production, ce jeton n’est pas utilisé : Cloudflare Access transmet l’adresse email du bénévole connecté.
+En local, utilisez « Connexion locale » puis la valeur `DEV_ADMIN_TOKEN` du
+fichier `.dev.vars`. En production, Cloudflare Access transmet l'adresse email
+et le Worker vérifie qu'elle est active dans la table `admins`.
 
-## Créer les ressources Cloudflare
-
-```bash
-npm run setup:cloudflare
-```
-
-La commande crée D1 et R2. Copiez l’identifiant D1 retourné dans `wrangler.jsonc`, à la place de `00000000-0000-0000-0000-000000000000`, puis :
+## Base D1 et médias R2
 
 ```bash
+npm run db:migrate:local
 npm run db:migrate:remote
-npm run deploy
 ```
 
-## Protéger `/admin`
+Les migrations sont additives : elles ne suppriment pas les informations saisies
+en ligne. Ne lancez jamais `db:seed:local` sur la base distante. Les photos et
+PDF chargés dans l'administration restent dans R2.
 
-Dans Cloudflare Zero Trust : Access → Applications → Add application → Self-hosted. Protégez `votre-domaine.fr/admin/*` et `votre-domaine.fr/admin-api/*` avec le mode « One-time PIN ». Le compte initial est `anael.delorme@posteo.com`. Le Worker vérifie ensuite l’adresse authentifiée dans la table `admins`, administrable depuis le back-office.
-
-Pour le site public, laissez `/api/*` accessible en lecture. Toutes les opérations du back-office passent par `/admin-api/*` et restent protégées par Access.
-
-Pour verrouiller le site de recette entier, ne mettez jamais le mot de passe dans GitHub. Définissez-le comme secret :
+## Protection du site de test
 
 ```bash
 npx wrangler secret put TEST_SITE_PASSWORD
 ```
 
-L’identifiant par défaut est `fce`. Une valeur temporaire possible est `FCE-Test-2026!`, à transmettre uniquement aux testeurs et à remplacer avant une ouverture publique.
-
-## GitHub
+L'identifiant par défaut est `fce`. Pour le changer :
 
 ```bash
-git init
+npx wrangler secret put TEST_SITE_USER
+```
+
+Protégez séparément `/admin/*` et `/admin-api/*` dans Cloudflare Access avec
+le mode One-time PIN. Les autres administrateurs s'ajoutent ensuite dans
+`/admin/` → « Administrateurs ».
+
+## GitHub et déploiement automatique
+
+Le dépôt de référence est :
+`https://github.com/anaelDelorme/fce-escalquens-site`.
+La bonne origine étant déjà configurée, ne relancez pas `git remote add origin`.
+
+```bash
+git remote -v
 git add .
-git commit -m "Site FC Escalquens"
-git branch -M main
-git remote add origin git@github.com:VOTRE-COMPTE/fce-escalquens.git
-git push -u origin main
+git commit -m "Amélioration du site du FC Escalquens"
+git push origin main
 ```
 
-Ajoutez ensuite dans GitHub → Settings → Secrets : `CLOUDFLARE_API_TOKEN` et `CLOUDFLARE_ACCOUNT_ID`. Chaque push sur `main` déclenche le workflow `.github/workflows/deploy.yml`.
+Dans GitHub → Settings → Secrets and variables → Actions, ajoutez :
 
-## Synchronisation automatique
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
+- `FCE_SITE_URL`
+- `FCE_SYNC_TOKEN`
+- `ZENROWS_API_KEY`
 
-Les serveurs FFF et District pouvant refuser les appels provenant directement du réseau Cloudflare, la collecte est effectuée par `.github/workflows/sync-matches.yml`. L'action est réveillée chaque heure, puis le script ne travaille qu'aux horaires utiles en heure de Paris : tous les jours à 22 h, puis toutes les quatre heures du vendredi 16 h au lundi 14 h. Cette porte horaire interne gère automatiquement l'heure d'été et l'heure d'hiver.
+Chaque push sur `main` lance `.github/workflows/deploy.yml` : installation,
+build, application des nouvelles migrations D1 puis déploiement du Worker et des
+assets. Une image ajoutée dans `public/` sera donc publiée au prochain push.
+Les médias déjà présents dans R2 ne sont pas affectés.
 
-La synchronisation récupère depuis `epreuves.fff.fr` les calendriers et résultats FFF du club `clNo=101544`, mais aussi les plateaux de football animation (FAL) visibles sur cette même page. Le script essaie d'abord l'accès direct. Si l'adresse IP de GitHub Actions est bloquée, ZenRows ouvre une seule fois la page publique du club dans un navigateur résidentiel français. Le navigateur lit le jeton dynamique fourni dans `ng-state` et le transmet à l'API dans l'en-tête `X-Competition`, comme l'application officielle. Dans cette unique session facturée, il charge les douze réponses mensuelles de matchs et les douze réponses mensuelles de plateaux, de juillet à juin ; le script les regroupe ensuite et les déduplique. Le jeton change à chaque session et n'est jamais enregistré dans GitHub. L'ancienne page du District de Haute-Garonne n'est interrogée qu'en secours si la collecte `epreuves.fff.fr` échoue. Le script met à jour les lignes existantes au lieu de les dupliquer et conserve l'historique des saisons. Les logos domicile et extérieur sont enregistrés sous forme d'URL officielles ; une initiale est affichée lorsqu'un logo n'est pas fourni.
+## Synchronisation des matchs et plateaux
 
-Créez une valeur secrète longue, enregistrez-la dans Cloudflare, puis ajoutez la même valeur dans GitHub → Settings → Secrets and variables → Actions sous le nom `FCE_SYNC_TOKEN` :
+Le workflow `.github/workflows/sync-matches.yml` utilise ZenRows uniquement
+aux six horaires suivants, en heure de Paris :
+
+- mercredi à 21 h ;
+- vendredi à 16 h ;
+- samedi à 9 h et 20 h ;
+- dimanche à 20 h ;
+- lundi à 20 h.
+
+Les deux décalages UTC possibles sont programmés dans GitHub, puis le script ne
+conserve que l'heure de Paris correcte. Le passage heure d'été/heure d'hiver est
+automatique.
+
+Le collecteur charge les douze mois de la saison dans une seule session ZenRows.
+Il récupère les matchs et les plateaux de football animation, les logos, les
+participants aux plateaux, les terrains, les adresses et les coordonnées GPS
+lorsqu'ils sont fournis par la FFF. Les détails des rencontres proches sont lus
+dans cette même session : cela ne crée pas une deuxième requête ZenRows.
+
+Le journal attendu commence par :
+
+```text
+Collecteur FCE 2026.09.03-13
+```
+
+## Groupes sportifs et équipes engagées
+
+Un **groupe sportif** correspond à une page publique, un staff, une photo et des
+entraînements communs : par exemple `U9`.
+
+Les **équipes engagées** décrivent les inscriptions en compétition :
+`U9 1 — D1`, `U9 2 — D3`, `U9 3 — D3`. Chacune possède son identifiant
+FFF, mais toutes peuvent être rattachées au même groupe sportif. Les matchs
+remontent alors sur la bonne page sans dupliquer le staff ou le planning.
+
+En fin de saison :
+
+1. créer la nouvelle saison ;
+2. créer ou recopier ses équipes engagées ;
+3. marquer la nouvelle saison comme active.
+
+Les anciennes saisons et leurs résultats restent conservés dans D1.
+
+## Matchs amicaux et tournois
+
+Les rencontres officielles de l'administration sont en lecture seule car elles
+sont synchronisées. Le bouton « Ajouter » permet de saisir un match amical.
+
+Un tournoi peut être relié à plusieurs groupes via « Participations aux
+tournois ». Le lien Tournify, le terrain, l'organisateur, l'inscription et le
+règlement sont gérés séparément.
+
+## Actualités Instagram
+
+Pour activer les actualités :
+
+1. passer le compte Instagram en compte professionnel Business ou Creator ;
+2. le relier à la page Facebook officielle du club ;
+3. créer une application Meta et autoriser la lecture des médias Instagram ;
+4. récupérer l'identifiant du compte et un jeton longue durée ;
+5. enregistrer les secrets dans Cloudflare :
 
 ```bash
-openssl rand -hex 32
-npx wrangler secret put FCE_SYNC_TOKEN
+npx wrangler secret put INSTAGRAM_USER_ID
+npx wrangler secret put INSTAGRAM_ACCESS_TOKEN
 ```
 
-Ajoutez également ces secrets dans GitHub → Settings → Secrets and variables → Actions :
-
-- `FCE_SITE_URL` : l'origine du site sans barre finale, par exemple `https://fce-escalquens.votre-sous-domaine.workers.dev` ;
-- `ZENROWS_API_KEY` : la clé API copiée depuis le tableau de bord ZenRows.
-
-La clé ZenRows reste uniquement dans les secrets GitHub : elle ne doit être ajoutée ni au dépôt, ni à Cloudflare, ni à `.dev.vars`. Après le déploiement, lancez Actions → « Synchroniser les matchs » → Run workflow. Le journal attendu commence par `Collecteur FCE 2026.09.02-12`, affiche `FFF : 12/12 mois de matchs et 12/12 mois de plateaux capturés.`, puis `FFF : … matchs et … plateaux reçus via zenrows-browser.`. Une seule requête ZenRows doit être comptabilisée pour cette exécution.
-
-Instagram sera synchronisé par le même Worker dès que le compte professionnel et le jeton Meta seront disponibles. Les variables sensibles se configurent avec `wrangler secret put`, jamais dans GitHub ou le code.
-
-## Pages et contenus
-
-- `/equipes/` : toutes les équipes, filtre par section et accès aux fiches.
-- `/equipes/fiche/?slug=u13f` : photo, effectif, coach, dirigeant, entraînements et galerie.
-- `/planning/` : filtres section, équipe et jour, avec itinéraire Google Maps.
-- `/matchs/` : matchs à venir, historique et classements lorsqu’ils sont diffusés.
-- `/contacts/` : annuaire filtrable avec responsabilités et disponibilités.
-- `/mecenat/` : page commerciale partageable aux prospects.
-
-Les champs détaillés sont administrables dans `/admin/`. La migration `0002_team_profiles_and_standings.sql` ajoute l’encadrement, les effectifs, les galeries et les classements.
-
-Le District publie pour chaque phase des indicateurs `diffusion_calendriers`, `diffusion_resultats` et `diffusion_classements`. Le synchroniseur doit respecter ces indicateurs : aucun résultat ou classement ne doit être affiché lorsque sa diffusion est désactivée.
+`.github/workflows/sync-instagram.yml` actualise ensuite les publications chaque
+matin. Tant que les secrets ne sont pas configurés, il s'arrête sans casser le
+déploiement. Aucun jeton Meta ne doit être commité.
 
 ## Commandes utiles
 
-- `npm run local` : site complet + D1 local + administration.
-- `npm run build` : construire Astro.
-- `npm run db:migrate:local` : appliquer les migrations en local.
-- `npm run db:migrate:remote` : appliquer les migrations sur Cloudflare.
-- `npm run deploy` : publier le Worker et les assets.
+- `npm run local` : site complet, D1 local et administration.
+- `npm run build` : construction Astro.
+- `npm run db:migrate:local` : migrations locales.
+- `npm run db:migrate:remote` : migrations Cloudflare.
+- `npm run deploy` : publication du Worker et des assets.

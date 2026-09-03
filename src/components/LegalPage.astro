@@ -1,0 +1,9 @@
+---
+import Header from './Header.astro';
+import Footer from './Footer.astro';
+const {title,eyebrow='Informations'}=Astro.props;
+---
+<html lang="fr">
+  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>{title} - FC Escalquens</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/enhancements.css"><link rel="stylesheet" href="/brand-charter.css"><link rel="stylesheet" href="/legal.css"></head>
+  <body><Header/><main><section class="page-hero dark"><p class="eyebrow">{eyebrow}</p><h1>{title}</h1></section><article class="legal-content content"><slot/></article></main><Footer/></body>
+</html>

@@ -23,21 +23,6 @@
 		{
 			"binding": "MEDIA",
 			"bucket_name": "fce-escalquens-media"
-		},
-		{
-			"bucket_name": "fce-escalquens-media",
-			"binding": "fce_escalquens_media",
-			"remote": true
 		}
-	],
-	"triggers": {
-		"crons": [
-			"17 3 * * *"
-		]
-	},
-	"vars": {
-		"FFF_API_BASE": "https://api-dofa.prd-aws.fff.fr/api",
-		"FFF_CLUB_NO": "101544",
-		"FFF_CLUB_CODE": "550350"
-	}
+	]
 }

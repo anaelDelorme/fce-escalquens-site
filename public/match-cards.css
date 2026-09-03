@@ -1,0 +1,30 @@
+.match-information{display:flex;justify-content:space-between;gap:30px;align-items:center;background:#fff;border-left:6px solid var(--gold);padding:18px 22px;margin-bottom:26px}
+.match-information p{margin:0;line-height:1.45}.match-information div{display:grid;gap:7px;flex:none}.match-information a{color:var(--wine);font-size:12px;font-weight:900}
+.match-calendar{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.match-calendar .match-card{display:block;padding:0;border:1px solid var(--line);border-top:5px solid var(--wine);overflow:hidden;background:#fff}
+.match-card>header{height:auto;background:#faf5f1;border:0;padding:15px 18px;display:flex;justify-content:space-between;gap:12px}
+.match-card>header time{font-weight:900;text-transform:capitalize}.match-card>header span{color:var(--wine);font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.1em}
+.match-card .competition-name{min-height:44px;margin:0;padding:13px 18px;color:#5e5350;font-size:12px;line-height:1.45}
+.scoreboard{display:grid;grid-template-columns:minmax(0,1fr) 86px minmax(0,1fr);gap:12px;align-items:center;padding:18px}
+.scoreboard .match-team{display:grid;justify-items:center;align-content:start;gap:8px;text-align:center}.scoreboard .match-team b{line-height:1.2}
+.scoreboard .match-logo{width:58px;height:58px}.scoreboard .match-logo.fallback{display:grid;place-items:center;border-radius:50%;background:#eee5dc;color:var(--wine);font-weight:900}
+.score,.kickoff,.match-status{justify-self:center;display:flex;align-items:center;justify-content:center;min-width:76px;min-height:52px;padding:9px;background:var(--wine);color:#fff;font:30px Impact,'Arial Narrow',sans-serif;letter-spacing:.02em}
+.score i{font-style:normal;color:var(--gold);padding:0 5px}.kickoff{font-size:21px;background:#242020}.kickoff.unconfirmed{font-family:Arial,sans-serif;font-size:11px;font-weight:900;text-align:center}
+.match-status{font-family:Arial,sans-serif;font-size:11px;font-weight:900;text-transform:uppercase}.match-status.postponed{background:#a66a00}.match-status.cancelled{background:#5e5555}
+.match-card>footer{display:flex;justify-content:space-between;gap:16px;padding:14px 18px;background:#faf5f1;border-top:1px solid var(--line);font-size:11px}.match-card>footer a{color:var(--wine);font-weight:800}
+.event-card{grid-column:1/-1}.event-summary{display:flex;align-items:center;justify-content:space-between;padding:10px 18px}.event-summary>div{display:grid}.event-summary>div span{font-size:11px;color:#6b6060}
+.plateau-participants{padding:10px 18px 20px}.plateau-participants>small{display:block;margin-bottom:10px;color:var(--wine);font-weight:900;text-transform:uppercase}.plateau-participants>div{display:flex;flex-wrap:wrap;gap:8px}.plateau-participants span{display:flex;align-items:center;gap:7px;border:1px solid var(--line);padding:7px 10px;border-radius:99px}.plateau-participants span.our-team{background:var(--wine);color:#fff;border-color:var(--wine)}.plateau-participants .match-logo{width:26px;height:26px}
+.team-match-list{display:grid;gap:10px}.team-match-row{display:grid;grid-template-columns:100px minmax(150px,1fr) 90px minmax(150px,1fr);align-items:center;gap:12px;background:#fff;border:1px solid var(--line);border-left:5px solid var(--wine);padding:15px}.team-match-row>time,.team-match-row>small,.team-match-row>span{grid-column:1}.team-match-row>.match-team:first-of-type{grid-column:2;grid-row:1/4}.team-match-row>strong{grid-column:3;grid-row:1/4;justify-self:center;background:var(--wine);color:#fff;padding:10px;font-size:20px}.team-match-row>.match-team:last-of-type{grid-column:4;grid-row:1/4}.team-match-row .match-logo{width:42px;height:42px}
+@media(max-width:760px){
+  .match-information{display:grid}.match-information div{flex:none}
+  .match-calendar{grid-template-columns:1fr}
+  .event-card{grid-column:auto}
+  .match-card>header{padding:12px 14px}.match-card>header time{font-size:14px}
+  .match-card .competition-name{min-height:0;padding:10px 14px}
+  .scoreboard{grid-template-columns:minmax(0,1fr) 72px minmax(0,1fr);gap:6px;padding:14px 8px 18px}
+  .scoreboard .match-logo{width:48px;height:48px}.scoreboard .match-team b{font-size:12px}
+  .score,.kickoff,.match-status{min-width:64px;min-height:46px;font-size:25px;padding:7px}.kickoff{font-size:18px}.kickoff.unconfirmed,.match-status{font-size:9px}
+  .match-card>footer{display:grid;padding:12px 14px;gap:8px}.match-card>footer a:first-child{font-size:12px}
+  .event-summary{padding:8px 14px}.plateau-participants{padding:8px 14px 16px}.plateau-participants span{font-size:11px}
+  .team-match-row{grid-template-columns:1fr 64px 1fr;padding:13px 8px}.team-match-row>time,.team-match-row>small,.team-match-row>span{grid-column:1/-1;text-align:center}.team-match-row>.match-team:first-of-type{grid-column:1;grid-row:4}.team-match-row>strong{grid-column:2;grid-row:4;font-size:14px;padding:8px}.team-match-row>.match-team:last-of-type{grid-column:3;grid-row:4}.team-match-row .match-team{flex-direction:column}.team-match-row .match-team b{font-size:11px;text-align:center}
+}

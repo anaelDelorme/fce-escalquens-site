@@ -1,0 +1,28 @@
+name: Synchroniser Instagram
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 5 * * *"
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Actualiser les publications
+        env:
+          FCE_SITE_URL: ${{ secrets.FCE_SITE_URL }}
+          FCE_SYNC_TOKEN: ${{ secrets.FCE_SYNC_TOKEN }}
+        run: |
+          node - <<'NODE'
+          const response=await fetch(process.env.FCE_SITE_URL.replace(/\/$/,'')+'/internal/sync/instagram',{
+            method:'POST',
+            headers:{authorization:'Bearer '+process.env.FCE_SYNC_TOKEN}
+          });
+          const result=await response.json().catch(()=>({}));
+          if(response.status===503&&String(result.error||'').includes('pas encore configuré')){
+            console.log('::notice title=Instagram::Compte professionnel et jeton Meta à configurer.');
+            process.exit(0);
+          }
+          if(!response.ok)throw new Error(result.error||('HTTP '+response.status));
+          console.log(JSON.stringify(result));
+          NODE

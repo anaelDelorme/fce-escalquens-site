@@ -1,0 +1,2 @@
+.legal-content{max-width:900px;background:#fff;margin:60px auto;padding:50px}.legal-content h2{font-size:34px;margin-top:42px}.legal-content h2:first-child{margin-top:0}.legal-content p{line-height:1.75;color:#4f4643}.legal-content a{color:var(--wine);font-weight:800;text-decoration:underline}
+@media(max-width:600px){.legal-content{margin:25px 14px;padding:25px}.legal-content h2{font-size:28px}}
