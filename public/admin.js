@@ -81,7 +81,7 @@ async function upload(input){
 }
 async function save(event){
   event.preventDefault();const form=$('#editor form');if(form.querySelector('[data-upload]:disabled')){$('#editor-status').textContent='Attendez la fin du chargement du fichier.';return}
-  const values=Object.fromEntries(new FormData(form));for(const key of numbers)if(key in values&&values[key]!=='')values[key]=Number(values[key]);for(const key of booleans)if(schemas[current].includes(key))values[key]=form.querySelector(`input[type=checkbox][name="${key}"]`)?.checked?1:0;
+  const values=Object.fromEntries(new FormData(form));for(const key of numbers)if(key in values)values[key]=values[key]===''?null:Number(values[key]);for(const key of booleans)if(schemas[current].includes(key))values[key]=form.querySelector(`input[type=checkbox][name="${key}"]`)?.checked?1:0;
   const slugify=value=>String(value||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
   if(current==='teams'){const level=references.competition_levels.find(item=>String(item.id)===String(values.level_id));values.slug=editingRow.slug||slugify(values.name);values.category=editingRow.category||values.name;values.level=level?.name||'';values.display_order=editingRow.display_order??0;}
   if(current==='training_sessions'){const team=references.teams.find(item=>String(item.id)===String(values.team_id));const venue=references.venues.find(item=>String(item.id)===String(values.venue_id));values.category=team?.category||team?.name||editingRow.category||'';values.venue=venue?.name||'';values.address=venue?.address||'';}

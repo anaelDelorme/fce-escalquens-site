@@ -54,6 +54,13 @@ function json(data: unknown, status = 200) {
   return Response.json(data, { status, headers: { "cache-control": "no-store" } });
 }
 
+function databaseError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes("FOREIGN KEY")) return "Une valeur liée est invalide. Rechargez la page puis recommencez l’affectation.";
+  if (message.includes("UNIQUE")) return "Cet enregistrement existe déjà.";
+  return "Enregistrement impossible dans la base de données.";
+}
+
 function secureToken(value: string, expected: string) {
   if (value.length !== expected.length) return false;
   let difference = 0;
@@ -118,24 +125,28 @@ async function api(request: Request, env: Env, url: URL) {
   if (table === "seasons" && Number(body.active) === 1) {
     await env.DB.prepare("UPDATE seasons SET active=0").run();
   }
-  const bound = values.map(([, value]) => typeof value === "object" ? JSON.stringify(value) : value);
+  const bound = values.map(([, value]) => value !== null && typeof value === "object" ? JSON.stringify(value) : value);
   if (request.method === "POST") {
     const columns = values.map(([key]) => key);
-    const result = await env.DB.prepare(
-      `INSERT INTO ${table} (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`
-    ).bind(...bound).run();
-    return json({ id: result.meta.last_row_id }, 201);
+    try {
+      const result = await env.DB.prepare(
+        `INSERT INTO ${table} (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`
+      ).bind(...bound).run();
+      return json({ id: result.meta.last_row_id }, 201);
+    } catch (error) { return json({ error: databaseError(error) }, 409); }
   }
   if (request.method === "PUT" && id) {
     const timestamp = table === "match_participants" ? "" : ", updated_at=CURRENT_TIMESTAMP";
-    await env.DB.prepare(
-      `UPDATE ${table} SET ${values.map(([key]) => `${key}=?`).join(",")}${timestamp} WHERE id=?`
-    ).bind(...bound, id).run();
-    if (table === "team_competitions" && body.team_id !== undefined) {
-      await env.DB.prepare("UPDATE matches SET team_id=?,updated_at=CURRENT_TIMESTAMP WHERE competition_team_id=?")
-        .bind(body.team_id || null, id).run();
-    }
-    return json({ ok: true });
+    try {
+      await env.DB.prepare(
+        `UPDATE ${table} SET ${values.map(([key]) => `${key}=?`).join(",")}${timestamp} WHERE id=?`
+      ).bind(...bound, id).run();
+      if (table === "team_competitions" && body.team_id !== undefined) {
+        await env.DB.prepare("UPDATE matches SET team_id=?,updated_at=CURRENT_TIMESTAMP WHERE competition_team_id=?")
+          .bind(body.team_id || null, id).run();
+      }
+      return json({ ok: true });
+    } catch (error) { return json({ error: databaseError(error) }, 409); }
   }
   return json({ error: "Méthode non autorisée" }, 405);
 }

@@ -32,7 +32,10 @@ const labelParticipants=row=>{
 };
 const matchParticipants=row=>{
   const saved=participants.filter(item=>String(item.match_id)===String(row.id));
-  const all=[...saved,...rawParticipants(row),...labelParticipants(row)];
+  // Les données normalisées sont prioritaires. Le JSON brut ne sert que de
+  // secours pour les anciens plateaux afin d'éviter les doublons de libellés
+  // (par exemple « Cugnaux Js » et « J.S. CUGNAUX »).
+  const all=saved.length?saved:[...rawParticipants(row),...labelParticipants(row)];
   if(!all.some(item=>Number(item.is_club)===1)&&row.event_type!=='match')all.unshift({name:'FC Escalquens',club_number:'101544',team_number:'',logo_url:row.home_logo_url||'',is_club:1});
   const unique=new Map();
   all.forEach((item,index)=>{const key=`${String(item.name).trim().toLocaleLowerCase('fr')}|${item.team_number||''}`;if(item.name&&!unique.has(key))unique.set(key,{...item,display_order:item.display_order??index})});
@@ -44,14 +47,14 @@ const scoreOrTime=row=>{
   if(Number(row.time_confirmed)===0)return '<strong class="kickoff unconfirmed">À confirmer</strong>';
   return `<strong class="kickoff">${timeFormat.format(new Date(row.starts_at))}</strong>`;
 };
-const participantList=row=>{
-  const rows=matchParticipants(row);
+const participantList=(row,rows=matchParticipants(row))=>{
   return `<div class="plateau-participants"><small>Équipes participantes</small>${rows.length
     ?`<div>${rows.map(item=>`<span class="${Number(item.is_club)===1?'our-team':''}">${logo(item.logo_url,item.name)}<b>${esc(item.name)}</b></span>`).join('')}</div>`
     :'<p class="participant-empty">La liste complète des équipes sera publiée dès sa confirmation par le District.</p>'}</div>`;
 };
 const matchCard=row=>{
   const plateau=row.event_type==='plateau'||row.event_type==='animation';
+  const plateauTeams=plateau?matchParticipants(row):[];
   const place=esc(row.venue||row.venue_address||'Lieu à confirmer');
   const map=mapsUrl(row);
   return `<article class="match-card ${plateau?'event-card':''} ${esc(row.status)}">
@@ -61,8 +64,8 @@ const matchCard=row=>{
     </header>
     <p class="competition-name">${esc(row.competition||row.category||'Rencontre du club')}</p>
     ${plateau?`
-      <div class="event-summary"><div><b>FC Escalquens</b><span>${esc(row.category)}</span></div>${scoreOrTime(row)}</div>
-      ${participantList(row)}
+      <div class="event-summary">${scoreOrTime(row)}<div><b>${plateauTeams.length?`${plateauTeams.length} équipes annoncées`:'Équipes à confirmer'}</b><span>${esc(row.category||'Football animation')}</span></div></div>
+      ${participantList(row,plateauTeams)}
     `:`
       <div class="scoreboard">
         <div class="match-team">${logo(row.home_logo_url,row.home_team)}<b>${esc(row.home_team)}</b></div>
