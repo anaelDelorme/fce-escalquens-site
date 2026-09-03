@@ -98,7 +98,7 @@ dans cette même session : cela ne crée pas une deuxième requête ZenRows.
 Le journal attendu commence par :
 
 ```text
-Collecteur FCE 2026.09.03-13
+Collecteur FCE 2026.09.03-14
 ```
 
 ## Groupes sportifs et équipes engagées
@@ -106,15 +106,23 @@ Collecteur FCE 2026.09.03-13
 Un **groupe sportif** correspond à une page publique, un staff, une photo et des
 entraînements communs : par exemple `U9`.
 
-Les **équipes engagées** décrivent les inscriptions en compétition :
-`U9 1 — D1`, `U9 2 — D3`, `U9 3 — D3`. Chacune possède son identifiant
-FFF, mais toutes peuvent être rattachées au même groupe sportif. Les matchs
-remontent alors sur la bonne page sans dupliquer le staff ou le planning.
+Les **équipes FFF récupérées** décrivent les inscriptions en compétition :
+`U9 1 — D1`, `U9 2 — D3`, `U9 3 — D3`. La synchronisation les crée
+automatiquement avec leur numéro, leur catégorie, leur compétition et leur
+identifiant exact. Dans l'administration, il reste seulement à ouvrir les lignes
+« À affecter » et à choisir leur groupe sportif. Aucune affectation n'est déduite
+du seul libellé de catégorie : un `U15` masculin ne peut donc plus être rattaché
+automatiquement au groupe `U15F`.
+
+Après le premier déploiement de cette version, lancez une fois manuellement
+l'action GitHub « Synchroniser les matchs ». Elle initialise la liste des équipes
+FFF et remet à jour les participants des plateaux. Les affectations suivantes
+s'appliquent immédiatement aux matchs déjà enregistrés.
 
 En fin de saison :
 
 1. créer la nouvelle saison ;
-2. créer ou recopier ses équipes engagées ;
+2. lancer la synchronisation pour découvrir les équipes engagées ;
 3. marquer la nouvelle saison comme active.
 
 Les anciennes saisons et leurs résultats restent conservés dans D1.

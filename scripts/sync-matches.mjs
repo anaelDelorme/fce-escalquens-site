@@ -1,4 +1,4 @@
-const SYNC_VERSION='2026.09.03-13',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+const SYNC_VERSION='2026.09.03-14',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 console.log(`Collecteur FCE ${SYNC_VERSION}`);
 const endpoint=process.env.FCE_SITE_URL?.replace(/\/$/,'')+'/internal/sync/matches';
 const token=process.env.FCE_SYNC_TOKEN;
@@ -156,12 +156,20 @@ function normalizeEpreuves(items){
     const venue=text(first(venueData,item.lieu,item.site?.nom));
     const venueAddress=addressText(first(venueData.adresse,venueData.address,item.adresse,item.site?.adresse));
     const participants=[
-      {name:home.club?.nomAbr||home.club?.nom||'',club_number:home.club?.clNo||'',team_number:home.equipe?.eqNo||home.equipe?.id||'',logo_url:cleanUrl(home.club?.logo),is_club:String(home.club?.clNo)===CLUB_NO},
-      {name:away.club?.nomAbr||away.club?.nom||'',club_number:away.club?.clNo||'',team_number:away.equipe?.eqNo||away.equipe?.id||'',logo_url:cleanUrl(away.club?.logo),is_club:String(away.club?.clNo)===CLUB_NO}
+      {name:home.club?.nomAbr||home.club?.nom||'',club_number:home.club?.clNo||'',team_number:home.equipe?.eqCod||home.equipe?.eqNo||home.equipe?.id||'',logo_url:cleanUrl(home.club?.logo),is_club:String(home.club?.clNo)===CLUB_NO},
+      {name:away.club?.nomAbr||away.club?.nom||'',club_number:away.club?.clNo||'',team_number:away.equipe?.eqCod||away.equipe?.eqNo||away.equipe?.id||'',logo_url:cleanUrl(away.club?.logo),is_club:String(away.club?.clNo)===CLUB_NO}
     ];
     const row={
       source:'fff',source_id:sourceId,
       team_fff_id:clubSide?.equipe?.id||'',
+      official_team:{
+        name:clubSide?.club?.nomAbr||clubSide?.club?.nom||'',
+        team_number:String(clubSide?.equipe?.eqCod||''),
+        category_code:teamCategory(clubSide?.equipe?.id),
+        competition_name:competition.nom||'',
+        division:competition.lcLib||competition.niveau||'',
+        pool:item.groupe?.nom||''
+      },
       category:teamCategory(clubSide?.equipe?.id)||competition.lcLib||'',
       competition:[competition.nom,item.groupe?.nom].filter(Boolean).join(' · '),
       starts_at:item.date,venue,venue_address:venueAddress,
@@ -189,13 +197,14 @@ function normalizeEpreuvesFal(payload){
     const epreuve=site.epreuve||{};
     const clubTeam=(site.equipes||[]).find(team=>String(team.club?.clNo)===CLUB_NO);
     if(!clubTeam||!site.date)continue;
+    const falTeamId=clubTeam.id||clubTeam.eqId||`FAL:${epreuve.epNo}:${epreuve.caCod||clubTeam.caCod||'categorie'}:${clubTeam.eqCod||1}`;
     // siNo évite d'écraser deux plateaux de la même journée organisés sur
     // des sites différents (cas fréquent lorsqu'un groupe engage U9-1/2/3).
     const sourceId=[epreuve.epNo,site.phNo,site.joNo,site.siNo].filter(value=>value!==undefined&&value!==null&&value!=='').join(':');
     const organizer=site.organisateur?.clNom||'';
     const participants=(site.equipes||[]).map(team=>({
       name:team.eqNom||team.club?.clNom||team.club?.nom||'Équipe',
-      club_number:team.club?.clNo||'',team_number:team.eqNo||team.id||'',
+      club_number:team.club?.clNo||'',team_number:team.eqCod||team.eqNo||team.id||'',
       logo_url:cleanUrl(team.logo||team.club?.logo),
       is_club:String(team.club?.clNo)===CLUB_NO
     }));
@@ -209,7 +218,15 @@ function normalizeEpreuvesFal(payload){
       :`Plateau à ${organizer||'confirmer'}`;
     const row={
       source:'district_fal',source_id:sourceId,
-      team_fff_id:clubTeam.id||clubTeam.eqId||'',
+      team_fff_id:falTeamId,
+      official_team:{
+        name:clubTeam.eqNom||clubTeam.club?.clNom||clubTeam.club?.nom||'',
+        team_number:String(clubTeam.eqCod||''),
+        category_code:epreuve.caCod||clubTeam.caCod||'',
+        competition_name:epreuve.epNom||'',
+        division:site.phLib||'',
+        pool:site.poLib||site.seLib||''
+      },
       category:epreuve.caCod||clubTeam.caCod||'',competition,
       starts_at:site.date,venue:terrain||organizer,venue_address:venueAddress,
       latitude:numberOrNull(first(site.terrain?.latitude,site.terrain?.lat,site.latitude)),

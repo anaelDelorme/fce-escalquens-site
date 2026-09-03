@@ -22,7 +22,7 @@ const tables = new Set([
 
 const editable: Record<string, string[]> = {
   teams: ["slug", "name", "category", "group_name", "level", "level_id", "gender", "fff_id", "photo_key", "description", "display_order", "active", "player_count"],
-  team_competitions: ["team_id", "season_id", "name", "fff_team_id", "category_code", "competition_name", "division", "pool", "level_id", "active", "display_order"],
+  team_competitions: ["team_id", "season_id", "name", "team_number", "fff_team_id", "category_code", "competition_name", "division", "pool", "level_id", "active", "display_order", "discovered_automatically", "last_seen_at"],
   training_sessions: ["team_id", "season_id", "category", "weekday", "starts_at", "ends_at", "venue", "venue_id", "address", "notes", "active"],
   contacts: ["name", "role", "category", "email", "phone", "published", "display_order", "responsibilities", "availability", "photo_key"],
   tournaments: ["slug", "name", "summary", "starts_on", "ends_on", "venue", "venue_id", "organizer", "categories", "registration_url", "tournify_url", "rules_key", "status", "season_id"],
@@ -131,6 +131,10 @@ async function api(request: Request, env: Env, url: URL) {
     await env.DB.prepare(
       `UPDATE ${table} SET ${values.map(([key]) => `${key}=?`).join(",")}${timestamp} WHERE id=?`
     ).bind(...bound, id).run();
+    if (table === "team_competitions" && body.team_id !== undefined) {
+      await env.DB.prepare("UPDATE matches SET team_id=?,updated_at=CURRENT_TIMESTAMP WHERE competition_team_id=?")
+        .bind(body.team_id || null, id).run();
+    }
     return json({ ok: true });
   }
   return json({ error: "Méthode non autorisée" }, 405);
@@ -180,6 +184,8 @@ async function upsertMatch(env: Env, row: AnyRow) {
       away_logo_url=excluded.away_logo_url,time_confirmed=excluded.time_confirmed,
       raw_json=excluded.raw_json,synced_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
     WHERE matches.starts_at IS NOT excluded.starts_at
+      OR matches.team_id IS NOT excluded.team_id
+      OR matches.competition_team_id IS NOT excluded.competition_team_id
       OR matches.venue IS NOT excluded.venue OR matches.venue_address IS NOT excluded.venue_address
       OR matches.latitude IS NOT excluded.latitude OR matches.longitude IS NOT excluded.longitude
       OR matches.home_team IS NOT excluded.home_team OR matches.away_team IS NOT excluded.away_team
@@ -212,25 +218,53 @@ async function ingestMatches(request: Request, env: Env) {
   const body = await request.json<{ rows?: AnyRow[]; sources?: AnyRow[] }>().catch(() => null);
   const rows = body?.rows;
   if (!Array.isArray(rows) || rows.length > 1000) return json({ error: "Lot de rencontres invalide" }, 400);
-  const [seasonId, teams, entries] = await Promise.all([
+  const [seasonId, teams, unassigned] = await Promise.all([
     activeSeasonId(env),
     env.DB.prepare("SELECT id,name,category FROM teams WHERE active=1").all<AnyRow>(),
-    env.DB.prepare("SELECT id,team_id,fff_team_id,category_code FROM team_competitions WHERE active=1").all<AnyRow>()
+    env.DB.prepare("SELECT id FROM teams WHERE slug='fff-equipes-a-affecter' LIMIT 1").first<{ id: number }>()
   ]);
+  if (!seasonId || !unassigned?.id) return json({ error: "Saison active ou groupe technique FFF manquant : appliquez les migrations D1." }, 409);
+  const loadedEntries = await env.DB.prepare("SELECT id,team_id,fff_team_id,category_code FROM team_competitions WHERE active=1 AND season_id=?")
+    .bind(seasonId).all<AnyRow>();
+  const entries = new Map((loadedEntries.results || []).map(entry => [String(entry.fff_team_id || ""), entry]));
   let changed = 0;
   let accepted = 0;
+  let discovered = 0;
   for (const row of rows) {
     if (!["fff", "district_fal"].includes(row.source) || !row.source_id || !row.starts_at || !row.home_team || !row.away_team) continue;
-    const category = String(row.category || "").toLocaleLowerCase("fr");
-    const entry = (entries.results || []).find(candidate =>
-      row.team_fff_id && String(candidate.fff_team_id || "") === String(row.team_fff_id)
-    );
-    const team = entry
-      ? (teams.results || []).find(candidate => candidate.id === entry.team_id)
-      : (teams.results || []).find(candidate => category && (
-          String(candidate.category || "").toLocaleLowerCase("fr") === category ||
-          String(candidate.name || "").toLocaleLowerCase("fr").includes(category)
-        ));
+    const fffTeamId = String(row.team_fff_id || "");
+    const official = row.official_team || {};
+    let entry = fffTeamId ? entries.get(fffTeamId) : null;
+    if (fffTeamId && !entry) {
+      const inserted = await env.DB.prepare(`INSERT INTO team_competitions(
+        team_id,season_id,name,team_number,fff_team_id,category_code,
+        competition_name,division,pool,active,display_order,
+        discovered_automatically,last_seen_at
+      ) VALUES(?,?,?,?,?,?,?,?,?,1,0,1,CURRENT_TIMESTAMP)`).bind(
+        unassigned.id, seasonId,
+        official.name || [row.category, official.team_number].filter(Boolean).join(" ") || fffTeamId,
+        official.team_number || "", fffTeamId,
+        official.category_code || row.category || "",
+        official.competition_name || row.competition || "",
+        official.division || "", official.pool || ""
+      ).run();
+      entry = { id: Number(inserted.meta.last_row_id), team_id: unassigned.id, fff_team_id: fffTeamId };
+      entries.set(fffTeamId, entry);
+      discovered++;
+    } else if (entry) {
+      await env.DB.prepare(`UPDATE team_competitions SET
+        name=?,team_number=?,category_code=?,competition_name=?,division=?,pool=?,
+        last_seen_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
+        WHERE id=?`).bind(
+        official.name || [row.category, official.team_number].filter(Boolean).join(" ") || fffTeamId,
+        official.team_number || "", official.category_code || row.category || "",
+        official.competition_name || row.competition || "",
+        official.division || "", official.pool || "", entry.id
+      ).run();
+    }
+    // Aucune déduction par le libellé U15/U15F : seul l'identifiant FFF exact
+    // et l'affectation validée dans l'admin déterminent le groupe sportif.
+    const team = entry ? (teams.results || []).find(candidate => candidate.id === entry.team_id) : null;
     changed += await upsertMatch(env, {
       ...row,
       team_id: team?.id ?? null,
@@ -245,7 +279,7 @@ async function ingestMatches(request: Request, env: Env) {
   ) VALUES('github_actions',CURRENT_TIMESTAMP,'success',?,?)`).bind(
     changed, JSON.stringify(body?.sources || [])
   ).run();
-  return json({ ok: true, received: rows.length, accepted, changed });
+  return json({ ok: true, received: rows.length, accepted, changed, discovered });
 }
 
 async function syncInstagram(env: Env) {

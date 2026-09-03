@@ -24,7 +24,11 @@ import Footer from '../../components/Footer.astro';
           </div>
         </div>
         <div class="tabs"><button class="active" data-tab="upcoming">À venir</button><button data-tab="past">Résultats</button><button data-tab="standings">Classements</button></div>
-        <div id="competition-filter" class="filter-bar"></div>
+        <div class="match-filters" aria-label="Filtrer les rencontres">
+          <label>Section<select id="section-filter"><option value="">Toutes les sections</option></select></label>
+          <label>Groupe sportif<select id="group-filter"><option value="">Tous les groupes sportifs</option></select></label>
+          <label>Équipe engagée<select id="entry-filter"><option value="">Toutes les équipes engagées</option></select></label>
+        </div>
         <div id="matches-page" class="match-calendar"></div>
         <div id="standings-page" class="standings" hidden></div>
         <p class="data-note">Les classements sont affichés uniquement lorsque la FFF ou le District autorise leur diffusion.</p>
