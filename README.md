@@ -163,8 +163,20 @@ dans cette même session : cela ne crée pas une deuxième requête ZenRows.
 Le journal attendu commence par :
 
 ```text
-Collecteur FCE 2026.09.03-16
+Collecteur FCE 2026.09.04-17
 ```
+
+Une source en échec rend maintenant l’action GitHub rouge, même si les autres
+données ont bien été importées. Le workflow ouvre alors une issue intitulée
+`Alerte : synchronisation des rencontres` et la referme automatiquement après
+le prochain passage entièrement réussi. L’administration affiche aussi le
+dernier passage, le dernier succès complet et le détail de chaque source. Sur
+la page publique des matchs, un avertissement apparaît si la synchronisation
+est partielle, en échec ou vieille de plus de 60 heures.
+
+La synchronisation compare désormais les participants des plateaux avant toute
+écriture : une liste inchangée n’est plus supprimée puis recréée. Les fiches
+d’équipes FFF et les matchs inchangés ne sont pas réécrits non plus.
 
 ## Groupes sportifs et équipes engagées
 

@@ -1,5 +1,6 @@
 .match-information{display:flex;justify-content:space-between;gap:30px;align-items:center;background:#fff;border-left:6px solid var(--gold);padding:18px 22px;margin-bottom:26px}
 .match-information p{margin:0;line-height:1.45}.match-information div{display:grid;gap:7px;flex:none}.match-information a{color:var(--wine);font-size:12px;font-weight:900}
+.matches-health{margin:-12px 0 24px;padding:13px 16px;border-left:5px solid #b61937;background:#fff0f2;color:#8e0e2d;font-weight:800;line-height:1.45}
 .match-calendar{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
 .match-calendar .match-card{display:block;padding:0;border:1px solid var(--line);border-top:5px solid var(--wine);overflow:hidden;background:#fff}
 .match-card>header{height:auto;background:#faf5f1;border:0;padding:15px 18px;display:flex;justify-content:space-between;gap:12px}

@@ -14,6 +14,9 @@ concurrency:
   cancel-in-progress: false
 jobs:
   sync:
+    permissions:
+      contents: read
+      issues: write
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -29,3 +32,49 @@ jobs:
           FCE_SYNC_TOKEN: ${{ secrets.FCE_SYNC_TOKEN }}
           ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
           FORCE_SYNC: ${{ github.event_name == 'workflow_dispatch' }}
+      - name: Ouvrir l’alerte de synchronisation
+        if: failure()
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const title = 'Alerte : synchronisation des rencontres';
+            const open = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100
+            });
+            if (!open.some(issue => issue.title === title)) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body: `La synchronisation automatique a échoué ou n’est que partielle.\n\nConsultez l’exécution : ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+              });
+            }
+      - name: Fermer l’alerte après rétablissement
+        if: success()
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const title = 'Alerte : synchronisation des rencontres';
+            const open = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100
+            });
+            for (const issue of open.filter(issue => issue.title === title)) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: 'La synchronisation suivante a réussi. L’alerte est refermée automatiquement.'
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                state: 'closed'
+              });
+            }
