@@ -42,6 +42,7 @@ const editable: Record<string, string[]> = {
 };
 
 const defaultOrder: Record<string, string> = {
+  teams: "name COLLATE NOCASE ASC",
   matches: "starts_at ASC",
   match_participants: "match_id ASC, display_order ASC",
   social_posts: "published_at DESC",
@@ -54,6 +55,16 @@ const defaultOrder: Record<string, string> = {
 
 function json(data: unknown, status = 200) {
   return Response.json(data, { status, headers: { "cache-control": "no-store" } });
+}
+
+function publicJson(data: unknown, status = 200) {
+  return Response.json(data, {
+    status,
+    headers: {
+      "cache-control": "public,max-age=30,s-maxage=120,stale-while-revalidate=300",
+      "content-type": "application/json;charset=UTF-8"
+    }
+  });
 }
 
 function databaseError(error: unknown) {
@@ -152,6 +163,157 @@ async function api(request: Request, env: Env, url: URL) {
     } catch (error) { return json({ error: databaseError(error) }, 409); }
   }
   return json({ error: "Méthode non autorisée" }, 405);
+}
+
+const resultRows = (result: D1Result<AnyRow>) => result.results || [];
+
+async function pageData(env: Env, url: URL) {
+  const page = url.pathname.slice("/api/page/".length);
+  const activeSeason = "(SELECT id FROM seasons WHERE active=1 LIMIT 1)";
+  const now = new Date().toISOString();
+
+  if (page === "teams") {
+    const rows = await env.DB.prepare(`SELECT
+      t.id,t.slug,t.name,t.category,t.group_name,t.level,t.gender,t.player_count,t.photo_key,
+      CASE
+        WHEN TRIM(COALESCE(t.photo_key,''))<>'' THEN '/media/' || t.photo_key
+        WHEN TRIM(COALESCE(sm.object_key,''))<>'' THEN '/media/' || sm.object_key
+        ELSE COALESCE(NULLIF(sm.fallback_path,''),'/team-default.webp')
+      END AS photo_url,
+      CASE WHEN TRIM(COALESCE(t.photo_key,''))<>'' THEN 'Photo du groupe ' || t.name
+        ELSE COALESCE(NULLIF(sm.alt_text,''),'Visuel par défaut du FC Escalquens') END AS photo_alt
+      FROM teams t LEFT JOIN site_media sm ON sm.slot='team_default'
+      WHERE t.active=1 ORDER BY t.name COLLATE NOCASE ASC`).all<AnyRow>();
+    return publicJson({ teams: resultRows(rows) });
+  }
+
+  if (page === "team-profile") {
+    const slug = String(url.searchParams.get("slug") || "").trim();
+    if (!slug) return publicJson({ error: "Équipe manquante" }, 400);
+    const team = await env.DB.prepare(`SELECT t.*,
+      CASE
+        WHEN TRIM(COALESCE(t.photo_key,''))<>'' THEN '/media/' || t.photo_key
+        WHEN TRIM(COALESCE(sm.object_key,''))<>'' THEN '/media/' || sm.object_key
+        ELSE COALESCE(NULLIF(sm.fallback_path,''),'/team-default.webp')
+      END AS photo_url,
+      CASE WHEN TRIM(COALESCE(t.photo_key,''))<>'' THEN 'Photo du groupe ' || t.name
+        ELSE COALESCE(NULLIF(sm.alt_text,''),'Photo du groupe') END AS photo_alt
+      FROM teams t LEFT JOIN site_media sm ON sm.slot='team_default'
+      WHERE t.slug=? AND t.active=1 LIMIT 1`).bind(slug).first<AnyRow>();
+    if (!team) return publicJson({ error: "Équipe introuvable" }, 404);
+    const [entries, staff, sessions, upcoming, results] = await env.DB.batch<AnyRow>([
+      env.DB.prepare(`SELECT id,name,division,competition_name,pool FROM team_competitions
+        WHERE team_id=? AND active=1 AND (season_id IS NULL OR season_id=${activeSeason})
+        ORDER BY display_order,name`).bind(team.id),
+      env.DB.prepare(`SELECT ts.role,ts.display_order,
+        cm.id AS member_id,cm.full_name,cm.email,cm.phone,cm.photo_key
+        FROM team_staff ts JOIN club_members cm ON cm.id=ts.member_id
+        WHERE ts.team_id=? AND ts.active=1 AND cm.active=1
+        ORDER BY ts.display_order,cm.full_name COLLATE NOCASE`).bind(team.id),
+      env.DB.prepare(`SELECT s.id,s.weekday,s.starts_at,s.ends_at,s.venue,s.address,s.notes,
+        v.name AS venue_name,v.address AS venue_full_address,v.latitude AS venue_latitude,
+        v.longitude AS venue_longitude,v.maps_url AS venue_maps_url
+        FROM training_sessions s LEFT JOIN venues v ON v.id=s.venue_id
+        WHERE s.team_id=? AND s.active=1 AND (s.season_id IS NULL OR s.season_id=${activeSeason})
+        ORDER BY s.weekday,s.starts_at`).bind(team.id),
+      env.DB.prepare(`SELECT id,starts_at,competition,event_type,time_confirmed,status,venue,venue_address,
+        home_team,away_team,home_logo_url,away_logo_url,home_score,away_score
+        FROM matches WHERE team_id=? AND (season_id IS NULL OR season_id=${activeSeason})
+        AND status<>'finished' AND (home_score IS NULL OR away_score IS NULL) AND starts_at>=?
+        ORDER BY starts_at ASC LIMIT 5`).bind(team.id, now),
+      env.DB.prepare(`SELECT id,starts_at,competition,event_type,time_confirmed,status,venue,venue_address,
+        home_team,away_team,home_logo_url,away_logo_url,home_score,away_score
+        FROM matches WHERE team_id=? AND (season_id IS NULL OR season_id=${activeSeason})
+        AND (status='finished' OR (home_score IS NOT NULL AND away_score IS NOT NULL))
+        ORDER BY starts_at DESC LIMIT 5`).bind(team.id)
+    ]);
+    return publicJson({
+      team,
+      entries: resultRows(entries),
+      staff: resultRows(staff).map(row => ({
+        role: row.role,
+        display_order: row.display_order,
+        member: { id: row.member_id, full_name: row.full_name, email: row.email, phone: row.phone, photo_key: row.photo_key }
+      })),
+      sessions: resultRows(sessions),
+      upcoming: resultRows(upcoming),
+      results: resultRows(results)
+    });
+  }
+
+  if (page === "home") {
+    const [teams, matches, posts, sponsors, media] = await env.DB.batch<AnyRow>([
+      env.DB.prepare(`SELECT id,slug,name,group_name,level,category FROM teams
+        WHERE active=1 ORDER BY name COLLATE NOCASE ASC`),
+      env.DB.prepare(`SELECT id,starts_at,category,home_team,away_team FROM matches
+        WHERE (season_id IS NULL OR season_id=${activeSeason}) AND starts_at>=?
+        AND status NOT IN ('finished','cancelled') ORDER BY starts_at ASC LIMIT 3`).bind(now),
+      env.DB.prepare("SELECT permalink,caption,media_type,media_url,thumbnail_url FROM social_posts WHERE platform='instagram' ORDER BY published_at DESC LIMIT 6"),
+      env.DB.prepare("SELECT name,logo_key,website_url,tier FROM sponsors WHERE active=1 ORDER BY display_order,name COLLATE NOCASE"),
+      env.DB.prepare("SELECT slot,object_key,alt_text FROM site_media WHERE slot IN ('home_collective','home_story')")
+    ]);
+    return publicJson({ teams: resultRows(teams), matches: resultRows(matches), social_posts: resultRows(posts), sponsors: resultRows(sponsors), site_media: resultRows(media) });
+  }
+
+  if (page === "matches") {
+    const [matches, participants, standings, sync, teams, entries] = await env.DB.batch<AnyRow>([
+      env.DB.prepare(`SELECT * FROM matches WHERE season_id IS NULL OR season_id=${activeSeason} ORDER BY starts_at ASC`),
+      env.DB.prepare(`SELECT p.* FROM match_participants p JOIN matches m ON m.id=p.match_id
+        WHERE m.season_id IS NULL OR m.season_id=${activeSeason} ORDER BY p.match_id,p.display_order`),
+      env.DB.prepare(`SELECT * FROM standings WHERE season_id IS NULL OR season_id=${activeSeason} ORDER BY phase_id,position`),
+      env.DB.prepare("SELECT finished_at,imported_count FROM sync_runs WHERE source='github_actions' AND status='success' ORDER BY id DESC LIMIT 1"),
+      env.DB.prepare("SELECT id,name,group_name,active FROM teams WHERE active=1 ORDER BY name COLLATE NOCASE"),
+      env.DB.prepare(`SELECT * FROM team_competitions WHERE active=1 AND (season_id IS NULL OR season_id=${activeSeason}) ORDER BY name COLLATE NOCASE`)
+    ]);
+    return publicJson({ matches: resultRows(matches), participants: resultRows(participants), standings: resultRows(standings), sync: resultRows(sync)[0] || {}, teams: resultRows(teams), entries: resultRows(entries) });
+  }
+
+  if (page === "planning") {
+    const [teams, sessions, venues] = await env.DB.batch<AnyRow>([
+      env.DB.prepare("SELECT id,name,group_name,category FROM teams WHERE active=1 ORDER BY name COLLATE NOCASE"),
+      env.DB.prepare(`SELECT * FROM training_sessions WHERE active=1 AND (season_id IS NULL OR season_id=${activeSeason}) ORDER BY weekday,starts_at`),
+      env.DB.prepare("SELECT * FROM venues WHERE active=1 ORDER BY display_order,name COLLATE NOCASE")
+    ]);
+    return publicJson({ teams: resultRows(teams), sessions: resultRows(sessions), venues: resultRows(venues) });
+  }
+
+  if (page === "tournaments") {
+    const [tournaments, links, teams, venues] = await env.DB.batch<AnyRow>([
+      env.DB.prepare(`SELECT * FROM tournaments WHERE status IN ('published','open','finished')
+        AND (season_id IS NULL OR season_id=${activeSeason}) ORDER BY starts_on`),
+      env.DB.prepare(`SELECT tt.* FROM tournament_teams tt JOIN tournaments t ON t.id=tt.tournament_id
+        WHERE t.season_id IS NULL OR t.season_id=${activeSeason} ORDER BY tt.tournament_id`),
+      env.DB.prepare("SELECT id,name,group_name FROM teams WHERE active=1 ORDER BY name COLLATE NOCASE"),
+      env.DB.prepare("SELECT * FROM venues WHERE active=1 ORDER BY display_order,name COLLATE NOCASE")
+    ]);
+    return publicJson({ tournaments: resultRows(tournaments), links: resultRows(links), teams: resultRows(teams), venues: resultRows(venues) });
+  }
+
+  if (page === "mecenat") {
+    const [contacts, sponsors, media] = await env.DB.batch<AnyRow>([
+      env.DB.prepare("SELECT name,role,email,phone,display_order FROM contacts WHERE published=1 ORDER BY display_order,name COLLATE NOCASE"),
+      env.DB.prepare("SELECT name,logo_key,website_url,tier FROM sponsors WHERE active=1 ORDER BY display_order,name COLLATE NOCASE"),
+      env.DB.prepare("SELECT slot,object_key,alt_text FROM site_media WHERE slot IN ('sponsor_hero','sponsor_project')")
+    ]);
+    return publicJson({ contacts: resultRows(contacts), sponsors: resultRows(sponsors), site_media: resultRows(media) });
+  }
+
+  if (page === "contacts") {
+    const rows = await env.DB.prepare("SELECT name,role,category,email,phone,responsibilities,availability,display_order FROM contacts WHERE published=1 ORDER BY display_order,name COLLATE NOCASE").all<AnyRow>();
+    return publicJson({ contacts: resultRows(rows) });
+  }
+
+  return publicJson({ error: "Page de données inconnue" }, 404);
+}
+
+async function cachedPageData(request: Request, env: Env, url: URL, ctx: ExecutionContext) {
+  const cache = caches.default;
+  const key = new Request(url.toString(), { method: "GET" });
+  const cached = await cache.match(key);
+  if (cached) return cached;
+  const response = await pageData(env, url);
+  if (response.ok) ctx.waitUntil(cache.put(key, response.clone()));
+  return response;
 }
 
 async function upload(request: Request, env: Env) {
@@ -403,7 +565,7 @@ async function syncMeta(env: Env) {
 }
 
 export default {
-  async fetch(request: Request, env: Env) {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(request.url);
     if (url.pathname === "/internal/sync/matches" && request.method === "POST") {
       return ingestMatches(request, env);
@@ -424,6 +586,9 @@ export default {
         status: 403, headers: { "content-type": "text/plain;charset=UTF-8", "cache-control": "no-store" }
       });
     }
+    if (request.method === "GET" && url.pathname.startsWith("/api/page/")) {
+      return cachedPageData(request, env, url, ctx);
+    }
     if (url.pathname === "/api/match-sync" && request.method === "GET") return syncMeta(env);
     if (url.pathname === "/admin-api/upload" && request.method === "POST") return upload(request, env);
     if (url.pathname === "/admin-api/import/coaches" && request.method === "POST") return importCoaches(request, env);
@@ -441,7 +606,7 @@ export default {
     if (url.pathname.startsWith("/media/")) {
       const object = await env.MEDIA.get(url.pathname.slice(7));
       return object
-        ? new Response(object.body, { headers: { "content-type": object.httpMetadata?.contentType || "application/octet-stream", "cache-control": "public,max-age=86400" } })
+        ? new Response(object.body, { headers: { "content-type": object.httpMetadata?.contentType || "application/octet-stream", "cache-control": "public,max-age=31536000,immutable" } })
         : new Response("Not found", { status: 404 });
     }
     return env.ASSETS.fetch(request);

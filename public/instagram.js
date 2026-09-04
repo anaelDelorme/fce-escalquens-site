@@ -1,6 +1,6 @@
 const instagramRoot=document.querySelector('#instagram-posts');
-if(instagramRoot)fetch('/api/social_posts').then(response=>response.json()).then(rows=>{
-  const posts=rows.filter(row=>row.platform==='instagram').slice(0,6);
+if(instagramRoot)(window.fceHomeData||fetch('/api/page/home').then(response=>response.json())).then(data=>{
+  const posts=data.social_posts||[];
   instagramRoot.innerHTML=posts.map(post=>{
     const image=post.media_type==='VIDEO'?(post.thumbnail_url||post.media_url):post.media_url;
     const caption=String(post.caption||'').trim();

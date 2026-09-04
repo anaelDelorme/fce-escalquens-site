@@ -2,9 +2,9 @@ const applySiteMedia=async()=>{
   const targets=[...document.querySelectorAll('[data-media-slot]')];
   if(!targets.length)return;
   try{
-    const response=await fetch('/api/site_media');
-    if(!response.ok)return;
-    const rows=await response.json();
+    const shared=window.fceHomeData||window.fceMecenatData;
+    const data=shared?await shared:await fetch('/api/site_media').then(response=>response.ok?response.json():[]);
+    const rows=Array.isArray(data)?data:(data.site_media||[]);
     for(const target of targets){
       const media=rows.find(item=>item.slot===target.dataset.mediaSlot);
       if(!media)continue;

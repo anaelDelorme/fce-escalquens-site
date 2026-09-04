@@ -84,6 +84,35 @@ dupliqué.
 mécénat et la photo par défaut des pages d'équipe. Les photos propres à chaque
 groupe sportif restent modifiables dans « Groupes sportifs ».
 
+La grille publique des équipes utilise elle aussi cette photo par défaut et
+classe les groupes par ordre alphabétique (avec tri numérique naturel : U8,
+U9, U10…).
+
+## Performances du site public
+
+Les données nécessaires à chaque page sont regroupées dans une seule réponse
+HTTP. Les requêtes D1 ne lisent que les lignes utiles : saison active, éléments
+publiés, équipe demandée et nombre limité de rencontres sur une fiche. Par
+exemple, une fiche d'équipe ne télécharge plus neuf tables complètes.
+
+Ces réponses sont conservées 30 secondes dans le navigateur et 2 minutes sur le
+réseau Cloudflare, avec possibilité de servir une version périmée pendant une
+actualisation. Après une modification dans l'administration, il peut donc
+falloir jusqu'à deux minutes pour voir le changement sur le site public. Les
+images téléversées ont une adresse unique et peuvent être mises en cache un an.
+
+La migration `0013_public_page_performance.sql` ajoute les index correspondant
+aux lectures fréquentes, sans modifier les données existantes.
+
+Les optimisations suivantes à envisager, par ordre d'intérêt, sont :
+
+1. créer automatiquement une vignette WebP/AVIF lors de l'envoi d'une photo ;
+2. purger précisément le cache de la page concernée après un enregistrement si
+   l'affichage immédiat devient indispensable ;
+3. paginer les archives de matchs lorsqu'elles couvriront plusieurs saisons ;
+4. suivre les temps réels avec Cloudflare Web Analytics avant d'ajouter d'autres
+   index ou services payants.
+
 ## GitHub et déploiement automatique
 
 Le dépôt de référence est :

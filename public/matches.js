@@ -161,20 +161,18 @@ function draw(){
   document.querySelector('#matches-page').innerHTML=rows.map(matchCard).join('')||'<div class="empty-state"><b>Aucune rencontre dans cette vue.</b></div>';
 }
 
-Promise.all([
-  fetch('/api/matches').then(response=>response.json()),
-  fetch('/api/match_participants').then(response=>response.json()).catch(()=>[]),
-  fetch('/api/standings').then(response=>response.json()),
-  fetch('/api/match-sync').then(response=>response.json()).catch(()=>({})),
-  fetch('/api/teams').then(response=>response.json()),
-  fetch('/api/team_competitions').then(response=>response.json()).catch(()=>[])
-]).then(data=>{
-  [matches,participants,standings]=data;teams=data[4];entries=data[5];
-  const sync=data[3];
+fetch('/api/page/matches').then(async response=>{
+  const data=await response.json();
+  if(!response.ok)throw new Error(data.error||`Rencontres : ${response.status}`);
+  return data;
+}).then(data=>{
+  matches=data.matches||[];participants=data.participants||[];standings=data.standings||[];
+  teams=(data.teams||[]).slice().sort((a,b)=>String(a.name).localeCompare(String(b.name),'fr',{numeric:true,sensitivity:'base'}));entries=data.entries||[];
+  const sync=data.sync||{};
   const node=document.querySelector('#matches-updated');
   if(node&&sync.finished_at)node.textContent=new Date(sync.finished_at+'Z').toLocaleString('fr-FR',{timeZone:'Europe/Paris',dateStyle:'long',timeStyle:'short'});
   refreshFilterChoices();draw();
-});
+}).catch(error=>{console.error(error);document.querySelector('#matches-page').innerHTML='<div class="empty-state"><b>Les rencontres sont momentanément indisponibles.</b></div>'});
 document.querySelector('#section-filter').onchange=event=>{filters={section:event.target.value,group:'',entry:''};refreshFilterChoices();draw()};
 document.querySelector('#group-filter').onchange=event=>{filters.group=event.target.value;filters.entry='';refreshFilterChoices();draw()};
 document.querySelector('#entry-filter').onchange=event=>{filters.entry=event.target.value;draw()};
