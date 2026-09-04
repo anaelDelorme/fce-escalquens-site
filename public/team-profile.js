@@ -19,8 +19,8 @@ const miniMatch=(match,future=false)=>`<article class="team-match-row">
 Promise.all([
   api('teams'),api('team_competitions').catch(()=>[]),api('training_sessions').catch(()=>[]),
   api('club_members').catch(()=>[]),api('team_staff').catch(()=>[]),api('venues').catch(()=>[]),
-  api('matches').catch(()=>[]),api('seasons').catch(()=>[])
-]).then(([teams,entries,sessions,members,assignments,venues,matches,seasons])=>{
+  api('matches').catch(()=>[]),api('seasons').catch(()=>[]),api('site_media').catch(()=>[])
+]).then(([teams,entries,sessions,members,assignments,venues,matches,seasons,siteMedia])=>{
   const team=teams.find(item=>item.slug===slug);
   if(!team){document.querySelector('#team-name').textContent='Équipe introuvable';return}
   document.title=`${team.name} - FC Escalquens`;set('#team-name',team.name);set('#team-description',team.description);set('#player-count',team.player_count||'—');
@@ -28,7 +28,12 @@ Promise.all([
   const teamEntries=entries.filter(item=>item.team_id===team.id&&item.active!==0&&(!activeSeason||!item.season_id||item.season_id===activeSeason.id));
   set('#team-level',teamEntries.map(item=>[item.division||item.competition_name,item.pool].filter(Boolean).join(' · ')).filter(Boolean).join(' / ')||team.level);
   document.querySelector('#player-label').textContent=team.group_name==='Féminines'||team.gender==='female'?'licenciées pratiquantes':'licenciés pratiquants';
-  document.querySelector('#team-photo').src=team.photo_key?`/media/${team.photo_key}`:'/team-default.webp';
+  const defaultMedia=siteMedia.find(item=>item.slot==='team_default');
+  const defaultPhoto=defaultMedia?.object_key?`/media/${defaultMedia.object_key}`:(defaultMedia?.fallback_path||'/team-default.webp');
+  const teamPhoto=team.photo_key?`/media/${team.photo_key}`:defaultPhoto;
+  const photo=document.querySelector('#team-photo'),visual=photo.closest('.team-visual');
+  const revealPhoto=(source,fallback)=>{const loader=new Image();loader.onload=()=>{photo.src=source;photo.alt=team.photo_key?`Photo du groupe ${team.name}`:(defaultMedia?.alt_text||'Photo du groupe');photo.classList.add('is-ready');visual.setAttribute('aria-busy','false')};loader.onerror=()=>{if(source!==fallback)revealPhoto(fallback,fallback);else visual.setAttribute('aria-busy','false')};loader.src=source};
+  revealPhoto(teamPhoto,defaultPhoto);
   const memberMap=Object.fromEntries(members.map(member=>[member.id,member]));
   const staff=assignments.filter(item=>item.team_id===team.id&&item.active!==0).sort((a,b)=>a.display_order-b.display_order).map(item=>({...item,member:memberMap[item.member_id]})).filter(item=>item.member);
   document.querySelector('#team-staff').innerHTML=staff.map(item=>`<article>${item.member.photo_key?`<img src="/media/${esc(item.member.photo_key)}" alt="">`:''}<small>${roleLabels[item.role]||esc(item.role)}</small><h3>${esc(item.member.full_name)}</h3>${item.member.email?`<a href="mailto:${esc(item.member.email)}">${esc(item.member.email)}</a>`:''}${item.member.phone?`<a href="tel:${esc(item.member.phone)}">${esc(item.member.phone)}</a>`:''}</article>`).join('')||'<p>Encadrement à venir.</p>';

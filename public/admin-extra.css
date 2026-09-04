@@ -2,7 +2,24 @@
 #records article.automatic{border-left-color:#7b6f73;background:#faf8f7}
 #records article em{font-style:normal;width:max-content;margin-top:7px;padding:4px 7px;background:#eee8ea;color:#6c5e63;font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.08em}
 #sync-instagram,#sync-matches{background:#fff3c2;color:#4c3500;font-weight:800}
+.admin-actions{margin-left:auto;display:flex;align-items:center;gap:9px;flex-wrap:wrap;justify-content:flex-end}.admin-actions .public-link{margin-left:0}.logout-link{padding:11px 15px;background:var(--wine);color:#fff;font-weight:900;text-decoration:none}.head-actions{display:flex;gap:10px;align-items:center}.head-actions #import-coaches{background:#fff;color:var(--wine);border:2px solid var(--wine);font-weight:900}.dialog-help{line-height:1.55;color:#5f5256}.template-link{display:inline-block;margin:0 0 18px;color:var(--wine);font-weight:900;text-decoration:underline}#csv-status{min-height:22px;color:var(--wine);font-weight:800;line-height:1.45}#csv-submit{background:var(--gold);color:#261417;font-weight:900;box-shadow:5px 5px 0 var(--wine)}[hidden]{display:none!important}body,main,section,#records,#records article,#records article>div{min-width:0}
 @media(max-width:760px){
-  header{gap:7px;flex-wrap:wrap}
-  #sync-instagram,#sync-matches{font-size:10px;padding:8px}
+  header{display:grid;grid-template-columns:auto 1fr;gap:8px 12px;padding:8px 12px;min-height:0}
+  .admin-brand span{display:grid}.admin-brand img{width:52px;height:52px}
+  .admin-actions{grid-column:1/-1;margin:0;width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+  .admin-actions>*{display:flex;align-items:center;justify-content:center;min-height:44px;text-align:center;font-size:12px;padding:8px;line-height:1.15}
+  .admin-actions .public-link{display:flex}.admin-actions #token-button{margin-left:0}
+  main{min-height:0}
+  nav{position:sticky;top:0;z-index:10;padding:8px 10px;box-shadow:0 5px 16px #2b071022}
+  #collections{gap:5px;scrollbar-width:thin;padding-bottom:2px}
+  #collections button{min-height:44px;padding:9px 12px;font-size:13px}
+  section{padding:22px 12px 36px}
+  .head{align-items:stretch;gap:14px;margin-bottom:18px}.head>div:first-child{min-width:0}.head h1{font-size:28px;overflow-wrap:anywhere}
+  .head-actions{flex-direction:column;align-items:stretch;min-width:118px}.head-actions button{min-height:44px;padding:8px 10px;box-shadow:3px 3px 0 var(--wine);font-size:12px}
+  #records article{display:grid;grid-template-columns:1fr 1fr;padding:13px 12px;gap:8px}
+  #records article>div{grid-column:1/-1;margin:0;overflow-wrap:anywhere}#records article button{min-height:44px;width:100%}
+  dialog{width:100vw;max-width:none;height:100dvh;max-height:none;margin:0;padding:18px 14px;border-radius:0;overflow:auto}
+  dialog h2{font-size:28px;margin-top:4px}dialog form{min-height:calc(100dvh - 44px);display:flex;flex-direction:column}#fields{flex:1}
+  dialog menu{position:sticky;bottom:-18px;margin-top:auto;padding:14px 0 18px;background:#fff;z-index:2}dialog menu button{min-height:46px;flex:1}
+  input,select,textarea{font-size:16px;min-height:46px}.file-field img{width:100%;height:auto;max-height:260px}.toggle-field{min-height:54px}
 }

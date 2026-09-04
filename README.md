@@ -44,9 +44,41 @@ L'identifiant par défaut est `fce`. Pour le changer :
 npx wrangler secret put TEST_SITE_USER
 ```
 
-Protégez séparément `/admin/*` et `/admin-api/*` dans Cloudflare Access avec
-le mode One-time PIN. Les autres administrateurs s'ajoutent ensuite dans
-`/admin/` → « Administrateurs ».
+## Administration et Cloudflare Access
+
+Cloudflare Access ne doit plus contenir la liste nominative des administrateurs.
+Il sert uniquement à **authentifier une adresse e-mail** ; la table
+« Administrateurs » du site décide ensuite si cette adresse est autorisée.
+
+Dans l'application Access qui protège le site :
+
+1. ajoutez les deux destinations `/admin/*` et `/admin-api/*` ;
+2. créez une politique `Allow` ;
+3. dans `Include`, choisissez `Login Methods` puis `One-time PIN` ;
+4. retirez de cette politique la règle limitée à une liste d'adresses e-mail.
+
+Cette modification Access n'est à faire qu'une fois. Ensuite, ajouter ou
+désactiver une adresse dans `/admin/` → « Administrateurs » prend effet
+immédiatement, même si la personne possède encore une session Cloudflare. Une
+adresse authentifiée mais absente de cette liste reçoit une page d'accès refusé.
+Il n'est donc ni nécessaire ni souhaitable de donner au site un jeton capable de
+modifier Cloudflare Access.
+
+Le bouton « Se déconnecter » ferme la session Cloudflare Access. « Connexion
+locale » reste réservé au développement sur l'ordinateur.
+
+## Import des coachs et photos
+
+Dans « Licenciés & encadrants », le bouton « Importer un CSV » accepte le modèle
+téléchargeable depuis l'administration. Les colonnes reconnues sont : nom,
+email, téléphone, numéro de licence, groupe sportif, rôle et notes. Le rôle peut
+être `coach référent`, `coach`, `dirigeant` ou `arbitre`. Un licencié déjà connu
+par son numéro de licence, son e-mail ou son nom est mis à jour au lieu d'être
+dupliqué.
+
+« Photos du site » permet de remplacer les principales images de l'accueil, du
+mécénat et la photo par défaut des pages d'équipe. Les photos propres à chaque
+groupe sportif restent modifiables dans « Groupes sportifs ».
 
 ## GitHub et déploiement automatique
 
@@ -98,7 +130,7 @@ dans cette même session : cela ne crée pas une deuxième requête ZenRows.
 Le journal attendu commence par :
 
 ```text
-Collecteur FCE 2026.09.03-14
+Collecteur FCE 2026.09.03-16
 ```
 
 ## Groupes sportifs et équipes engagées

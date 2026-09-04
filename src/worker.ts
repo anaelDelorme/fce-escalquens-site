@@ -17,7 +17,7 @@ const tables = new Set([
   "teams", "team_competitions", "training_sessions", "contacts", "tournaments",
   "tournament_teams", "matches", "match_participants", "standings", "social_posts",
   "documents", "club_members", "team_staff", "admins", "venues",
-  "competition_levels", "seasons", "sponsors"
+  "competition_levels", "seasons", "sponsors", "site_media"
 ]);
 
 const editable: Record<string, string[]> = {
@@ -37,7 +37,8 @@ const editable: Record<string, string[]> = {
   venues: ["name", "address", "latitude", "longitude", "maps_url", "notes", "active", "display_order"],
   competition_levels: ["name", "short_name", "description", "active", "display_order"],
   seasons: ["label", "starts_on", "ends_on", "active"],
-  sponsors: ["name", "logo_key", "website_url", "tier", "description", "active", "display_order"]
+  sponsors: ["name", "logo_key", "website_url", "tier", "description", "active", "display_order"],
+  site_media: ["object_key", "alt_text"]
 };
 
 const defaultOrder: Record<string, string> = {
@@ -47,7 +48,8 @@ const defaultOrder: Record<string, string> = {
   sponsors: "display_order ASC, name ASC",
   team_competitions: "display_order ASC, name ASC",
   tournaments: "starts_on ASC",
-  training_sessions: "weekday ASC, starts_at ASC"
+  training_sessions: "weekday ASC, starts_at ASC",
+  site_media: "display_order ASC, id ASC"
 };
 
 function json(data: unknown, status = 200) {
@@ -161,6 +163,76 @@ async function upload(request: Request, env: Env) {
   const key = `uploads/${Date.now()}-${safe}`;
   await env.MEDIA.put(key, file.stream(), { httpMetadata: { contentType: file.type } });
   return json({ key, url: `/media/${key}` }, 201);
+}
+
+const normalizedRole = (value: unknown) => {
+  const role = String(value || "coach").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/[^a-z]+/g, "_").replace(/^_|_$/g, "");
+  if (["coach_referent", "referent", "coach_reference"].includes(role)) return "coach_referent";
+  if (["dirigeant", "manager"].includes(role)) return "dirigeant";
+  if (["arbitre", "referee"].includes(role)) return "arbitre";
+  return "coach";
+};
+
+async function importCoaches(request: Request, env: Env) {
+  if (!await admin(request, env)) return json({ error: "Accès administrateur requis" }, 401);
+  const body = await request.json<{ rows?: AnyRow[] }>().catch(() => null);
+  if (!Array.isArray(body?.rows) || body.rows.length === 0 || body.rows.length > 500) {
+    return json({ error: "Le fichier doit contenir entre 1 et 500 lignes." }, 400);
+  }
+  const teams = (await env.DB.prepare("SELECT id,name,slug FROM teams WHERE active=1").all<AnyRow>()).results || [];
+  const teamKey = (value: unknown) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const teamMap = new Map<string, AnyRow>();
+  for (const team of teams) {
+    teamMap.set(teamKey(team.name), team);
+    teamMap.set(teamKey(team.slug), team);
+    teamMap.set(String(team.id), team);
+  }
+  let created = 0, updated = 0, assigned = 0;
+  const errors: string[] = [];
+  for (const [index, raw] of body.rows.entries()) {
+    const fullName = String(raw.full_name || "").trim();
+    const email = String(raw.email || "").trim().toLowerCase();
+    const phone = String(raw.phone || "").trim();
+    const license = String(raw.license_number || "").trim();
+    const notes = String(raw.notes || "").trim();
+    if (!fullName) { errors.push(`Ligne ${index + 2} : nom manquant.`); continue; }
+    let member = license
+      ? await env.DB.prepare("SELECT id FROM club_members WHERE license_number=? COLLATE NOCASE LIMIT 1").bind(license).first<{ id: number }>()
+      : null;
+    if (!member && email) member = await env.DB.prepare("SELECT id FROM club_members WHERE email=? COLLATE NOCASE LIMIT 1").bind(email).first<{ id: number }>();
+    if (!member) member = await env.DB.prepare("SELECT id FROM club_members WHERE full_name=? COLLATE NOCASE LIMIT 1").bind(fullName).first<{ id: number }>();
+    let memberId: number;
+    if (member?.id) {
+      memberId = member.id;
+      await env.DB.prepare(`UPDATE club_members SET
+        full_name=?,email=CASE WHEN ?<>'' THEN ? ELSE email END,
+        phone=CASE WHEN ?<>'' THEN ? ELSE phone END,
+        license_number=CASE WHEN ?<>'' THEN ? ELSE license_number END,
+        notes=CASE WHEN ?<>'' THEN ? ELSE notes END,active=1,updated_at=CURRENT_TIMESTAMP
+        WHERE id=?`).bind(fullName,email,email,phone,phone,license,license,notes,notes,memberId).run();
+      updated++;
+    } else {
+      const result = await env.DB.prepare(`INSERT INTO club_members(
+        full_name,email,phone,license_number,notes,active
+      ) VALUES(?,?,?,?,?,1)`).bind(fullName,email,phone,license,notes).run();
+      memberId = Number(result.meta.last_row_id);
+      created++;
+    }
+    const teamValue = raw.team_id || raw.team || raw.group_name;
+    if (teamValue) {
+      const team = teamMap.get(teamKey(teamValue)) || teamMap.get(String(teamValue));
+      if (!team) errors.push(`Ligne ${index + 2} : groupe sportif « ${teamValue} » introuvable.`);
+      else {
+        await env.DB.prepare(`INSERT INTO team_staff(team_id,member_id,role,active)
+          VALUES(?,?,?,1) ON CONFLICT(team_id,member_id,role)
+          DO UPDATE SET active=1,updated_at=CURRENT_TIMESTAMP`).bind(team.id,memberId,normalizedRole(raw.role)).run();
+        assigned++;
+      }
+    }
+  }
+  return json({ ok: true, created, updated, assigned, errors });
 }
 
 async function activeSeasonId(env: Env) {
@@ -345,8 +417,15 @@ export default {
     }
     const gate = testGate(request, env);
     if (gate) return gate;
+    if ((url.pathname === "/admin" || url.pathname.startsWith("/admin/")) &&
+      request.headers.get("cf-access-authenticated-user-email") && !await admin(request, env)) {
+      return new Response("Cette adresse est authentifiée par Cloudflare, mais elle n’est pas administratrice du site.", {
+        status: 403, headers: { "content-type": "text/plain;charset=UTF-8", "cache-control": "no-store" }
+      });
+    }
     if (url.pathname === "/api/match-sync" && request.method === "GET") return syncMeta(env);
     if (url.pathname === "/admin-api/upload" && request.method === "POST") return upload(request, env);
+    if (url.pathname === "/admin-api/import/coaches" && request.method === "POST") return importCoaches(request, env);
     if (url.pathname === "/admin-api/sync/matches" && request.method === "POST") {
       return json({ error: "Lancez l’action « Synchroniser les matchs » dans GitHub. Elle utilise ZenRows uniquement aux six horaires prévus." }, 409);
     }

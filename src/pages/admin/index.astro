@@ -14,17 +14,23 @@
         <img src="/logo-fce.png" alt="FC Escalquens">
         <span><b>FC ESCALQUENS</b><small>Administration du club</small></span>
       </a>
-      <a class="public-link" href="/">Voir le site public →</a>
-      <button id="sync-instagram">Actualiser Instagram</button>
-      <button id="sync-matches">Aide synchronisation</button>
-      <button id="token-button">Connexion locale</button>
+      <div class="admin-actions">
+        <a class="public-link" href="/">Voir le site public →</a>
+        <button id="sync-instagram">Actualiser Instagram</button>
+        <button id="sync-matches">Aide synchronisation</button>
+        <button id="token-button">Connexion locale</button>
+        <a class="logout-link" href="/cdn-cgi/access/logout">Se déconnecter</a>
+      </div>
     </header>
     <main>
       <nav><p>Gérer les contenus</p><div id="collections"></div></nav>
       <section>
         <div class="head">
           <div><small>Base de données du club</small><h1 id="title">Contenus</h1></div>
-          <button id="new">+ Ajouter</button>
+          <div class="head-actions">
+            <button id="import-coaches" hidden>Importer un CSV</button>
+            <button id="new">+ Ajouter</button>
+          </div>
         </div>
         <p id="status"></p>
         <div id="records"></div>
@@ -36,6 +42,20 @@
         <p id="editor-status"></p>
         <div id="fields"></div>
         <menu><button value="cancel">Annuler</button><button id="save" value="default">Enregistrer</button></menu>
+      </form>
+    </dialog>
+    <dialog id="csv-importer">
+      <form method="dialog">
+        <h2>Importer des coachs</h2>
+        <p class="dialog-help">Importez jusqu’à 500 licenciés. Le groupe sportif et le rôle permettent de créer aussi leur affectation. Les personnes déjà connues sont mises à jour sans être dupliquées.</p>
+        <a class="template-link" href="/modele-import-coachs.csv" download>Télécharger le modèle CSV</a>
+        <label class="file-field wide">
+          <span class="field-title"><span>Fichier CSV</span><small>séparateur ; ou ,</small></span>
+          <input id="csv-file" type="file" accept=".csv,text/csv">
+          <span class="file-state">Choisir un fichier CSV</span>
+        </label>
+        <p id="csv-status" aria-live="polite"></p>
+        <menu><button value="cancel">Annuler</button><button id="csv-submit" type="button">Importer</button></menu>
       </form>
     </dialog>
     <script is:inline src="/admin.js"></script>
