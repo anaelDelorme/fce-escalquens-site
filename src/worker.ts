@@ -60,6 +60,7 @@ function databaseError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes("FOREIGN KEY")) return "Une valeur liée est invalide. Rechargez la page puis recommencez l’affectation.";
   if (message.includes("UNIQUE")) return "Cet enregistrement existe déjà.";
+  if (message.includes("NOT NULL")) return "Un champ obligatoire n’est pas renseigné.";
   return "Enregistrement impossible dans la base de données.";
 }
 

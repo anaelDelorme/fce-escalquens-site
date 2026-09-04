@@ -57,6 +57,10 @@ Dans l'application Access qui protège le site :
 3. dans `Include`, choisissez `Login Methods` puis `One-time PIN` ;
 4. retirez de cette politique la règle limitée à une liste d'adresses e-mail.
 
+Attention : `Authentication Method` → `Pin` est une autre règle et ne convient
+pas ici. Après avoir corrigé la politique, utilisez
+`/cdn-cgi/access/logout`, puis reconnectez-vous à `/admin/`.
+
 Cette modification Access n'est à faire qu'une fois. Ensuite, ajouter ou
 désactiver une adresse dans `/admin/` → « Administrateurs » prend effet
 immédiatement, même si la personne possède encore une session Cloudflare. Une
