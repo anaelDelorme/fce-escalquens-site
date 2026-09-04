@@ -87,7 +87,7 @@ const participantList=(row,rows=matchParticipants(row))=>{
 const plateauGameScore=game=>{
   if(game.status==='cancelled')return '<span class="plateau-game-status">Annulé</span>';
   if(game.home_score!=null&&game.away_score!=null)return `<strong class="plateau-game-score">${esc(game.home_score)}<i>:</i>${esc(game.away_score)}</strong>`;
-  return '<span class="plateau-game-status">Score à venir</span>';
+  return '<span class="plateau-game-status">À venir</span>';
 };
 const plateauGamesHtml=games=>games.length
   ?`<div class="plateau-games-list">${games.map((game,index)=>`<div class="plateau-game-row">
@@ -101,7 +101,7 @@ const plateauProgram=row=>{
   const count=Number(row.plateau_game_count||0);
   if(!count)return '<div class="plateau-program-empty">Programme détaillé non communiqué</div>';
   return `<div class="plateau-program">
-    <button type="button" data-plateau-games="${esc(row.id)}" aria-expanded="false">Voir les ${count} matchs du plateau <span>↓</span></button>
+    <button type="button" data-plateau-games="${esc(row.id)}" aria-expanded="false">Voir ${count===1?'le match':`les ${count} matchs`} d’Escalquens <span>↓</span></button>
     <div class="plateau-games-detail" data-plateau-detail="${esc(row.id)}" hidden></div>
   </div>`;
 };

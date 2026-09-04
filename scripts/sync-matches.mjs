@@ -1,4 +1,4 @@
-const SYNC_VERSION='2026.09.04-20',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+const SYNC_VERSION='2026.09.04-21',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 console.log(`Collecteur FCE ${SYNC_VERSION}`);
 const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
 const endpoint=siteUrl+'/internal/sync/matches';
@@ -175,6 +175,9 @@ async function fetchZenRows(targetUrls){
           const when=new Date(site.date||site.joDate).getTime();
           const ep=site.epreuve?.epNo,po=site.poNo,jo=site.joNo,si=site.siNo;
           if(when<plateauMin||when>plateauMax||!ep||!po||!jo||!si)continue;
+          // La phase n'est pas toujours exposée de la même façon entre la
+          // liste des sites et la page de détail. Épreuve + journée + site
+          // identifient déjà sans ambiguïté le plateau à rattacher.
           const key=[ep,jo,si].join(':');
           plateauSites.set(key,{key,url:\`https://epreuves.fff.fr/animation-loisir/cdg/${DISTRICT_NO}/club/${CLUB_NO}/epreuve/\${ep}/poule/\${po}/journee/\${jo}/site/\${si}/matchs\`});
         }
@@ -313,6 +316,7 @@ const falTeamName=team=>typeof team==='string'?team:text(first(
   team?.club?.nom,team?.club?.name
 ));
 const falTeamLogo=team=>cleanUrl(first(team?.logo,team?.logoUrl,team?.club?.logo,team?.club?.logoUrl));
+const falClubTeam=(team,name)=>String(first(team?.club?.clNo,team?.clNo,team?.club_number))===CLUB_NO||/escalquens/i.test(String(name||''));
 const falScore=(game,team,side)=>{
   const home=side==='home';
   const value=first(
@@ -345,6 +349,9 @@ function normalizeFalGames(detail){
     const pair=falPair(value);
     if(pair){
       const [home,away]=pair,homeTeam=falTeamName(home),awayTeam=falTeamName(away);
+      // Le programme FFF contient aussi les rencontres entre les autres clubs.
+      // Le site du FCE ne conserve que celles où Escalquens participe.
+      if(!falClubTeam(home,homeTeam)&&!falClubTeam(away,awayTeam))return;
       const homeScore=falScore(value,home,'home'),awayScore=falScore(value,away,'away');
       const officialId=first(value.maNo,value.matchId,value.match_id,value.mrNo,value.id,value['@id']);
       const key=String(officialId||`${homeTeam}|${awayTeam}|${homeScore??''}|${awayScore??''}`);
@@ -374,7 +381,7 @@ function normalizeEpreuvesFal(payload,falGamePayloads=[]){
     const sourceId=[epreuve.epNo,site.phNo,site.joNo,site.siNo].filter(value=>value!==undefined&&value!==null&&value!=='').join(':');
     const sourceUrl=`https://epreuves.fff.fr/animation-loisir/cdg/${DISTRICT_NO}/club/${CLUB_NO}/epreuve/${epreuve.epNo}/poule/${site.poNo}/journee/${site.joNo}/site/${site.siNo}/matchs`;
     const gameDetailKey=[epreuve.epNo,site.joNo,site.siNo].join(':');
-const plateauGames=gameDetails.has(gameDetailKey)?normalizeFalGames(gameDetails.get(gameDetailKey)):[];
+    const plateauGames=gameDetails.has(gameDetailKey)?normalizeFalGames(gameDetails.get(gameDetailKey)):[];
     const organizer=site.organisateur?.clNom||'';
     const participants=(site.equipes||[]).map(team=>({
       name:team.eqNom||team.club?.clNom||team.club?.nom||'Équipe',
@@ -413,7 +420,9 @@ const plateauGames=gameDetails.has(gameDetailKey)?normalizeFalGames(gameDetails.
       away_logo_url:organizerIsClub?'':cleanUrl(site.organisateur?.logo),
       time_confirmed:site.heureCommuniquee!==false,
       participants,
-      ...(plateauGames.length?{plateau_games:plateauGames}:{}),
+      // Toujours transmettre le tableau, même vide, afin qu'une collecte
+      // puisse supprimer d'anciens mini-matchs qui ne concernent pas le FCE.
+      plateau_games:plateauGames,
       raw_json:site
     };
     if(sourceId)rows.set(sourceId,row);
