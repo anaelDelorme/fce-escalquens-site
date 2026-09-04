@@ -30,3 +30,26 @@
     overflow-wrap: anywhere;
   }
 }
+@media (max-width: 600px) {
+  .match-strip .circle-arrow {
+    display: flex;
+    width: 100%;
+    height: auto;
+    min-height: 50px;
+    border-radius: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 14px 17px;
+    background: var(--gold);
+    color: #211515;
+    font-size: 22px;
+  }
+
+  .match-strip .circle-arrow::before {
+    content: "Voir tous les matchs et résultats";
+    font: 900 12px Arial, sans-serif;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+}
