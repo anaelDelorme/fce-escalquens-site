@@ -242,17 +242,21 @@ async function pageData(env: Env, url: URL) {
   }
 
   if (page === "home") {
-    const [teams, matches, posts, sponsors, media] = await env.DB.batch<AnyRow>([
+    const [teams, matches, results, posts, sponsors, media] = await env.DB.batch<AnyRow>([
       env.DB.prepare(`SELECT id,slug,name,group_name,level,category FROM teams
         WHERE active=1 ORDER BY name COLLATE NOCASE ASC`),
-      env.DB.prepare(`SELECT id,starts_at,category,home_team,away_team FROM matches
+      env.DB.prepare(`SELECT id,starts_at,category,competition,home_team,away_team,home_score,away_score,status FROM matches
         WHERE (season_id IS NULL OR season_id=${activeSeason}) AND starts_at>=?
         AND status NOT IN ('finished','cancelled') ORDER BY starts_at ASC LIMIT 3`).bind(now),
+      env.DB.prepare(`SELECT id,starts_at,category,competition,home_team,away_team,home_score,away_score,status FROM matches
+        WHERE (season_id IS NULL OR season_id=${activeSeason})
+        AND (status='finished' OR (home_score IS NOT NULL AND away_score IS NOT NULL))
+        ORDER BY starts_at DESC LIMIT 3`),
       env.DB.prepare("SELECT permalink,caption,media_type,media_url,thumbnail_url FROM social_posts WHERE platform='instagram' ORDER BY published_at DESC LIMIT 6"),
       env.DB.prepare("SELECT name,logo_key,website_url,tier FROM sponsors WHERE active=1 ORDER BY display_order,name COLLATE NOCASE"),
       env.DB.prepare("SELECT slot,object_key,alt_text FROM site_media WHERE slot IN ('home_collective','home_story')")
     ]);
-    return publicJson({ teams: resultRows(teams), matches: resultRows(matches), social_posts: resultRows(posts), sponsors: resultRows(sponsors), site_media: resultRows(media) });
+    return publicJson({ teams: resultRows(teams), matches: resultRows(matches), results: resultRows(results), social_posts: resultRows(posts), sponsors: resultRows(sponsors), site_media: resultRows(media) });
   }
 
   if (page === "matches") {
@@ -261,11 +265,14 @@ async function pageData(env: Env, url: URL) {
       env.DB.prepare(`SELECT p.* FROM match_participants p JOIN matches m ON m.id=p.match_id
         WHERE m.season_id IS NULL OR m.season_id=${activeSeason} ORDER BY p.match_id,p.display_order`),
       env.DB.prepare(`SELECT * FROM standings WHERE season_id IS NULL OR season_id=${activeSeason} ORDER BY phase_id,position`),
-      env.DB.prepare("SELECT finished_at,imported_count FROM sync_runs WHERE source='github_actions' AND status='success' ORDER BY id DESC LIMIT 1"),
+      env.DB.prepare(`SELECT id,finished_at,status,imported_count,error_message,
+        (SELECT finished_at FROM sync_runs WHERE source='github_actions' AND status='success'
+          ORDER BY id DESC LIMIT 1) AS last_success_at
+        FROM sync_runs WHERE source='github_actions' ORDER BY id DESC LIMIT 1`),
       env.DB.prepare("SELECT id,name,group_name,active FROM teams WHERE active=1 ORDER BY name COLLATE NOCASE"),
       env.DB.prepare(`SELECT * FROM team_competitions WHERE active=1 AND (season_id IS NULL OR season_id=${activeSeason}) ORDER BY name COLLATE NOCASE`)
     ]);
-    return publicJson({ matches: resultRows(matches), participants: resultRows(participants), standings: resultRows(standings), sync: resultRows(sync)[0] || {}, teams: resultRows(teams), entries: resultRows(entries) });
+    return publicJson({ matches: resultRows(matches), participants: resultRows(participants), standings: resultRows(standings), sync: syncRunData(resultRows(sync)[0] || null), teams: resultRows(teams), entries: resultRows(entries) });
   }
 
   if (page === "planning") {
@@ -432,28 +439,97 @@ async function upsertMatch(env: Env, row: AnyRow) {
     WHERE matches.starts_at IS NOT excluded.starts_at
       OR matches.team_id IS NOT excluded.team_id
       OR matches.competition_team_id IS NOT excluded.competition_team_id
+      OR matches.season_id IS NOT excluded.season_id
+      OR matches.category IS NOT excluded.category OR matches.competition IS NOT excluded.competition
       OR matches.venue IS NOT excluded.venue OR matches.venue_address IS NOT excluded.venue_address
       OR matches.latitude IS NOT excluded.latitude OR matches.longitude IS NOT excluded.longitude
       OR matches.home_team IS NOT excluded.home_team OR matches.away_team IS NOT excluded.away_team
       OR matches.home_score IS NOT excluded.home_score OR matches.away_score IS NOT excluded.away_score
-      OR matches.status IS NOT excluded.status OR matches.raw_json IS NOT excluded.raw_json`
+      OR matches.status IS NOT excluded.status OR matches.event_type IS NOT excluded.event_type
+      OR matches.source_url IS NOT excluded.source_url
+      OR matches.home_logo_url IS NOT excluded.home_logo_url OR matches.away_logo_url IS NOT excluded.away_logo_url
+      OR matches.time_confirmed IS NOT excluded.time_confirmed`
   ).bind(...values).run();
   const stored = await env.DB.prepare("SELECT id FROM matches WHERE source=? AND source_id=?")
     .bind(row.source, row.source_id).first<{ id: number }>();
+  let participantsChanged = 0;
   if (stored && Array.isArray(row.participants)) {
-    await env.DB.prepare("DELETE FROM match_participants WHERE match_id=?").bind(stored.id).run();
-    for (const [index, participant] of row.participants.entries()) {
-      if (!participant?.name) continue;
-      await env.DB.prepare(`INSERT INTO match_participants(
-        match_id,name,club_number,team_number,logo_url,is_club,display_order
-      ) VALUES(?,?,?,?,?,?,?)`).bind(
-        stored.id, participant.name, participant.club_number || "",
-        participant.team_number || "", participant.logo_url || "",
-        participant.is_club ? 1 : 0, index
-      ).run();
+    const incoming = row.participants.filter((participant: AnyRow) => participant?.name).map((participant: AnyRow, index: number) => ({
+      name: String(participant.name),
+      club_number: String(participant.club_number || ""),
+      team_number: String(participant.team_number || ""),
+      logo_url: String(participant.logo_url || ""),
+      is_club: participant.is_club ? 1 : 0,
+      display_order: index
+    }));
+    const existingResult = await env.DB.prepare(`SELECT name,club_number,team_number,logo_url,is_club,display_order
+      FROM match_participants WHERE match_id=? ORDER BY display_order,id`).bind(stored.id).all<AnyRow>();
+    const existing = (existingResult.results || []).map(participant => ({
+      name: String(participant.name || ""),
+      club_number: String(participant.club_number || ""),
+      team_number: String(participant.team_number || ""),
+      logo_url: String(participant.logo_url || ""),
+      is_club: Number(participant.is_club) === 1 ? 1 : 0,
+      display_order: Number(participant.display_order || 0)
+    }));
+    if (JSON.stringify(existing) !== JSON.stringify(incoming)) {
+      const statements = [env.DB.prepare("DELETE FROM match_participants WHERE match_id=?").bind(stored.id)];
+      for (const participant of incoming) {
+        statements.push(env.DB.prepare(`INSERT INTO match_participants(
+          match_id,name,club_number,team_number,logo_url,is_club,display_order
+        ) VALUES(?,?,?,?,?,?,?)`).bind(
+          stored.id, participant.name, participant.club_number,
+          participant.team_number, participant.logo_url,
+          participant.is_club, participant.display_order
+        ));
+      }
+      await env.DB.batch(statements);
+      participantsChanged = 1;
     }
   }
-  return Number(result.meta.changes || 0);
+  return Number(result.meta.changes || 0) + participantsChanged;
+}
+
+function syncRunData(row: AnyRow | null, detailed = false) {
+  if (!row) return { finished_at: null, last_success_at: null, imported_count: 0, status: "missing", stale: true };
+  const finishedAt = String(row.finished_at || "");
+  const parsed = finishedAt ? Date.parse(finishedAt.endsWith("Z") ? finishedAt : `${finishedAt}Z`) : NaN;
+  const stale = !Number.isFinite(parsed) || Date.now() - parsed > 60 * 60 * 1000;
+  const result: AnyRow = {
+    finished_at: row.finished_at || null,
+    last_success_at: row.last_success_at || null,
+    imported_count: Number(row.imported_count || 0),
+    status: row.status || "missing",
+    stale
+  };
+  if (detailed) {
+    try { result.sources = JSON.parse(row.error_message || "[]"); }
+    catch { result.sources = []; }
+  }
+  return result;
+}
+
+async function latestSyncRun(env: Env) {
+  return env.DB.prepare(`SELECT id,finished_at,status,imported_count,error_message,
+    (SELECT finished_at FROM sync_runs WHERE source='github_actions' AND status='success'
+      ORDER BY id DESC LIMIT 1) AS last_success_at
+    FROM sync_runs WHERE source='github_actions' ORDER BY id DESC LIMIT 1`).first<AnyRow>();
+}
+
+async function recordSyncStatus(request: Request, env: Env) {
+  const supplied = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") || "";
+  if (!env.FCE_SYNC_TOKEN || !secureToken(supplied, env.FCE_SYNC_TOKEN)) {
+    return json({ error: "Jeton de synchronisation invalide" }, 401);
+  }
+  const body = await request.json<AnyRow>().catch(() => null);
+  if (!body || !["success", "partial", "error"].includes(body.status)) {
+    return json({ error: "État de synchronisation invalide" }, 400);
+  }
+  await env.DB.prepare(`INSERT INTO sync_runs(source,finished_at,status,imported_count,error_message)
+    VALUES('github_actions',CURRENT_TIMESTAMP,?,?,?)`).bind(
+    body.status, Number(body.imported_count || 0), JSON.stringify(body.sources || [])
+  ).run();
+  return json({ ok: true });
 }
 
 async function ingestMatches(request: Request, env: Env) {
@@ -501,11 +577,16 @@ async function ingestMatches(request: Request, env: Env) {
       await env.DB.prepare(`UPDATE team_competitions SET
         name=?,team_number=?,category_code=?,competition_name=?,division=?,pool=?,
         last_seen_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
-        WHERE id=?`).bind(
+        WHERE id=? AND (name IS NOT ? OR team_number IS NOT ? OR category_code IS NOT ?
+          OR competition_name IS NOT ? OR division IS NOT ? OR pool IS NOT ?)`).bind(
         official.name || [row.category, official.team_number].filter(Boolean).join(" ") || fffTeamId,
         official.team_number || "", official.category_code || row.category || "",
         official.competition_name || row.competition || "",
-        official.division || "", official.pool || "", entry.id
+        official.division || "", official.pool || "", entry.id,
+        official.name || [row.category, official.team_number].filter(Boolean).join(" ") || fffTeamId,
+        official.team_number || "", official.category_code || row.category || "",
+        official.competition_name || row.competition || "",
+        official.division || "", official.pool || ""
       ).run();
     }
     // Aucune déduction par le libellé U15/U15F : seul l'identifiant FFF exact
@@ -520,12 +601,14 @@ async function ingestMatches(request: Request, env: Env) {
     });
     accepted++;
   }
+  const sourceResults = Array.isArray(body?.sources) ? body.sources : [];
+  const syncStatus = sourceResults.some(source => source?.status === "error") ? "partial" : "success";
   await env.DB.prepare(`INSERT INTO sync_runs(
     source,finished_at,status,imported_count,error_message
-  ) VALUES('github_actions',CURRENT_TIMESTAMP,'success',?,?)`).bind(
-    changed, JSON.stringify(body?.sources || [])
+  ) VALUES('github_actions',CURRENT_TIMESTAMP,?,?,?)`).bind(
+    syncStatus, changed, JSON.stringify(sourceResults)
   ).run();
-  return json({ ok: true, received: rows.length, accepted, changed, discovered });
+  return json({ ok: true, received: rows.length, accepted, changed, discovered, status: syncStatus });
 }
 
 async function syncInstagram(env: Env) {
@@ -557,11 +640,8 @@ async function syncInstagram(env: Env) {
   return count;
 }
 
-async function syncMeta(env: Env) {
-  const row = await env.DB.prepare(`SELECT finished_at,imported_count
-    FROM sync_runs WHERE source='github_actions' AND status='success'
-    ORDER BY id DESC LIMIT 1`).first();
-  return json(row || { finished_at: null, imported_count: 0 });
+async function syncMeta(env: Env, detailed = false) {
+  return json(syncRunData(await latestSyncRun(env), detailed));
 }
 
 export default {
@@ -569,6 +649,9 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === "/internal/sync/matches" && request.method === "POST") {
       return ingestMatches(request, env);
+    }
+    if (url.pathname === "/internal/sync/status" && request.method === "POST") {
+      return recordSyncStatus(request, env);
     }
     if (url.pathname === "/internal/sync/instagram" && request.method === "POST") {
       const supplied = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") || "";
@@ -590,6 +673,10 @@ export default {
       return cachedPageData(request, env, url, ctx);
     }
     if (url.pathname === "/api/match-sync" && request.method === "GET") return syncMeta(env);
+    if (url.pathname === "/admin-api/sync-health" && request.method === "GET") {
+      if (!await admin(request, env)) return json({ error: "Accès administrateur requis" }, 401);
+      return syncMeta(env, true);
+    }
     if (url.pathname === "/admin-api/upload" && request.method === "POST") return upload(request, env);
     if (url.pathname === "/admin-api/import/coaches" && request.method === "POST") return importCoaches(request, env);
     if (url.pathname === "/admin-api/sync/matches" && request.method === "POST") {

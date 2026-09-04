@@ -32,6 +32,19 @@
             <button id="new">+ Ajouter</button>
           </div>
         </div>
+        <div class="sync-health" id="sync-health" aria-live="polite">
+          <div class="sync-health-title">
+            <div><small>Surveillance automatique</small><h2>Synchronisation des rencontres</h2></div>
+            <button id="refresh-health" type="button">Actualiser l’état</button>
+          </div>
+          <div class="sync-health-grid">
+            <div><small>État</small><strong id="health-status">Chargement…</strong></div>
+            <div><small>Dernier passage</small><strong id="health-last-run">—</strong></div>
+            <div><small>Dernier succès complet</small><strong id="health-last-success">—</strong></div>
+            <div><small>Modifications</small><strong id="health-changes">—</strong></div>
+          </div>
+          <div id="health-sources"></div>
+        </div>
         <p id="status"></p>
         <div id="records"></div>
       </section>

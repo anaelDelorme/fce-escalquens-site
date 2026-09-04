@@ -171,6 +171,15 @@ fetch('/api/page/matches').then(async response=>{
   const sync=data.sync||{};
   const node=document.querySelector('#matches-updated');
   if(node&&sync.finished_at)node.textContent=new Date(sync.finished_at+'Z').toLocaleString('fr-FR',{timeZone:'Europe/Paris',dateStyle:'long',timeStyle:'short'});
+  const health=document.querySelector('#matches-health');
+  if(health&&(sync.stale||['partial','error','missing'].includes(sync.status))){
+    health.hidden=false;
+    health.textContent=sync.stale
+      ?'Attention : les rencontres n’ont pas été actualisées depuis plus de 60 heures. Vérifiez les informations sur le site officiel de la FFF.'
+      :sync.status==='partial'
+        ?'La dernière actualisation est partielle. Certaines rencontres peuvent manquer : consultez la source officielle en cas de doute.'
+        :'La dernière actualisation a échoué. Consultez la source officielle avant votre déplacement.';
+  }
   refreshFilterChoices();draw();
 }).catch(error=>{console.error(error);document.querySelector('#matches-page').innerHTML='<div class="empty-state"><b>Les rencontres sont momentanément indisponibles.</b></div>'});
 document.querySelector('#section-filter').onchange=event=>{filters={section:event.target.value,group:'',entry:''};refreshFilterChoices();draw()};

@@ -30,6 +30,27 @@ let current='teams',editing=null,editingRow={},token=sessionStorage.getItem('adm
 const $=selector=>document.querySelector(selector);
 const authHeaders=()=>({'x-requested-with':'XMLHttpRequest',...(token?{authorization:`Bearer ${token}`}:{})}),jsonHeaders=()=>({'content-type':'application/json',...authHeaders()});
 const esc=value=>String(value??'').replace(/[&<>'"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
+const syncDate=value=>value?new Date(String(value).endsWith('Z')?value:`${value}Z`).toLocaleString('fr-FR',{timeZone:'Europe/Paris',dateStyle:'medium',timeStyle:'short'}):'Jamais';
+async function loadHealth(){
+  const panel=$('#sync-health'),button=$('#refresh-health');
+  if(!panel)return;
+  button.disabled=true;
+  try{
+    const response=await fetch('/admin-api/sync-health',{headers:authHeaders()}),data=await response.json();
+    if(!response.ok)throw new Error(data.error||`HTTP ${response.status}`);
+    const state=data.stale?'stale':data.status;
+    const labels={success:'À jour',partial:'Partielle',error:'En échec',stale:'Données anciennes',missing:'Jamais exécutée'};
+    panel.dataset.state=state;
+    $('#health-status').textContent=labels[state]||state;
+    $('#health-last-run').textContent=syncDate(data.finished_at);
+    $('#health-last-success').textContent=syncDate(data.last_success_at);
+    const count=Number(data.imported_count||0);
+    $('#health-changes').textContent=`${count} changement${count>1?'s':''}`;
+    const sourceLabels={fff:'FFF',district:'District',collector:'Collecteur GitHub'};
+    $('#health-sources').innerHTML=(data.sources||[]).map(source=>`<p class="${source.status==='error'?'source-error':'source-ok'}"><b>${esc(sourceLabels[source.source]||source.source)}</b> — ${source.status==='error'?esc(source.error||'indisponible'):`${Number(source.count||0)} rencontre(s) reçue(s)`}</p>`).join('')||'<p>Aucun détail de source enregistré.</p>';
+  }catch(error){panel.dataset.state='error';$('#health-status').textContent='État indisponible';$('#health-sources').textContent=error.message||'Lecture impossible.'}
+  finally{button.disabled=false}
+}
 async function ensureReferences(){if(referencesLoaded)return;const [teams,members,venues,levels,seasons,tournaments,entries]=await Promise.all(['teams','club_members','venues','competition_levels','seasons','tournaments','team_competitions'].map(async resource=>{const response=await fetch(`/admin-api/${resource}`,{headers:authHeaders()});if(!response.ok)throw new Error(response.status===401?'Session Cloudflare expirée. Rechargez la page.':'Données de référence indisponibles.');return response.json()}));references={teams,club_members:members,venues,competition_levels:levels,seasons,tournaments,team_competitions:entries};referencesLoaded=true;}
 async function load(){
   $('#new').hidden=['team_competitions','site_media'].includes(current);
@@ -134,9 +155,11 @@ async function importCsv(){
 async function remove(id){if(!confirm('Supprimer définitivement ?'))return;await fetch(`/admin-api/${current}/${id}`,{method:'DELETE',headers:jsonHeaders()});load()}
 $('#collections').innerHTML=Object.keys(schemas).map(name=>`<button data-name="${name}" class="${name===current?'active':''}">${collectionLabels[name]}</button>`).join('');
 document.querySelectorAll('[data-name]').forEach(button=>button.onclick=()=>{current=button.dataset.name;document.querySelectorAll('[data-name]').forEach(item=>item.classList.toggle('active',item===button));$('#title').textContent=collectionLabels[current];load()});
-$('#title').textContent=collectionLabels[current];$('#new').onclick=()=>open();$('#save').onclick=save;$('#token-button').onclick=()=>{token=prompt('Jeton DEV_ADMIN_TOKEN (uniquement en local)')||'';sessionStorage.setItem('admin-token',token);load()};
+$('#title').textContent=collectionLabels[current];$('#new').onclick=()=>open();$('#save').onclick=save;$('#token-button').onclick=()=>{token=prompt('Jeton DEV_ADMIN_TOKEN (uniquement en local)')||'';sessionStorage.setItem('admin-token',token);load();loadHealth()};
+$('#refresh-health').onclick=loadHealth;
 $('#import-coaches').onclick=()=>{$('#csv-file').value='';$('#csv-status').textContent='';$('#csv-importer').showModal()};
 $('#csv-file').onchange=event=>{event.target.closest('label').querySelector('.file-state').textContent=event.target.files[0]?.name||'Choisir un fichier CSV'};
 $('#csv-submit').onclick=importCsv;
 $('#sync-matches').onclick=async()=>{const button=$('#sync-matches');button.disabled=true;button.textContent='Actualisation…';$('#status').textContent='Récupération FFF et District en cours…';try{const response=await fetch('/admin-api/sync/matches',{method:'POST',headers:jsonHeaders()}),raw=await response.text();let result;try{result=JSON.parse(raw)}catch{const type=response.headers.get('content-type')||'réponse inconnue';throw new Error(`le serveur a renvoyé ${response.status} (${type}) au lieu de JSON. Redéployez le Worker et vérifiez Cloudflare Access.`)}if(!response.ok)throw new Error(result.error||`Synchronisation impossible (HTTP ${response.status})`);const errors=(result.result||[]).filter(item=>item.status==='error');$('#status').textContent=errors.length?`Actualisation partielle : ${errors.map(item=>`${item.source} — ${item.error}`).join(' ; ')}`:'Matchs, résultats, plateaux et logos actualisés.';if(current==='matches')load()}catch(error){$('#status').textContent=`Échec : ${error.message}`}finally{button.disabled=false;button.textContent='Actualiser les matchs'}};load();
 $('#sync-instagram').onclick=async()=>{const button=$('#sync-instagram');button.disabled=true;$('#status').textContent='Actualisation des publications Instagram…';try{const response=await fetch('/admin-api/sync/instagram',{method:'POST',headers:jsonHeaders()}),result=await response.json();if(!response.ok)throw new Error(result.error||'Synchronisation impossible');$('#status').textContent=`${result.imported} publication(s) Instagram actualisée(s).`}catch(error){$('#status').textContent=`Instagram : ${error.message}`}finally{button.disabled=false}};load();
+loadHealth();

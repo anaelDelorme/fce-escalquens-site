@@ -1,6 +1,8 @@
-const SYNC_VERSION='2026.09.03-16',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+const SYNC_VERSION='2026.09.04-17',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 console.log(`Collecteur FCE ${SYNC_VERSION}`);
-const endpoint=process.env.FCE_SITE_URL?.replace(/\/$/,'')+'/internal/sync/matches';
+const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
+const endpoint=siteUrl+'/internal/sync/matches';
+const statusEndpoint=siteUrl+'/internal/sync/status';
 const token=process.env.FCE_SYNC_TOKEN;
 const force=process.env.FORCE_SYNC==='true';
 const parts=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Paris',weekday:'short',hour:'2-digit',hourCycle:'h23'}).formatToParts(new Date()).map(part=>[part.type,part.value]));
@@ -343,18 +345,44 @@ async function collectFFF(){
   return collectEpreuvesFFF();
 }
 async function collectDistrict(){const base='https://haute-garonne.fff.fr/football-animation-et-loisirs/',html=await fetchOk(base,'text',{accept:'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',referer:'https://haute-garonne.fff.fr/','sec-fetch-dest':'document','sec-fetch-mode':'navigate','sec-fetch-site':'same-origin','upgrade-insecure-requests':'1'}),match=html.match(/<div id=["']animation-data["'][^>]*>\s*([\s\S]*?)\s*<\/div>/i);if(!match)throw new Error('District : animation-data introuvable');const data=JSON.parse(match[1]),rows=[];for(const competition of data){if(!competition.clubs?.some(club=>Number(club.cl_no)===Number(CLUB_NO)&&Number(club.cl_cod)===Number(CLUB_CODE)))continue;for(const phase of competition.phases||[])for(const journey of phase.journees||[]){const sites=(phase.secteurs||[]).flatMap(sector=>sector.poules||[]).flatMap(pool=>pool.journees||[]).find(item=>item.fa_jo_no===journey.fa_jo_no)?.sites||[],site=sites.find(item=>Number(item.club_organisateur?.cl_no)===Number(CLUB_NO)||(item.equipes||[]).some(club=>Number(first(club.cl_no,club.club?.cl_no))===Number(CLUB_NO))),kind=phase.fa_mr_cod==='P'?'plateau':'animation';rows.push({source:'district_fal',source_id:`${competition.fa_ep_no}:${phase.fa_ph_no}:${journey.fa_jo_no}`,category:String(competition.fa_ca_lib||competition.fa_ca_cod||''),competition:`${competition.fa_ep_nom} · ${phase.fa_ph_lib}`,starts_at:iso(first(site?.fa_si_date,journey.fa_jo_date),first(site?.fa_si_ho_cod,journey.fa_ho_cod)),venue:text(first(site?.installation,site?.club_organisateur)),home_team:'FC Escalquens',away_team:kind==='plateau'?'Plateau – participants à confirmer':'Rencontre – adversaire à confirmer',status:site?.fa_si_cancelled?'cancelled':'scheduled',event_type:kind,source_url:`${base}?fal_id=${competition.fa_ep_no}&type=fa&clNo=${CLUB_NO}&clCod=${CLUB_CODE}&checkDate=false`,external_updated_at:competition.date_maj,raw_json:{competition:{id:competition.fa_ep_no,name:competition.fa_ep_nom},phase:{id:phase.fa_ph_no,name:phase.fa_ph_lib},journey,site:site||null}})}}return rows.filter(row=>row.starts_at)}
-let rows=[],sources=[];
-try{
-  rows=await collectFFF();
-  sources.push({source:'fff',status:'ok',count:rows.length});
-}catch(error){
-  sources.push({source:'fff',status:'error',error:String(error?.message||error)});
+let latestSources=[];
+async function reportFailure(error){
   try{
-    rows=await collectDistrict();
-    sources.push({source:'district',status:'ok',count:rows.length});
-  }catch(districtError){
-    sources.push({source:'district',status:'error',error:String(districtError?.message||districtError)});
+    const sources=latestSources.length?latestSources:[{source:'collector',status:'error',error:String(error?.message||error)}];
+    if(!sources.some(source=>source.status==='error'))sources.push({source:'collector',status:'error',error:String(error?.message||error)});
+    const response=await fetch(statusEndpoint,{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({status:'error',imported_count:0,sources})});
+    if(!response.ok)console.log(`::warning title=État de synchronisation non enregistré::HTTP ${response.status}`);
+  }catch(reportError){
+    console.log(`::warning title=État de synchronisation non enregistré::${String(reportError?.message||reportError).replace(/\r?\n/g,' ')}`);
   }
 }
-if(!rows.length)throw new Error(`Aucune donnée collectée : ${sources.map(item=>item.status==='ok'?`${item.source} OK (${item.count} rencontre)`: `${item.source} ERREUR — ${item.error}`).join(' ; ')}`);
-const response=await fetch(endpoint,{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({rows,sources})}),raw=await response.text();if(!response.ok)throw new Error(`Import Cloudflare HTTP ${response.status}: ${raw}`);console.log(raw);console.table(sources);for(const source of sources.filter(item=>item.status==='error'))console.log(`::warning title=Source ${source.source} indisponible::${String(source.error).replace(/\r?\n/g,' ')}`);
+async function main(){
+  let rows=[],sources=[];
+  try{
+    rows=await collectFFF();
+    sources.push({source:'fff',status:'ok',count:rows.length});
+  }catch(error){
+    sources.push({source:'fff',status:'error',error:String(error?.message||error)});
+    try{
+      rows=await collectDistrict();
+      sources.push({source:'district',status:'ok',count:rows.length});
+    }catch(districtError){
+      sources.push({source:'district',status:'error',error:String(districtError?.message||districtError)});
+    }
+  }
+  latestSources=sources;
+  if(!rows.length)throw new Error(`Aucune donnée collectée : ${sources.map(item=>item.status==='ok'?`${item.source} OK (${item.count} rencontre)`: `${item.source} ERREUR — ${item.error}`).join(' ; ')}`);
+  const response=await fetch(endpoint,{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({rows,sources})});
+  const raw=await response.text();
+  if(!response.ok)throw new Error(`Import Cloudflare HTTP ${response.status}: ${raw}`);
+  console.log(raw);
+  console.table(sources);
+  const failures=sources.filter(item=>item.status==='error');
+  for(const source of failures)console.log(`::error title=Source ${source.source} indisponible::${String(source.error).replace(/\r?\n/g,' ')}`);
+  if(failures.length){
+    console.error('La synchronisation est partielle : GitHub la signale en échec pour déclencher les alertes. Les données disponibles ont tout de même été importées.');
+    process.exitCode=1;
+  }
+}
+
+try{await main()}catch(error){await reportFailure(error);throw error}
