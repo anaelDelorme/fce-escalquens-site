@@ -58,7 +58,7 @@ function publicJson(data: unknown, status = 200) {
   return Response.json(data, {
     status,
     headers: {
-      "cache-control": "public,max-age=30,s-maxage=120,stale-while-revalidate=300",
+      "cache-control": "public,max-age=0,s-maxage=120,stale-while-revalidate=300",
       "content-type": "application/json;charset=UTF-8"
     }
   });
@@ -257,7 +257,9 @@ async function pageData(env: Env, url: URL) {
 
   if (page === "matches") {
     const [matches, participants, standings, sync, teams, entries] = await env.DB.batch<AnyRow>([
-      env.DB.prepare(`SELECT * FROM matches WHERE season_id IS NULL OR season_id=${activeSeason} ORDER BY starts_at ASC`),
+      env.DB.prepare(`SELECT m.*,
+        (SELECT COUNT(*) FROM plateau_games pg WHERE pg.plateau_match_id=m.id) AS plateau_game_count
+        FROM matches m WHERE m.season_id IS NULL OR m.season_id=${activeSeason} ORDER BY m.starts_at ASC`),
       env.DB.prepare(`SELECT p.* FROM match_participants p JOIN matches m ON m.id=p.match_id
         WHERE m.season_id IS NULL OR m.season_id=${activeSeason} ORDER BY p.match_id,p.display_order`),
       env.DB.prepare(`SELECT * FROM standings WHERE season_id IS NULL OR season_id=${activeSeason} ORDER BY phase_id,position`),
@@ -316,6 +318,22 @@ async function cachedPageData(request: Request, env: Env, url: URL, ctx: Executi
   if (cached) return cached;
   const response = await pageData(env, url);
   if (response.ok) ctx.waitUntil(cache.put(key, response.clone()));
+  return response;
+}
+
+async function cachedPlateauGames(request: Request, env: Env, url: URL, ctx: ExecutionContext) {
+  const plateauId = Number(url.searchParams.get("plateau_id"));
+  if (!Number.isInteger(plateauId) || plateauId <= 0) return publicJson({ error: "Plateau invalide" }, 400);
+  const cache = caches.default;
+  const key = new Request(url.toString(), { method: "GET" });
+  const cached = await cache.match(key);
+  if (cached) return cached;
+  const rows = await env.DB.prepare(`SELECT source_game_id,display_order,home_team,away_team,
+    home_score,away_score,status,home_logo_url,away_logo_url
+    FROM plateau_games WHERE plateau_match_id=? ORDER BY display_order,id LIMIT 100`)
+    .bind(plateauId).all<AnyRow>();
+  const response = publicJson({ games: resultRows(rows) });
+  ctx.waitUntil(cache.put(key, response.clone()));
   return response;
 }
 
@@ -483,7 +501,53 @@ async function upsertMatch(env: Env, row: AnyRow) {
       participantsChanged = 1;
     }
   }
-  return Number(result.meta.changes || 0) + participantsChanged;
+  let gamesChanged = 0;
+  if (stored && Array.isArray(row.plateau_games)) {
+    const incoming = row.plateau_games.filter((game: AnyRow) => game?.home_team && game?.away_team)
+      .map((game: AnyRow, index: number) => ({
+        source_game_id: String(game.source_game_id || `${index + 1}`),
+        display_order: index,
+        home_team: String(game.home_team),
+        away_team: String(game.away_team),
+        home_score: game.home_score === null || game.home_score === undefined || game.home_score === "" ? null : Number(game.home_score),
+        away_score: game.away_score === null || game.away_score === undefined || game.away_score === "" ? null : Number(game.away_score),
+        status: String(game.status || "scheduled"),
+        home_logo_url: String(game.home_logo_url || ""),
+        away_logo_url: String(game.away_logo_url || ""),
+        raw_json: JSON.stringify(game.raw_json || game)
+      }));
+    const existingResult = await env.DB.prepare(`SELECT source_game_id,display_order,home_team,away_team,
+      home_score,away_score,status,home_logo_url,away_logo_url
+      FROM plateau_games WHERE plateau_match_id=? ORDER BY display_order,id`).bind(stored.id).all<AnyRow>();
+    const existing = (existingResult.results || []).map(game => ({
+      source_game_id: String(game.source_game_id || ""),
+      display_order: Number(game.display_order || 0),
+      home_team: String(game.home_team || ""),
+      away_team: String(game.away_team || ""),
+      home_score: game.home_score === null || game.home_score === undefined ? null : Number(game.home_score),
+      away_score: game.away_score === null || game.away_score === undefined ? null : Number(game.away_score),
+      status: String(game.status || "scheduled"),
+      home_logo_url: String(game.home_logo_url || ""),
+      away_logo_url: String(game.away_logo_url || "")
+    }));
+    const incomingComparable = incoming.map(({ raw_json: _rawJson, ...game }) => game);
+    if (JSON.stringify(existing) !== JSON.stringify(incomingComparable)) {
+      const statements = [env.DB.prepare("DELETE FROM plateau_games WHERE plateau_match_id=?").bind(stored.id)];
+      for (const game of incoming) {
+        statements.push(env.DB.prepare(`INSERT INTO plateau_games(
+          plateau_match_id,source_game_id,display_order,home_team,away_team,home_score,away_score,
+          status,home_logo_url,away_logo_url,raw_json
+        ) VALUES(?,?,?,?,?,?,?,?,?,?,?)`).bind(
+          stored.id, game.source_game_id, game.display_order, game.home_team, game.away_team,
+          game.home_score, game.away_score, game.status, game.home_logo_url, game.away_logo_url,
+          game.raw_json
+        ));
+      }
+      await env.DB.batch(statements);
+      gamesChanged = 1;
+    }
+  }
+  return Number(result.meta.changes || 0) + participantsChanged + gamesChanged;
 }
 
 function syncRunData(row: AnyRow | null, detailed = false) {
@@ -600,12 +664,48 @@ async function ingestMatches(request: Request, env: Env) {
   }
   const sourceResults = Array.isArray(body?.sources) ? body.sources : [];
   const syncStatus = sourceResults.some(source => source?.status === "error") ? "partial" : "success";
+  // Un ancien collecteur FAL utilisait un identifiant à trois segments. Après
+  // une collecte FFF complète, les plateaux absents du lot courant sont donc
+  // des doublons obsolètes. Les ajouts manuels utilisent une autre source.
+  let removedPlateauDuplicates = 0;
+  if (syncStatus === "success") {
+    const currentPlateaux = rows
+      .filter(row => row.source === "district_fal" && ["plateau", "animation"].includes(row.event_type))
+      .map(row => String(row.source_id));
+    if (currentPlateaux.length) {
+      const deleted = await env.DB.prepare(`DELETE FROM matches
+        WHERE source='district_fal' AND manually_created=0 AND (season_id=? OR season_id IS NULL)
+        AND event_type IN ('plateau','animation')
+        AND source_id NOT IN (${currentPlateaux.map(() => "?").join(",")})`)
+        .bind(seasonId, ...currentPlateaux).run();
+      removedPlateauDuplicates = Number(deleted.meta.changes || 0);
+    }
+  }
   await env.DB.prepare(`INSERT INTO sync_runs(
     source,finished_at,status,imported_count,error_message
   ) VALUES('github_actions',CURRENT_TIMESTAMP,?,?,?)`).bind(
     syncStatus, changed, JSON.stringify(sourceResults)
   ).run();
-  return json({ ok: true, received: rows.length, accepted, changed, discovered, status: syncStatus });
+  // Les pages publiques sont mises en cache pour économiser D1. Une collecte
+  // réussie doit toutefois rendre immédiatement visibles les nouveaux scores.
+  const origin = new URL(request.url).origin;
+  const cache = caches.default;
+  const cacheKeys = [
+    new Request(`${origin}/api/page/matches`),
+    new Request(`${origin}/api/page/matches?v=19`),
+    new Request(`${origin}/api/page/home`)
+  ];
+  const currentPlateauIds = await env.DB.prepare(`SELECT id FROM matches
+    WHERE source='district_fal' AND (season_id=? OR season_id IS NULL)
+    AND event_type IN ('plateau','animation')`).bind(seasonId).all<{ id: number }>();
+  for (const plateau of currentPlateauIds.results || []) {
+    cacheKeys.push(new Request(`${origin}/api/plateau-games?plateau_id=${plateau.id}`));
+  }
+  await Promise.all(cacheKeys.map(key => cache.delete(key)));
+  return json({
+    ok: true, received: rows.length, accepted, changed, discovered,
+    removed_plateau_duplicates: removedPlateauDuplicates, status: syncStatus
+  });
 }
 
 async function syncMeta(env: Env, detailed = false) {
@@ -631,6 +731,9 @@ export default {
     }
     if (request.method === "GET" && url.pathname.startsWith("/api/page/")) {
       return cachedPageData(request, env, url, ctx);
+    }
+    if (url.pathname === "/api/plateau-games" && request.method === "GET") {
+      return cachedPlateauGames(request, env, url, ctx);
     }
     if (url.pathname === "/api/match-sync" && request.method === "GET") return syncMeta(env);
     if (url.pathname === "/admin-api/sync-health" && request.method === "GET") {
