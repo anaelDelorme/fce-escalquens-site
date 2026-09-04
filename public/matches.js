@@ -207,7 +207,7 @@ function draw(){
   wirePlateauDetails();
 }
 
-fetch('/api/page/matches').then(async response=>{
+fetch('/api/page/matches?v=19').then(async response=>{
   const data=await response.json();
   if(!response.ok)throw new Error(data.error||`Rencontres : ${response.status}`);
   return data;
