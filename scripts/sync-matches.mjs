@@ -1,4 +1,4 @@
-const SYNC_VERSION='2026.09.04-19',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+const SYNC_VERSION='2026.09.04-20',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 console.log(`Collecteur FCE ${SYNC_VERSION}`);
 const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
 const endpoint=siteUrl+'/internal/sync/matches';
@@ -175,7 +175,7 @@ async function fetchZenRows(targetUrls){
           const when=new Date(site.date||site.joDate).getTime();
           const ep=site.epreuve?.epNo,po=site.poNo,jo=site.joNo,si=site.siNo;
           if(when<plateauMin||when>plateauMax||!ep||!po||!jo||!si)continue;
-          const key=[ep,site.phNo,jo,si].join(':');
+          const key=[ep,jo,si].join(':');
           plateauSites.set(key,{key,url:\`https://epreuves.fff.fr/animation-loisir/cdg/${DISTRICT_NO}/club/${CLUB_NO}/epreuve/\${ep}/poule/\${po}/journee/\${jo}/site/\${si}/matchs\`});
         }
       }catch{}
@@ -228,6 +228,7 @@ async function fetchZenRows(targetUrls){
   console.log(`FFF : ${payloads.detailCount} détail(s) de match reçu(s), dont ${payloads.venueDetailCount} avec un terrain.`);
   const plateauGameCount=payloads.falGamePayloads.reduce((total,entry)=>total+normalizeFalGames(entry.payload).length,0);
   console.log(`FFF : ${payloads.falGamePayloads.length} page(s) de détail de plateau ciblée(s), ${plateauGameCount} mini-match(s) trouvé(s), sans crédit ZenRows supplémentaire.`);
+  if(payloads.falGamePayloads.length)console.log(`FFF : rattachement des mini-matchs — ${payloads.falGamePayloads.map(entry=>`${entry.payload?.site_key||'clé inconnue'}=${normalizeFalGames(entry.payload).length}`).join(', ')}.`);
   if(payloads.matchMonths!==12||payloads.falMonths!==12)throw new Error(`calendrier incomplet : matchs ${payloads.matchMonths}/12, plateaux ${payloads.falMonths}/12`);
   return payloads;
 }
@@ -372,7 +373,8 @@ function normalizeEpreuvesFal(payload,falGamePayloads=[]){
     // des sites différents (cas fréquent lorsqu'un groupe engage U9-1/2/3).
     const sourceId=[epreuve.epNo,site.phNo,site.joNo,site.siNo].filter(value=>value!==undefined&&value!==null&&value!=='').join(':');
     const sourceUrl=`https://epreuves.fff.fr/animation-loisir/cdg/${DISTRICT_NO}/club/${CLUB_NO}/epreuve/${epreuve.epNo}/poule/${site.poNo}/journee/${site.joNo}/site/${site.siNo}/matchs`;
-    const plateauGames=gameDetails.has(sourceId)?normalizeFalGames(gameDetails.get(sourceId)):[];
+    const gameDetailKey=[epreuve.epNo,site.joNo,site.siNo].join(':');
+const plateauGames=gameDetails.has(gameDetailKey)?normalizeFalGames(gameDetails.get(gameDetailKey)):[];
     const organizer=site.organisateur?.clNom||'';
     const participants=(site.equipes||[]).map(team=>({
       name:team.eqNom||team.club?.clNom||team.club?.nom||'Équipe',
