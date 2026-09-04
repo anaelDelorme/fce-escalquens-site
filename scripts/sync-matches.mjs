@@ -1,4 +1,4 @@
-const SYNC_VERSION='2026.09.04-17',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+const SYNC_VERSION='2026.09.04-18',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 console.log(`Collecteur FCE ${SYNC_VERSION}`);
 const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
 const endpoint=siteUrl+'/internal/sync/matches';
@@ -57,6 +57,16 @@ const embeddedPayloadsByPrefix=(html,prefix)=>{
   }
   return results;
 };
+const embeddedEntriesByPrefix=(html,prefix)=>{
+  const results=[],pattern=new RegExp(`<script[^>]+id=["'](${prefix}[^"']*)["'][^>]*>([\\s\\S]*?)<\\/script>`,'gi');
+  for(const match of String(html||'').matchAll(pattern)){
+    try{
+      const envelope=parseJson(match[2],prefix);
+      if(envelope.status===200)results.push({id:match[1],payload:parseJson(envelope.body,prefix)});
+    }catch{}
+  }
+  return results;
+};
 const mergeMatchPayloads=payloads=>{
   const unique=new Map();
   for(const payload of payloads){
@@ -96,6 +106,7 @@ const epreuvesPayloadFromZenRows=body=>{
   const matchPayloads=Array.from({length:12},(_,index)=>embeddedPayloadFromHtml(html,`fce-matches-${index}`)).filter(Boolean);
   const falPayloads=Array.from({length:12},(_,index)=>embeddedPayloadFromHtml(html,`fce-fal-${index}`)).filter(Boolean);
   const detailPayloads=embeddedPayloadsByPrefix(html,'fce-detail-');
+  const falGamePayloads=embeddedEntriesByPrefix(html,'fce-fal-games-');
   const venueDetails=detailPayloads.filter(payload=>{
     const item=payload?.donneesFormatees||payload||{};
     return /"(?:terrain|installation|stade)"\s*:/.test(JSON.stringify(item));
@@ -103,7 +114,8 @@ const epreuvesPayloadFromZenRows=body=>{
   return {
     matches:mergeMatchPayloads([...matchPayloads,...detailPayloads]),fal:mergeFalPayloads(falPayloads),
     matchMonths:matchPayloads.length,falMonths:falPayloads.length,
-    detailCount:detailPayloads.length,venueDetailCount:venueDetails
+    detailCount:detailPayloads.length,venueDetailCount:venueDetails,
+    falGamePayloads
   };
 };
 async function fetchZenRows(targetUrls){
@@ -152,6 +164,41 @@ async function fetchZenRows(targetUrls){
       }catch{}
     }
     await Promise.all([...details].flatMap(([id,paths])=>paths.map((path,index)=>fetchOne(\`fce-detail-\${id}-\${index}\`,new URL(path,'https://epreuves.fff.fr').href))));
+    // Les mini-matchs d'un plateau sont chargés depuis la page SSR dédiée.
+    // On ne cible que J-14 à J+21 : les résultats déjà importés restent en
+    // base, et on évite de recharger inutilement tous les plateaux de l'année.
+    const plateauMin=Date.now()-14*86400000,plateauMax=Date.now()+21*86400000,plateauSites=new Map();
+    for(const result of saved.filter(item=>item.id.startsWith('fce-fal-')&&item.status===200)){
+      try{
+        const payload=JSON.parse(result.body);
+        for(const site of [...(payload.sites||[]),...(payload.sitesWithoutDate||[])]){
+          const when=new Date(site.date||site.joDate).getTime();
+          const ep=site.epreuve?.epNo,po=site.poNo,jo=site.joNo,si=site.siNo;
+          if(when<plateauMin||when>plateauMax||!ep||!po||!jo||!si)continue;
+          const key=[ep,site.phNo,jo,si].join(':');
+          plateauSites.set(key,{key,url:\`https://epreuves.fff.fr/animation-loisir/cdg/${DISTRICT_NO}/club/${CLUB_NO}/epreuve/\${ep}/poule/\${po}/journee/\${jo}/site/\${si}/matchs\`});
+        }
+      }catch{}
+    }
+    const fetchPlateau=async({key,url})=>{
+      let status=0,body='';
+      try{
+        const response=await fetch(url,{credentials:'include',headers:{Accept:'text/html,application/xhtml+xml'}});
+        status=response.status;
+        const html=await response.text();
+        const stateText=html.match(/<script[^>]+id=["']ng-state["'][^>]*>([\\s\\S]*?)<\\/script>/i)?.[1]||'';
+        const state=stateText?JSON.parse(stateText):[];
+        const entries=(Array.isArray(state)?state:[state]).flatMap(item=>Object.entries(item||{}));
+        const apiPayloads=entries
+          .filter(([name,value])=>name.includes('/api/fal/')&&value?.status===200&&value?.body)
+          .map(([name,value])=>({name,body:value.body}));
+        body=JSON.stringify({site_key:key,api_payloads:apiPayloads});
+      }catch(error){body=JSON.stringify({site_key:key,fce_error:String(error)})}
+      const output=document.createElement('script');
+      output.type='application/json';output.id=\`fce-fal-games-\${key.replaceAll(':','-')}\`;
+      output.textContent=JSON.stringify({status,body});document.body.appendChild(output);
+    };
+    await Promise.all([...plateauSites.values()].map(fetchPlateau));
     document.documentElement.setAttribute('data-fce-sync-done','1');
   })()`;
   const instructions=[
@@ -179,6 +226,8 @@ async function fetchZenRows(targetUrls){
   const payloads=epreuvesPayloadFromZenRows(body);
   console.log(`FFF : ${payloads.matchMonths}/12 mois de matchs et ${payloads.falMonths}/12 mois de plateaux capturés.`);
   console.log(`FFF : ${payloads.detailCount} détail(s) de match reçu(s), dont ${payloads.venueDetailCount} avec un terrain.`);
+  const plateauGameCount=payloads.falGamePayloads.reduce((total,entry)=>total+normalizeFalGames(entry.payload).length,0);
+  console.log(`FFF : ${payloads.falGamePayloads.length} page(s) de détail de plateau ciblée(s), ${plateauGameCount} mini-match(s) trouvé(s), sans crédit ZenRows supplémentaire.`);
   if(payloads.matchMonths!==12||payloads.falMonths!==12)throw new Error(`calendrier incomplet : matchs ${payloads.matchMonths}/12, plateaux ${payloads.falMonths}/12`);
   return payloads;
 }
@@ -258,8 +307,62 @@ function normalizeEpreuves(items){
   }
   return [...matches.values()];
 }
-function normalizeEpreuvesFal(payload){
+const falTeamName=team=>typeof team==='string'?team:text(first(
+  team?.eqNom,team?.nom,team?.name,team?.label,team?.club?.clNom,
+  team?.club?.nom,team?.club?.name
+));
+const falTeamLogo=team=>cleanUrl(first(team?.logo,team?.logoUrl,team?.club?.logo,team?.club?.logoUrl));
+const falScore=(game,team,side)=>{
+  const home=side==='home';
+  const value=first(
+    team?.buts,team?.score,team?.nbButs,
+    home?game.home_score:game.away_score,
+    home?game.homeScore:game.awayScore,
+    home?game.scoreEquipe1:game.scoreEquipe2,
+    home?game.score1:game.score2,
+    home?game.butsEquipe1:game.butsEquipe2,
+    home?game.butsRecevant:game.butsVisiteur,
+    home?game.scoreRecevant:game.scoreVisiteur
+  );
+  const number=numberOrNull(value);
+  return Number.isFinite(number)?number:null;
+};
+const falPair=game=>[
+  [game?.recevant,game?.visiteur],
+  [game?.equipe1,game?.equipe2],
+  [game?.equipeA,game?.equipeB],
+  [game?.home,game?.away],
+  [game?.domicile,game?.exterieur],
+  [game?.homeTeam,game?.awayTeam]
+].find(([home,away])=>falTeamName(home)&&falTeamName(away));
+function normalizeFalGames(detail){
+  const found=new Map();
+  const visit=(value,depth=0)=>{
+    if(!value||depth>8)return;
+    if(Array.isArray(value)){for(const item of value)visit(item,depth+1);return}
+    if(typeof value!=='object')return;
+    const pair=falPair(value);
+    if(pair){
+      const [home,away]=pair,homeTeam=falTeamName(home),awayTeam=falTeamName(away);
+      const homeScore=falScore(value,home,'home'),awayScore=falScore(value,away,'away');
+      const officialId=first(value.maNo,value.matchId,value.match_id,value.mrNo,value.id,value['@id']);
+      const key=String(officialId||`${homeTeam}|${awayTeam}|${homeScore??''}|${awayScore??''}`);
+      if(!found.has(key))found.set(key,{
+        source_game_id:key,home_team:homeTeam,away_team:awayTeam,
+        home_score:homeScore,away_score:awayScore,
+        status:homeScore!==null&&awayScore!==null?'finished':value.isCancelled||value.annule?'cancelled':'scheduled',
+        home_logo_url:falTeamLogo(home),away_logo_url:falTeamLogo(away),raw_json:value
+      });
+      return;
+    }
+    for(const child of Object.values(value))visit(child,depth+1);
+  };
+  for(const entry of detail?.api_payloads||[])visit(entry?.body);
+  return [...found.values()];
+}
+function normalizeEpreuvesFal(payload,falGamePayloads=[]){
   const rows=new Map();
+  const gameDetails=new Map(falGamePayloads.map(entry=>[String(entry?.payload?.site_key||''),entry?.payload||{}]));
   for(const site of [...(payload?.sites||[]),...(payload?.sitesWithoutDate||[])]){
     const epreuve=site.epreuve||{};
     const clubTeam=(site.equipes||[]).find(team=>String(team.club?.clNo)===CLUB_NO);
@@ -268,6 +371,8 @@ function normalizeEpreuvesFal(payload){
     // siNo évite d'écraser deux plateaux de la même journée organisés sur
     // des sites différents (cas fréquent lorsqu'un groupe engage U9-1/2/3).
     const sourceId=[epreuve.epNo,site.phNo,site.joNo,site.siNo].filter(value=>value!==undefined&&value!==null&&value!=='').join(':');
+    const sourceUrl=`https://epreuves.fff.fr/animation-loisir/cdg/${DISTRICT_NO}/club/${CLUB_NO}/epreuve/${epreuve.epNo}/poule/${site.poNo}/journee/${site.joNo}/site/${site.siNo}/matchs`;
+    const plateauGames=gameDetails.has(sourceId)?normalizeFalGames(gameDetails.get(sourceId)):[];
     const organizer=site.organisateur?.clNom||'';
     const participants=(site.equipes||[]).map(team=>({
       name:team.eqNom||team.club?.clNom||team.club?.nom||'Équipe',
@@ -300,12 +405,13 @@ function normalizeEpreuvesFal(payload){
       longitude:numberOrNull(first(site.terrain?.longitude,site.terrain?.lng,site.terrain?.lon,site.longitude)),
       home_team:'FC Escalquens',away_team:awayLabel,
       status:site.isCancelled?'cancelled':'scheduled',event_type:'plateau',
-      source_url:`https://epreuves.fff.fr/competition/club/${CLUB_CODE}-escalquens-fc/club`,
+      source_url:sourceUrl,
       external_updated_at:null,
       home_logo_url:cleanUrl(payload?.logo),
       away_logo_url:organizerIsClub?'':cleanUrl(site.organisateur?.logo),
       time_confirmed:site.heureCommuniquee!==false,
       participants,
+      ...(plateauGames.length?{plateau_games:plateauGames}:{}),
       raw_json:site
     };
     if(sourceId)rows.set(sourceId,row);
@@ -336,7 +442,7 @@ async function collectEpreuvesFFF(){
   const items=payloadItems(payloads.matches);
   const total=Number(payloads.matches['hydra:totalItems']??items.length);
   if(total>items.length)throw new Error(`FFF annonce ${total} matchs mais n'en renvoie que ${items.length}; pagination à ajouter avant import`);
-  const matches=normalizeEpreuves(items),plateaux=normalizeEpreuvesFal(payloads.fal);
+  const matches=normalizeEpreuves(items),plateaux=normalizeEpreuvesFal(payloads.fal,payloads.falGamePayloads);
   if(!matches.length&&!plateaux.length)throw new Error('FFF a renvoyé zéro match et zéro plateau sur les douze mois');
   console.log(`FFF : ${matches.length} matchs et ${plateaux.length} plateaux reçus via ${transport}.`);
   return [...matches,...plateaux];

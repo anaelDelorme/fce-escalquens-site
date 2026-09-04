@@ -8,6 +8,7 @@ const statusLabels={postponed:'Reporté',cancelled:'Annulé'};
 let matches=[],participants=[],standings=[],teams=[],entries=[],tab='upcoming';
 let filters={section:'',group:'',entry:''};
 const now=new Date();
+const plateauGamesCache=new Map();
 
 const mapsUrl=row=>row.latitude!=null&&row.longitude!=null
   ?`https://www.google.com/maps/search/?api=1&query=${row.latitude},${row.longitude}`
@@ -83,6 +84,49 @@ const participantList=(row,rows=matchParticipants(row))=>{
     ?`<div>${rows.map(item=>`<span class="${[Number(item.is_club)===1?'our-team':'',item.is_host?'host-team':''].filter(Boolean).join(' ')}">${logo(item.logo_url,item.name)}<span class="participant-copy"><b>${esc(item.name)}</b>${item.is_host?'<small>Organisateur</small>':''}</span></span>`).join('')}</div>`
     :'<p class="participant-empty">La liste complète des équipes sera publiée dès sa confirmation par le District.</p>'}</div>`;
 };
+const plateauGameScore=game=>{
+  if(game.status==='cancelled')return '<span class="plateau-game-status">Annulé</span>';
+  if(game.home_score!=null&&game.away_score!=null)return `<strong class="plateau-game-score">${esc(game.home_score)}<i>:</i>${esc(game.away_score)}</strong>`;
+  return '<span class="plateau-game-status">Score à venir</span>';
+};
+const plateauGamesHtml=games=>games.length
+  ?`<div class="plateau-games-list">${games.map((game,index)=>`<div class="plateau-game-row">
+      <small>Match ${index+1}</small>
+      <div class="plateau-game-team">${logo(game.home_logo_url,game.home_team)}<b>${esc(game.home_team)}</b></div>
+      ${plateauGameScore(game)}
+      <div class="plateau-game-team">${logo(game.away_logo_url,game.away_team)}<b>${esc(game.away_team)}</b></div>
+    </div>`).join('')}</div>`
+  :'<p class="participant-empty">Le programme détaillé n’est pas encore communiqué par la FFF.</p>';
+const plateauProgram=row=>{
+  const count=Number(row.plateau_game_count||0);
+  if(!count)return '<div class="plateau-program-empty">Programme détaillé non communiqué</div>';
+  return `<div class="plateau-program">
+    <button type="button" data-plateau-games="${esc(row.id)}" aria-expanded="false">Voir les ${count} matchs du plateau <span>↓</span></button>
+    <div class="plateau-games-detail" data-plateau-detail="${esc(row.id)}" hidden></div>
+  </div>`;
+};
+const wirePlateauDetails=()=>{
+  document.querySelectorAll('[data-plateau-games]').forEach(button=>button.onclick=async()=>{
+    const id=button.dataset.plateauGames,detail=document.querySelector(`[data-plateau-detail="${id}"]`);
+    const opening=button.getAttribute('aria-expanded')!=='true';
+    button.setAttribute('aria-expanded',String(opening));
+    button.querySelector('span').textContent=opening?'↑':'↓';
+    detail.hidden=!opening;
+    if(!opening||detail.dataset.loaded==='1')return;
+    detail.innerHTML='<p class="plateau-games-loading">Chargement du programme…</p>';
+    try{
+      if(!plateauGamesCache.has(id)){
+        const response=await fetch(`/api/plateau-games?plateau_id=${encodeURIComponent(id)}`);
+        const data=await response.json();
+        if(!response.ok)throw new Error(data.error||`HTTP ${response.status}`);
+        plateauGamesCache.set(id,data.games||[]);
+      }
+      detail.innerHTML=plateauGamesHtml(plateauGamesCache.get(id));detail.dataset.loaded='1';
+    }catch(error){
+      console.error(error);detail.innerHTML='<p class="participant-empty">Le détail des matchs est momentanément indisponible.</p>';
+    }
+  });
+};
 const matchCard=row=>{
   const plateau=row.event_type==='plateau'||row.event_type==='animation';
   const plateauTeams=plateau?matchParticipants(row):[];
@@ -97,6 +141,7 @@ const matchCard=row=>{
     ${plateau?`
       <div class="event-summary">${scoreOrTime(row)}<div><b>${plateauTeams.length?`${plateauTeams.length} équipe${plateauTeams.length>1?'s':''} annoncée${plateauTeams.length>1?'s':''}`:'Équipes à confirmer'}</b><span>${esc(row.category||'Football animation')}</span></div></div>
       ${participantList(row,plateauTeams)}
+      ${plateauProgram(row)}
     `:`
       <div class="scoreboard">
         <div class="match-team">${logo(row.home_logo_url,row.home_team)}<b>${esc(row.home_team)}</b></div>
@@ -159,6 +204,7 @@ function draw(){
     return inTab&&filtered(row);
   }).sort((a,b)=>tab==='upcoming'?new Date(a.starts_at)-new Date(b.starts_at):new Date(b.starts_at)-new Date(a.starts_at));
   document.querySelector('#matches-page').innerHTML=rows.map(matchCard).join('')||'<div class="empty-state"><b>Aucune rencontre dans cette vue.</b></div>';
+  wirePlateauDetails();
 }
 
 fetch('/api/page/matches').then(async response=>{
