@@ -6,9 +6,6 @@ interface Env {
   TEST_SITE_PASSWORD?: string;
   TEST_SITE_USER?: string;
   FCE_SYNC_TOKEN?: string;
-  INSTAGRAM_ACCESS_TOKEN?: string;
-  INSTAGRAM_USER_ID?: string;
-  INSTAGRAM_GRAPH_BASE?: string;
 }
 
 type AnyRow = Record<string, any>;
@@ -242,7 +239,7 @@ async function pageData(env: Env, url: URL) {
   }
 
   if (page === "home") {
-    const [teams, matches, results, posts, sponsors, media] = await env.DB.batch<AnyRow>([
+    const [teams, matches, results, sponsors, media] = await env.DB.batch<AnyRow>([
       env.DB.prepare(`SELECT id,slug,name,group_name,level,category FROM teams
         WHERE active=1 ORDER BY name COLLATE NOCASE ASC`),
       env.DB.prepare(`SELECT id,starts_at,category,competition,home_team,away_team,home_score,away_score,status FROM matches
@@ -252,11 +249,10 @@ async function pageData(env: Env, url: URL) {
         WHERE (season_id IS NULL OR season_id=${activeSeason})
         AND (status='finished' OR (home_score IS NOT NULL AND away_score IS NOT NULL))
         ORDER BY starts_at DESC LIMIT 3`),
-      env.DB.prepare("SELECT permalink,caption,media_type,media_url,thumbnail_url FROM social_posts WHERE platform='instagram' ORDER BY published_at DESC LIMIT 6"),
       env.DB.prepare("SELECT name,logo_key,website_url,tier FROM sponsors WHERE active=1 ORDER BY display_order,name COLLATE NOCASE"),
       env.DB.prepare("SELECT slot,object_key,alt_text FROM site_media WHERE slot IN ('home_collective','home_story')")
     ]);
-    return publicJson({ teams: resultRows(teams), matches: resultRows(matches), results: resultRows(results), social_posts: resultRows(posts), sponsors: resultRows(sponsors), site_media: resultRows(media) });
+    return publicJson({ teams: resultRows(teams), matches: resultRows(matches), results: resultRows(results), sponsors: resultRows(sponsors), site_media: resultRows(media) });
   }
 
   if (page === "matches") {
@@ -493,8 +489,9 @@ async function upsertMatch(env: Env, row: AnyRow) {
 function syncRunData(row: AnyRow | null, detailed = false) {
   if (!row) return { finished_at: null, last_success_at: null, imported_count: 0, status: "missing", stale: true };
   const finishedAt = String(row.finished_at || "");
-  const parsed = finishedAt ? Date.parse(finishedAt.endsWith("Z") ? finishedAt : `${finishedAt}Z`) : NaN;
-  const stale = !Number.isFinite(parsed) || Date.now() - parsed > 60 * 60 * 1000;
+  const normalizedFinishedAt = finishedAt.replace(" ", "T");
+  const parsed = normalizedFinishedAt ? Date.parse(normalizedFinishedAt.endsWith("Z") ? normalizedFinishedAt : `${normalizedFinishedAt}Z`) : NaN;
+  const stale = !Number.isFinite(parsed) || Date.now() - parsed > 60 * 60 * 60 * 1000;
   const result: AnyRow = {
     finished_at: row.finished_at || null,
     last_success_at: row.last_success_at || null,
@@ -611,35 +608,6 @@ async function ingestMatches(request: Request, env: Env) {
   return json({ ok: true, received: rows.length, accepted, changed, discovered, status: syncStatus });
 }
 
-async function syncInstagram(env: Env) {
-  if (!env.INSTAGRAM_ACCESS_TOKEN || !env.INSTAGRAM_USER_ID) {
-    throw new Error("Instagram n’est pas encore configuré");
-  }
-  const base = env.INSTAGRAM_GRAPH_BASE || "https://graph.instagram.com";
-  const url = new URL(`${base}/${env.INSTAGRAM_USER_ID}/media`);
-  url.searchParams.set("fields", "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp");
-  url.searchParams.set("limit", "12");
-  url.searchParams.set("access_token", env.INSTAGRAM_ACCESS_TOKEN);
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`Instagram HTTP ${response.status}`);
-  const payload = await response.json<{ data?: AnyRow[] }>();
-  let count = 0;
-  for (const post of payload.data || []) {
-    await env.DB.prepare(`INSERT INTO social_posts(
-      platform,source_id,permalink,caption,media_type,media_url,thumbnail_url,published_at
-    ) VALUES('instagram',?,?,?,?,?,?,?)
-    ON CONFLICT(platform,source_id) DO UPDATE SET
-      permalink=excluded.permalink,caption=excluded.caption,media_type=excluded.media_type,
-      media_url=excluded.media_url,thumbnail_url=excluded.thumbnail_url,
-      published_at=excluded.published_at,synced_at=CURRENT_TIMESTAMP`).bind(
-      post.id, post.permalink || "", post.caption || "", post.media_type || "IMAGE",
-      post.media_url || "", post.thumbnail_url || "", post.timestamp || new Date().toISOString()
-    ).run();
-    count++;
-  }
-  return count;
-}
-
 async function syncMeta(env: Env, detailed = false) {
   return json(syncRunData(await latestSyncRun(env), detailed));
 }
@@ -652,14 +620,6 @@ export default {
     }
     if (url.pathname === "/internal/sync/status" && request.method === "POST") {
       return recordSyncStatus(request, env);
-    }
-    if (url.pathname === "/internal/sync/instagram" && request.method === "POST") {
-      const supplied = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") || "";
-      if (!env.FCE_SYNC_TOKEN || !secureToken(supplied, env.FCE_SYNC_TOKEN)) {
-        return json({ error: "Jeton de synchronisation invalide" }, 401);
-      }
-      try { return json({ ok: true, imported: await syncInstagram(env) }); }
-      catch (error) { return json({ error: error instanceof Error ? error.message : String(error) }, 503); }
     }
     const gate = testGate(request, env);
     if (gate) return gate;
@@ -681,11 +641,6 @@ export default {
     if (url.pathname === "/admin-api/import/coaches" && request.method === "POST") return importCoaches(request, env);
     if (url.pathname === "/admin-api/sync/matches" && request.method === "POST") {
       return json({ error: "Lancez l’action « Synchroniser les matchs » dans GitHub. Elle utilise ZenRows uniquement aux six horaires prévus." }, 409);
-    }
-    if (url.pathname === "/admin-api/sync/instagram" && request.method === "POST") {
-      if (!await admin(request, env)) return json({ error: "Accès administrateur requis" }, 401);
-      try { return json({ ok: true, imported: await syncInstagram(env) }); }
-      catch (error) { return json({ error: error instanceof Error ? error.message : String(error) }, 503); }
     }
     if (url.pathname.startsWith("/admin-api/") || url.pathname.startsWith("/api/")) {
       return api(request, env, url);
