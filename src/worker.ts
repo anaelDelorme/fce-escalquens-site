@@ -198,7 +198,7 @@ async function pageData(env: Env, url: URL) {
       FROM teams t LEFT JOIN site_media sm ON sm.slot='team_default'
       WHERE t.slug=? AND t.active=1 LIMIT 1`).bind(slug).first<AnyRow>();
     if (!team) return publicJson({ error: "Équipe introuvable" }, 404);
-    const [entries, staff, sessions, upcoming, results] = await env.DB.batch<AnyRow>([
+    const [entries, staff, sessions, upcoming, results, participants] = await env.DB.batch<AnyRow>([
       env.DB.prepare(`SELECT id,name,division,competition_name,pool FROM team_competitions
         WHERE team_id=? AND active=1 AND (season_id IS NULL OR season_id=${activeSeason})
         ORDER BY display_order,name`).bind(team.id),
@@ -214,15 +214,21 @@ async function pageData(env: Env, url: URL) {
         WHERE s.team_id=? AND s.active=1 AND (s.season_id IS NULL OR s.season_id=${activeSeason})
         ORDER BY s.weekday,s.starts_at`).bind(team.id),
       env.DB.prepare(`SELECT id,starts_at,competition,event_type,time_confirmed,status,venue,venue_address,
-        home_team,away_team,home_logo_url,away_logo_url,home_score,away_score
+        home_team,away_team,home_logo_url,away_logo_url,home_score,away_score,source_url,raw_json,
+        (SELECT COUNT(*) FROM plateau_games pg WHERE pg.plateau_match_id=matches.id) AS plateau_game_count
         FROM matches WHERE team_id=? AND (season_id IS NULL OR season_id=${activeSeason})
         AND status<>'finished' AND (home_score IS NULL OR away_score IS NULL) AND starts_at>=?
         ORDER BY starts_at ASC LIMIT 5`).bind(team.id, now),
       env.DB.prepare(`SELECT id,starts_at,competition,event_type,time_confirmed,status,venue,venue_address,
-        home_team,away_team,home_logo_url,away_logo_url,home_score,away_score
+        home_team,away_team,home_logo_url,away_logo_url,home_score,away_score,source_url,raw_json,
+        (SELECT COUNT(*) FROM plateau_games pg WHERE pg.plateau_match_id=matches.id) AS plateau_game_count
         FROM matches WHERE team_id=? AND (season_id IS NULL OR season_id=${activeSeason})
-        AND (status='finished' OR (home_score IS NOT NULL AND away_score IS NOT NULL))
-        ORDER BY starts_at DESC LIMIT 5`).bind(team.id)
+        AND (status='finished' OR (home_score IS NOT NULL AND away_score IS NOT NULL)
+          OR (event_type IN ('plateau','animation') AND starts_at<?))
+        ORDER BY starts_at DESC LIMIT 5`).bind(team.id, now),
+      env.DB.prepare(`SELECT p.* FROM match_participants p JOIN matches m ON m.id=p.match_id
+        WHERE m.team_id=? AND (m.season_id IS NULL OR m.season_id=${activeSeason})
+        ORDER BY p.match_id,p.display_order`).bind(team.id)
     ]);
     return publicJson({
       team,
@@ -234,7 +240,8 @@ async function pageData(env: Env, url: URL) {
       })),
       sessions: resultRows(sessions),
       upcoming: resultRows(upcoming),
-      results: resultRows(results)
+      results: resultRows(results),
+      participants: resultRows(participants)
     });
   }
 
