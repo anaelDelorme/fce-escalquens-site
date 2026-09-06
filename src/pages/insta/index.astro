@@ -1,0 +1,44 @@
+---
+import Header from '../../components/Header.astro';
+---
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Créateur de visuels — FC Escalquens</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/enhancements.css">
+    <link rel="stylesheet" href="/social-visuals.css">
+  </head>
+  <body>
+    <Header/>
+    <main class="visual-maker">
+      <section class="visual-maker__intro">
+        <p class="eyebrow">Communication du club</p>
+        <h1>Créer le visuel<br>des rencontres.</h1>
+        <p>Choisissez une date : les rencontres, plateaux, horaires et lieux déjà synchronisés seront placés automatiquement dans une image au format Instagram et Facebook.</p>
+      </section>
+
+      <section class="visual-maker__workspace" aria-labelledby="visual-maker-title">
+        <div class="visual-maker__controls">
+          <div>
+            <p class="eyebrow">Programme du jour</p>
+            <h2 id="visual-maker-title">Quelle date publier ?</h2>
+          </div>
+          <form id="visual-form">
+            <label for="visual-date">Date des rencontres</label>
+            <div class="visual-maker__form-row">
+              <input id="visual-date" name="date" type="date" required>
+              <button type="submit">Générer l’image</button>
+            </div>
+          </form>
+        </div>
+
+        <p id="visual-status" class="visual-maker__status" aria-live="polite">Choisissez une date pour commencer.</p>
+        <div id="visual-previews" class="visual-maker__previews"></div>
+      </section>
+    </main>
+    <script is:inline src="/social-visuals.js"></script>
+  </body>
+</html>

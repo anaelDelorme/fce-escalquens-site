@@ -15,6 +15,15 @@ const mapsUrl=row=>row.latitude!=null&&row.longitude!=null
   :row.venue||row.venue_address
     ?`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([row.venue,row.venue_address].filter(Boolean).join(' '))}`
     :'';
+const cityCase=value=>String(value||'').trim().toLocaleLowerCase('fr').replace(/(^|[\s'’-])([a-zà-öø-ÿ])/g,(_,before,letter)=>before+letter.toLocaleUpperCase('fr'));
+const matchLocation=row=>{
+  const venue=String(row.venue||'').trim(),address=String(row.venue_address||'').trim();
+  const cityMatch=address.match(/\b\d{5}\s+([a-zà-öø-ÿ][a-zà-öø-ÿ'’ -]*)$/i);
+  const city=cityMatch?cityCase(cityMatch[1]):'';
+  const stadium=venue||(!city?address:'')||'Lieu à confirmer';
+  const map=stadium!=='Lieu à confirmer'?mapsUrl(row):'';
+  return `<span class="match-location">📍 ${city?`<b>${esc(city)}</b><i>,</i> `:''}${map?`<a href="${esc(map)}" target="_blank" rel="noopener">${esc(stadium)}</a>`:`<span>${esc(stadium)}</span>`}</span>`;
+};
 const rawSource=row=>{
   let raw={};
   try{raw=typeof row.raw_json==='string'?JSON.parse(row.raw_json||'{}'):row.raw_json||{}}catch{}
@@ -130,8 +139,6 @@ const wirePlateauDetails=()=>{
 const matchCard=row=>{
   const plateau=row.event_type==='plateau'||row.event_type==='animation';
   const plateauTeams=plateau?matchParticipants(row):[];
-  const place=esc(row.venue||row.venue_address||'Lieu à confirmer');
-  const map=mapsUrl(row);
   return `<article class="match-card ${plateau?'event-card':''} ${esc(row.status)}">
     <header>
       <time datetime="${esc(row.starts_at)}">${dateFormat.format(new Date(row.starts_at))}</time>
@@ -150,7 +157,7 @@ const matchCard=row=>{
       </div>
     `}
     <footer>
-      ${map?`<a href="${map}" target="_blank" rel="noopener">📍 ${place}</a>`:`<span>📍 ${place}</span>`}
+      ${matchLocation(row)}
       ${row.source_url?`<a href="${esc(row.source_url)}" target="_blank" rel="noopener">Source officielle →</a>`:''}
     </footer>
   </article>`;
@@ -207,7 +214,7 @@ function draw(){
   wirePlateauDetails();
 }
 
-fetch('/api/page/matches?v=19').then(async response=>{
+fetch('/api/page/matches?v=20').then(async response=>{
   const data=await response.json();
   if(!response.ok)throw new Error(data.error||`Rencontres : ${response.status}`);
   return data;

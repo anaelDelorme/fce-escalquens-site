@@ -6,6 +6,9 @@ const roleLabels={coach_referent:'Coach référent',coach:'Coach',dirigeant:'Dir
 const dateFormat=new Intl.DateTimeFormat('fr-FR',{timeZone:'Europe/Paris',weekday:'long',day:'numeric',month:'long'});
 const timeFormat=new Intl.DateTimeFormat('fr-FR',{timeZone:'Europe/Paris',hour:'2-digit',minute:'2-digit'});
 const displayDate=value=>{const label=dateFormat.format(new Date(value));return label.charAt(0).toLocaleUpperCase('fr')+label.slice(1)};
+const mapsUrl=match=>match.latitude!=null&&match.longitude!=null?`https://www.google.com/maps/search/?api=1&query=${match.latitude},${match.longitude}`:[match.venue,match.venue_address].some(Boolean)?`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([match.venue,match.venue_address].filter(Boolean).join(' '))}`:'';
+const cityCase=value=>String(value||'').trim().toLocaleLowerCase('fr').replace(/(^|[\s'’-])([a-zà-öø-ÿ])/g,(_,before,letter)=>before+letter.toLocaleUpperCase('fr'));
+const matchLocation=match=>{const venue=String(match.venue||'').trim(),address=String(match.venue_address||'').trim(),cityMatch=address.match(/\b\d{5}\s+([a-zà-öø-ÿ][a-zà-öø-ÿ'’ -]*)$/i),city=cityMatch?cityCase(cityMatch[1]):'',stadium=venue||(!city?address:'')||'Lieu à confirmer',map=stadium!=='Lieu à confirmer'?mapsUrl(match):'';return `<span class="match-location">📍 ${city?`<b>${esc(city)}</b><i>,</i> `:''}${map?`<a href="${esc(map)}" target="_blank" rel="noopener">${esc(stadium)}</a>`:`<span>${esc(stadium)}</span>`}</span>`};
 let savedParticipants=[];
 const plateauGamesCache=new Map();
 const rawSource=match=>{try{const raw=typeof match.raw_json==='string'?JSON.parse(match.raw_json||'{}'):match.raw_json||{};return raw.site||raw}catch{return {}}};
@@ -33,7 +36,7 @@ const plateauCard=match=>`<article class="team-plateau-card match-card">
   <header><div><time>${displayDate(match.starts_at)}</time><small>Plateau</small></div><strong>${Number(match.time_confirmed)===0?'À confirmer':timeFormat.format(new Date(match.starts_at))}</strong></header>
   <p class="competition-name">${esc(match.competition||'Football animation')}</p>
   ${participantList(match)}${plateauProgram(match)}
-  <footer><span>📍 ${esc(match.venue||match.venue_address||'Lieu à confirmer')}</span>${match.source_url?`<a href="${esc(match.source_url)}" target="_blank" rel="noopener">Source officielle →</a>`:''}</footer>
+  <footer>${matchLocation(match)}${match.source_url?`<a href="${esc(match.source_url)}" target="_blank" rel="noopener">Source officielle →</a>`:''}</footer>
 </article>`;
 const miniMatch=(match,future=false)=>match.event_type==='plateau'||match.event_type==='animation'?plateauCard(match):`<article class="team-match-row">
   <time>${displayDate(match.starts_at)}</time>
@@ -41,7 +44,7 @@ const miniMatch=(match,future=false)=>match.event_type==='plateau'||match.event_
   <div class="match-team">${logo(match.home_logo_url,match.home_team)}<b>${esc(match.home_team)}</b></div>
   <strong>${future?(Number(match.time_confirmed)===0?'À confirmer':timeFormat.format(new Date(match.starts_at))):`${match.home_score??'–'} : ${match.away_score??'–'}`}</strong>
   <div class="match-team">${logo(match.away_logo_url,match.away_team)}<b>${esc(match.away_team)}</b></div>
-  <span>${esc(match.venue||match.venue_address||'Lieu à confirmer')}</span>
+  ${matchLocation(match)}
 </article>`;
 const wirePlateauDetails=()=>document.querySelectorAll('[data-plateau-games]').forEach(button=>button.onclick=async()=>{
   const id=button.dataset.plateauGames,detail=document.querySelector(`[data-plateau-detail="${id}"]`),opening=button.getAttribute('aria-expanded')!=='true';
@@ -51,7 +54,7 @@ const wirePlateauDetails=()=>document.querySelectorAll('[data-plateau-games]').f
   try{if(!plateauGamesCache.has(id)){const response=await fetch(`/api/plateau-games?plateau_id=${encodeURIComponent(id)}`),data=await response.json();if(!response.ok)throw new Error(data.error||`HTTP ${response.status}`);plateauGamesCache.set(id,data.games||[])}detail.innerHTML=plateauGamesHtml(plateauGamesCache.get(id));detail.dataset.loaded='1'}catch(error){console.error(error);detail.innerHTML='<p class="participant-empty">Le détail est momentanément indisponible.</p>'}
 });
 
-fetch(`/api/page/team-profile?slug=${encodeURIComponent(slug||'')}&v=22`).then(async response=>{
+fetch(`/api/page/team-profile?slug=${encodeURIComponent(slug||'')}&v=23`).then(async response=>{
   const data=await response.json();
   if(!response.ok)throw new Error(data.error||`Fiche équipe : ${response.status}`);
   return data;
