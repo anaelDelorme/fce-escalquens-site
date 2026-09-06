@@ -10,11 +10,9 @@ const relativeKickoff=value=>{
 };
 const cityCase=value=>String(value||'').trim().toLocaleLowerCase('fr').replace(/(^|[\s'’-])([a-zà-öø-ÿ])/g,(_,before,letter)=>before+letter.toLocaleUpperCase('fr'));
 const homeLocation=match=>{
-  const venue=String(match.venue||'').trim(),address=String(match.venue_address||'').trim();
-  const cityMatch=address.match(/\b\d{5}\s+([a-zà-öø-ÿ][a-zà-öø-ÿ'’ -]*)$/i),city=cityMatch?cityCase(cityMatch[1]):'',stadium=venue||(!city?address:'');
-  if(!stadium&&!city)return '';
-  const map=match.latitude!=null&&match.longitude!=null?`https://www.google.com/maps/search/?api=1&query=${match.latitude},${match.longitude}`:`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([venue,address].filter(Boolean).join(' '))}`;
-  return `<small class="home-match-location">📍 ${city?`<b>${esc(city)}</b>${stadium?', ':''}`:''}${stadium?`<a href="${esc(map)}" target="_blank" rel="noopener">${esc(stadium)}</a>`:''}</small>`;
+  const address=String(match.venue_address||'').trim();
+  const cityMatch=address.match(/\b\d{5}\s+([a-zà-öø-ÿ][a-zà-öø-ÿ'’ -]*)$/i),city=cityMatch?cityCase(cityMatch[1]):'';
+  return city?`<small class="home-match-location">📍 <b>${esc(city)}</b></small>`:'';
 };
 const homeMatchCard=(match,result=false)=>`<article class="${result?'home-result':''}">
   <time>${homeDate(match.starts_at)}</time>
