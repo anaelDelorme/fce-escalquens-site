@@ -1,3 +1,5 @@
+/* Edo SZ par Vic Fieger — source : https://www.dafont.com/fr/edo-sz.font */
+@font-face{font-family:'Edo SZ';src:url('/fonts/edosz.ttf') format('truetype');font-display:block;font-style:normal;font-weight:400}
 :root{--visual-wine:#8b1047;--visual-dark:#171112;--visual-gold:#ffd000}
 .insta-tool .site-header{height:72px}
 .insta-tool .site-header .club-logo{width:48px;height:48px}

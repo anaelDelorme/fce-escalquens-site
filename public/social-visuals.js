@@ -8,6 +8,8 @@
   const PARIS_TIME_ZONE = 'Europe/Paris';
   const CLUB_PATTERN = /(?:f\.?\s*c\.?\s*)?escalquens/i;
   const ROWS_PER_IMAGE = 6;
+  const EDO_FONT = '"Edo SZ", Impact, "Arial Narrow", Arial, sans-serif';
+  const TEXT_FONT = 'Arial, sans-serif';
   let matchDataPromise;
 
   function dateKey(value) {
@@ -115,10 +117,10 @@
     };
   }
 
-  function fitText(ctx, text, maxWidth, startSize, minSize, weight = 900) {
+  function fitText(ctx, text, maxWidth, startSize, minSize, weight = 900, family = TEXT_FONT) {
     let size = startSize;
     do {
-      ctx.font = `${weight} ${size}px Arial, sans-serif`;
+      ctx.font = `${weight} ${size}px ${family}`;
       if (ctx.measureText(text).width <= maxWidth) return size;
       size -= 2;
     } while (size >= minSize);
@@ -144,17 +146,22 @@
     });
   }
 
+  async function loadEdoFont() {
+    if (!document.fonts?.load) return;
+    try { await document.fonts.load('48px "Edo SZ"'); } catch (_) { /* La police de secours reste utilisable. */ }
+  }
+
   async function drawVisual(canvas, matches, dateValue, pageIndex, pageCount, participantsByMatch) {
     const ctx = canvas.getContext('2d');
     const { weekday, full } = dayLabels(dateValue);
-    const background = await loadBackground();
+    const [background] = await Promise.all([loadBackground(), loadEdoFont()]);
     const width = canvas.width = 1080;
     const height = canvas.height = 1350;
 
     if (background) ctx.drawImage(background, 0, 0, width, height);
     else {ctx.fillStyle = '#171112';ctx.fillRect(0, 0, width, height);}
 
-    ctx.fillStyle = '#171112';ctx.textAlign = 'center';ctx.font = '900 55px Impact, Arial Narrow, Arial, sans-serif';ctx.fillText(weekday, 540, 365);
+    ctx.fillStyle = '#171112';ctx.textAlign = 'center';ctx.font = `400 61px ${EDO_FONT}`;ctx.fillText(weekday, 540, 365);
     ctx.font = '800 23px Arial, sans-serif';ctx.fillText(full, 540, 401);
     if (pageCount > 1) {ctx.font = '800 17px Arial, sans-serif';ctx.fillText(`VISUEL ${pageIndex + 1}/${pageCount}`, 540, 430);}
 
@@ -164,16 +171,16 @@
       const y = rowsTop + index * rowHeight;
 
       const category = String(match.category || 'ÉQUIPE').toUpperCase();
-      fitText(ctx, category, 205, 33, 21);ctx.fillStyle = '#171112';ctx.textAlign = 'left';ctx.fillText(category, 90, y + 16);
+      fitText(ctx, category, 205, 38, 24, 400, EDO_FONT);ctx.fillStyle = '#171112';ctx.textAlign = 'left';ctx.fillText(category, 90, y + 16);
       const opponent = opponentLabel(match, participantsByMatch);
       fitText(ctx, opponent, 230, 17, 13, 700);ctx.fillStyle = '#5b4145';ctx.fillText(opponent, 90, y + 43);
 
       drawClock(ctx, 365, y + 4);
-      const time = timeLabel(match);fitText(ctx, time, 150, 31, 20);ctx.fillStyle = '#171112';ctx.fillText(time, 395, y + 16);
+      const time = timeLabel(match);fitText(ctx, time, 150, 36, 23, 400, EDO_FONT);ctx.fillStyle = '#171112';ctx.fillText(time, 395, y + 16);
 
       drawPin(ctx, 590, y + 2);
       const place = placeParts(match);
-      fitText(ctx, String(place.city).toUpperCase(), 350, 29, 18);ctx.fillStyle = '#171112';ctx.fillText(String(place.city).toUpperCase(), 625, y + 12);
+      fitText(ctx, String(place.city).toUpperCase(), 350, 34, 21, 400, EDO_FONT);ctx.fillStyle = '#171112';ctx.fillText(String(place.city).toUpperCase(), 625, y + 12);
       const stadium = place.stadium || 'Stade à confirmer';
       fitText(ctx, stadium, 350, 16, 12, 700);ctx.fillStyle = '#5b4145';ctx.fillText(stadium, 625, y + 41);
     });
