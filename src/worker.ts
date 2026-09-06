@@ -237,13 +237,13 @@ async function pageData(env: Env, url: URL) {
         FROM training_sessions s LEFT JOIN venues v ON v.id=s.venue_id
         WHERE s.team_id=? AND s.active=1 AND (s.season_id IS NULL OR s.season_id=${activeSeason})
         ORDER BY s.weekday,s.starts_at`).bind(team.id),
-      env.DB.prepare(`SELECT id,starts_at,competition,event_type,time_confirmed,status,venue,venue_address,
+      env.DB.prepare(`SELECT id,starts_at,competition,event_type,time_confirmed,status,venue,venue_address,latitude,longitude,
         home_team,away_team,home_logo_url,away_logo_url,home_score,away_score,source_url,raw_json,
         (SELECT COUNT(*) FROM plateau_games pg WHERE pg.plateau_match_id=matches.id) AS plateau_game_count
         FROM matches WHERE team_id=? AND (season_id IS NULL OR season_id=${activeSeason})
         AND status<>'finished' AND (home_score IS NULL OR away_score IS NULL) AND starts_at>=?
         ORDER BY starts_at ASC LIMIT 5`).bind(team.id, now),
-      env.DB.prepare(`SELECT id,starts_at,competition,event_type,time_confirmed,status,venue,venue_address,
+      env.DB.prepare(`SELECT id,starts_at,competition,event_type,time_confirmed,status,venue,venue_address,latitude,longitude,
         home_team,away_team,home_logo_url,away_logo_url,home_score,away_score,source_url,raw_json,
         (SELECT COUNT(*) FROM plateau_games pg WHERE pg.plateau_match_id=matches.id) AS plateau_game_count
         FROM matches WHERE team_id=? AND (season_id IS NULL OR season_id=${activeSeason})
@@ -273,10 +273,10 @@ async function pageData(env: Env, url: URL) {
     const [teams, matches, results, sponsors, media] = await env.DB.batch<AnyRow>([
       env.DB.prepare(`SELECT id,slug,name,group_name,level,category FROM teams
         WHERE active=1 ORDER BY name COLLATE NOCASE ASC`),
-      env.DB.prepare(`SELECT id,starts_at,category,competition,home_team,away_team,home_score,away_score,status FROM matches
+      env.DB.prepare(`SELECT id,starts_at,category,competition,venue,venue_address,latitude,longitude,home_team,away_team,home_score,away_score,status FROM matches
         WHERE (season_id IS NULL OR season_id=${activeSeason}) AND starts_at>=?
         AND status NOT IN ('finished','cancelled') ORDER BY starts_at ASC LIMIT 3`).bind(now),
-      env.DB.prepare(`SELECT id,starts_at,category,competition,home_team,away_team,home_score,away_score,status FROM matches
+      env.DB.prepare(`SELECT id,starts_at,category,competition,venue,venue_address,latitude,longitude,home_team,away_team,home_score,away_score,status FROM matches
         WHERE (season_id IS NULL OR season_id=${activeSeason})
         AND (status='finished' OR (home_score IS NOT NULL AND away_score IS NOT NULL))
         ORDER BY starts_at DESC LIMIT 3`),
@@ -748,6 +748,7 @@ async function ingestMatches(request: Request, env: Env) {
   const cacheKeys = [
     new Request(`${origin}/api/page/matches`),
     new Request(`${origin}/api/page/matches?v=19`),
+    new Request(`${origin}/api/page/matches?v=20`),
     new Request(`${origin}/api/page/home`)
   ];
   const currentPlateauIds = await env.DB.prepare(`SELECT id FROM matches

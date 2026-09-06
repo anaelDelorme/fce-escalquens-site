@@ -8,9 +8,17 @@ const relativeKickoff=value=>{
   const weeks=Math.max(1,Math.round(days/7));
   return weeks===1?'La semaine prochaine':`Dans ${weeks} semaines`;
 };
+const cityCase=value=>String(value||'').trim().toLocaleLowerCase('fr').replace(/(^|[\s'’-])([a-zà-öø-ÿ])/g,(_,before,letter)=>before+letter.toLocaleUpperCase('fr'));
+const homeLocation=match=>{
+  const venue=String(match.venue||'').trim(),address=String(match.venue_address||'').trim();
+  const cityMatch=address.match(/\b\d{5}\s+([a-zà-öø-ÿ][a-zà-öø-ÿ'’ -]*)$/i),city=cityMatch?cityCase(cityMatch[1]):'',stadium=venue||(!city?address:'');
+  if(!stadium&&!city)return '';
+  const map=match.latitude!=null&&match.longitude!=null?`https://www.google.com/maps/search/?api=1&query=${match.latitude},${match.longitude}`:`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([venue,address].filter(Boolean).join(' '))}`;
+  return `<small class="home-match-location">📍 ${city?`<b>${esc(city)}</b>${stadium?', ':''}`:''}${stadium?`<a href="${esc(map)}" target="_blank" rel="noopener">${esc(stadium)}</a>`:''}</small>`;
+};
 const homeMatchCard=(match,result=false)=>`<article class="${result?'home-result':''}">
   <time>${homeDate(match.starts_at)}</time>
-  <div><b>${esc(match.category||match.competition||'FC Escalquens')}</b><span>${esc(match.home_team)} ${result?`<strong>${match.home_score??'–'} : ${match.away_score??'–'}</strong>`:'<em>vs</em>'} ${esc(match.away_team)}</span></div>
+  <div><b>${esc(match.category||match.competition||'FC Escalquens')}</b><span>${esc(match.home_team)} ${result?`<strong>${match.home_score??'–'} : ${match.away_score??'–'}</strong>`:'<em>vs</em>'} ${esc(match.away_team)}</span>${homeLocation(match)}</div>
 </article>`;
 
 window.fceHomeData=window.fceHomeData||fetch('/api/page/home').then(async response=>{
