@@ -146,51 +146,36 @@
     ctx.beginPath();ctx.moveTo(x - 10, y + 3);ctx.lineTo(x, y + 22);ctx.lineTo(x + 10, y + 3);ctx.stroke();ctx.restore();
   }
 
-  function loadLogo() {
+  function loadBackground() {
     return new Promise(resolve => {
       const image = new Image();
       image.onload = () => resolve(image);
       image.onerror = () => resolve(null);
-      image.src = '/logo-fce.png';
+      image.src = '/fond-insta-fce.jpeg';
     });
   }
 
   async function drawVisual(canvas, matches, dateValue, pageIndex, pageCount, participantsByMatch) {
     const ctx = canvas.getContext('2d');
     const { weekday, full } = dayLabels(dateValue);
-    const logo = await loadLogo();
+    const background = await loadBackground();
     const width = canvas.width = 1080;
     const height = canvas.height = 1350;
 
-    ctx.fillStyle = '#171112';ctx.fillRect(0, 0, width, height);
-    const redGlow = ctx.createRadialGradient(85, 100, 0, 85, 100, 620);
-    redGlow.addColorStop(0, '#b51531');redGlow.addColorStop(.48, '#5f0b27');redGlow.addColorStop(1, '#171112');
-    ctx.fillStyle = redGlow;ctx.fillRect(0, 0, width, 350);
-    ctx.fillStyle = '#8b1047';ctx.beginPath();ctx.moveTo(1080, 150);ctx.lineTo(1080, 620);ctx.lineTo(880, 490);ctx.closePath();ctx.fill();
-    ctx.fillStyle = '#ffd000';
-    for (let index = 0; index < 4; index += 1) {
-      ctx.save();ctx.translate(825, 70 + index * 42);ctx.rotate(-.16);ctx.fillRect(0, 0, 205, 10);ctx.restore();
-    }
-    ctx.globalAlpha = .12;ctx.strokeStyle = '#fff';ctx.lineWidth = 2;
-    for (let index = -200; index < 1250; index += 55) {ctx.beginPath();ctx.moveTo(index, 0);ctx.lineTo(index + 300, 1350);ctx.stroke();}
-    ctx.globalAlpha = 1;
-
-    ctx.textAlign = 'left';ctx.fillStyle = '#ffd000';ctx.font = '900 38px Arial, sans-serif';ctx.fillText('CE', 60, 78);
-    ctx.fillStyle = '#fff';ctx.font = '900 74px Impact, Arial Narrow, Arial, sans-serif';ctx.fillText('WEEK-END', 60, 146);
-    ctx.fillStyle = '#ffd000';ctx.fillRect(62, 171, 280, 12);
+    if (background) ctx.drawImage(background, 0, 0, width, height);
+    else {ctx.fillStyle = '#171112';ctx.fillRect(0, 0, width, height);}
 
     const panelGradient = ctx.createLinearGradient(45, 245, 1025, 1110);
-    panelGradient.addColorStop(0, '#ffe26b');panelGradient.addColorStop(.52, '#ffd000');panelGradient.addColorStop(1, '#e9ad00');
-    roundedRect(ctx, 45, 235, 990, 890, 50);ctx.fillStyle = panelGradient;ctx.fill();
-    ctx.fillStyle = '#171112';ctx.textAlign = 'center';ctx.font = '900 55px Impact, Arial Narrow, Arial, sans-serif';ctx.fillText(weekday, 540, 310);
-    ctx.font = '800 23px Arial, sans-serif';ctx.fillText(full, 540, 345);
-    if (pageCount > 1) {ctx.font = '800 17px Arial, sans-serif';ctx.fillText(`VISUEL ${pageIndex + 1}/${pageCount}`, 540, 373);}
+    panelGradient.addColorStop(0, '#f8df71');panelGradient.addColorStop(.52, '#f3d55e');panelGradient.addColorStop(1, '#ebc94b');
+    roundedRect(ctx, 35, 292, 1010, 825, 54);ctx.fillStyle = panelGradient;ctx.fill();
+    ctx.fillStyle = '#171112';ctx.textAlign = 'center';ctx.font = '900 55px Impact, Arial Narrow, Arial, sans-serif';ctx.fillText(weekday, 540, 365);
+    ctx.font = '800 23px Arial, sans-serif';ctx.fillText(full, 540, 401);
+    if (pageCount > 1) {ctx.font = '800 17px Arial, sans-serif';ctx.fillText(`VISUEL ${pageIndex + 1}/${pageCount}`, 540, 430);}
 
-    const rowsTop = pageCount > 1 ? 410 : 390;
-    const rowHeight = Math.min(116, (1090 - rowsTop) / Math.max(matches.length, 1));
+    const rowsTop = pageCount > 1 ? 475 : 455;
+    const rowHeight = Math.min(105, (1090 - rowsTop) / Math.max(matches.length, 1));
     matches.forEach((match, index) => {
       const y = rowsTop + index * rowHeight;
-      if (index) {ctx.strokeStyle = '#17111233';ctx.lineWidth = 2;ctx.beginPath();ctx.moveTo(85, y - 17);ctx.lineTo(995, y - 17);ctx.stroke();}
 
       const category = String(match.category || 'ÉQUIPE').toUpperCase();
       fitText(ctx, category, 205, 33, 21);ctx.fillStyle = '#171112';ctx.textAlign = 'left';ctx.fillText(category, 90, y + 16);
@@ -207,16 +192,6 @@
       fitText(ctx, stadium, 350, 16, 12, 700);ctx.fillStyle = '#5b4145';ctx.fillText(stadium, 625, y + 41);
     });
 
-    ctx.fillStyle = '#fff';ctx.textAlign = 'left';ctx.font = '900 24px Arial, sans-serif';ctx.fillText('@FCESCALQUENS', 65, 1265);
-    ctx.fillStyle = '#ffd000';ctx.fillRect(65, 1282, 220, 7);
-    ctx.fillStyle = '#fff';ctx.textAlign = 'right';ctx.font = '700 19px Arial, sans-serif';ctx.fillText('INSTAGRAM  ·  FACEBOOK', 1015, 1265);
-    if (logo) {
-      const ratio = Math.min(175 / logo.width, 175 / logo.height);
-      const logoWidth = logo.width * ratio;const logoHeight = logo.height * ratio;
-      ctx.drawImage(logo, 540 - logoWidth / 2, 1138, logoWidth, logoHeight);
-    } else {
-      ctx.fillStyle = '#fff';ctx.textAlign = 'center';ctx.font = '900 34px Arial, sans-serif';ctx.fillText('FC ESCALQUENS', 540, 1205);
-    }
   }
 
   async function fetchMatchData() {
