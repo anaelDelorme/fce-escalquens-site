@@ -1,4 +1,6 @@
 :root{--visual-wine:#8b1047;--visual-dark:#171112;--visual-gold:#ffd000}
+.insta-tool .site-header{height:72px}
+.insta-tool .site-header .club-logo{width:48px;height:48px}
 .visual-maker{min-height:calc(100vh - 84px);background:#f5efe6}
 .visual-maker__intro{padding:70px max(24px,calc((100% - 1180px)/2));background:var(--visual-dark);color:#fff;position:relative;overflow:hidden}
 .visual-maker__intro::after{content:"";position:absolute;right:-70px;top:-80px;width:390px;height:340px;background:var(--visual-wine);transform:skewX(-22deg);opacity:.88}
@@ -24,6 +26,7 @@
 .visual-preview figcaption span{font-size:13px;font-weight:800;color:#63545a}
 .visual-download{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;white-space:nowrap}
 @media(max-width:800px){
+  .insta-tool .site-header .club-logo{width:42px;height:42px}
   .visual-maker__intro{padding-top:52px;padding-bottom:52px}.visual-maker__intro::after{right:-220px}
   .visual-maker__workspace{padding:28px 14px 60px}.visual-maker__controls{grid-template-columns:1fr;padding:20px;gap:22px}.visual-maker__controls h2{font-size:30px}
   .visual-maker__form-row{grid-template-columns:1fr}.visual-maker__form-row button{min-height:50px}
