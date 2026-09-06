@@ -162,8 +162,8 @@
     else {ctx.fillStyle = '#171112';ctx.fillRect(0, 0, width, height);}
 
     ctx.fillStyle = '#171112';ctx.textAlign = 'center';ctx.font = `400 61px ${EDO_FONT}`;ctx.fillText(weekday, 540, 365);
-    ctx.font = '800 23px Arial, sans-serif';ctx.fillText(full, 540, 401);
-    if (pageCount > 1) {ctx.font = '800 17px Arial, sans-serif';ctx.fillText(`VISUEL ${pageIndex + 1}/${pageCount}`, 540, 430);}
+    ctx.font = `400 28px ${EDO_FONT}`;ctx.fillText(full, 540, 401);
+    if (pageCount > 1) {ctx.font = `400 21px ${EDO_FONT}`;ctx.fillText(`VISUEL ${pageIndex + 1}/${pageCount}`, 540, 430);}
 
     const rowsTop = pageCount > 1 ? 475 : 455;
     const rowHeight = Math.min(105, (1090 - rowsTop) / Math.max(matches.length, 1));
@@ -173,7 +173,7 @@
       const category = String(match.category || 'ÉQUIPE').toUpperCase();
       fitText(ctx, category, 205, 38, 24, 400, EDO_FONT);ctx.fillStyle = '#171112';ctx.textAlign = 'left';ctx.fillText(category, 90, y + 16);
       const opponent = opponentLabel(match, participantsByMatch);
-      fitText(ctx, opponent, 230, 17, 13, 700);ctx.fillStyle = '#5b4145';ctx.fillText(opponent, 90, y + 43);
+      fitText(ctx, opponent, 230, 23, 15, 400, EDO_FONT);ctx.fillStyle = '#5b4145';ctx.fillText(opponent, 90, y + 45);
 
       drawClock(ctx, 365, y + 4);
       const time = timeLabel(match);fitText(ctx, time, 150, 36, 23, 400, EDO_FONT);ctx.fillStyle = '#171112';ctx.fillText(time, 395, y + 16);
@@ -182,7 +182,7 @@
       const place = placeParts(match);
       fitText(ctx, String(place.city).toUpperCase(), 350, 34, 21, 400, EDO_FONT);ctx.fillStyle = '#171112';ctx.fillText(String(place.city).toUpperCase(), 625, y + 12);
       const stadium = place.stadium || 'Stade à confirmer';
-      fitText(ctx, stadium, 350, 16, 12, 700);ctx.fillStyle = '#5b4145';ctx.fillText(stadium, 625, y + 41);
+      fitText(ctx, stadium, 350, 22, 14, 400, EDO_FONT);ctx.fillStyle = '#5b4145';ctx.fillText(stadium, 625, y + 44);
     });
 
   }
