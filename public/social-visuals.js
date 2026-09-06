@@ -115,17 +115,6 @@
     };
   }
 
-  function roundedRect(ctx, x, y, width, height, radius) {
-    const r = Math.min(radius, width / 2, height / 2);
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.arcTo(x + width, y, x + width, y + height, r);
-    ctx.arcTo(x + width, y + height, x, y + height, r);
-    ctx.arcTo(x, y + height, x, y, r);
-    ctx.arcTo(x, y, x + width, y, r);
-    ctx.closePath();
-  }
-
   function fitText(ctx, text, maxWidth, startSize, minSize, weight = 900) {
     let size = startSize;
     do {
@@ -151,7 +140,7 @@
       const image = new Image();
       image.onload = () => resolve(image);
       image.onerror = () => resolve(null);
-      image.src = '/fond-insta-fce.jpeg';
+      image.src = '/fond-insta-fce-v2.png';
     });
   }
 
@@ -165,9 +154,6 @@
     if (background) ctx.drawImage(background, 0, 0, width, height);
     else {ctx.fillStyle = '#171112';ctx.fillRect(0, 0, width, height);}
 
-    const panelGradient = ctx.createLinearGradient(45, 245, 1025, 1110);
-    panelGradient.addColorStop(0, '#f8df71');panelGradient.addColorStop(.52, '#f3d55e');panelGradient.addColorStop(1, '#ebc94b');
-    roundedRect(ctx, 35, 292, 1010, 825, 54);ctx.fillStyle = panelGradient;ctx.fill();
     ctx.fillStyle = '#171112';ctx.textAlign = 'center';ctx.font = '900 55px Impact, Arial Narrow, Arial, sans-serif';ctx.fillText(weekday, 540, 365);
     ctx.font = '800 23px Arial, sans-serif';ctx.fillText(full, 540, 401);
     if (pageCount > 1) {ctx.font = '800 17px Arial, sans-serif';ctx.fillText(`VISUEL ${pageIndex + 1}/${pageCount}`, 540, 430);}
