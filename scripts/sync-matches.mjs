@@ -1,20 +1,21 @@
 const SYNC_VERSION='2026.09.04-21',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+
 console.log(`Collecteur FCE ${SYNC_VERSION}`);
+
 const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
 const endpoint=siteUrl+'/internal/sync/matches';
 const statusEndpoint=siteUrl+'/internal/sync/status';
 const token=process.env.FCE_SYNC_TOKEN;
-const force=process.env.FORCE_SYNC==='true';
-const parts=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Paris',weekday:'short',hour:'2-digit',hourCycle:'h23'}).formatToParts(new Date()).map(part=>[part.type,part.value]));
-const hour=Number(parts.hour),day=parts.weekday;
-// Six collectes par semaine, en heure de Paris. Le workflow propose les deux
-// heures UTC possibles (été/hiver) ; seule la bonne exécute FFF ou ZenRows.
-const scheduled=(day==='Wed'&&hour===21)||(day==='Fri'&&hour===16)||
-  (day==='Sat'&&(hour===9||hour===20))||(day==='Sun'&&hour===20)||
-  (day==='Mon'&&hour===20);
-if(!force&&!scheduled){console.log(`Pas de collecte prévue actuellement (${day} ${hour} h, heure de Paris).`);process.exit(0)}
-if(!process.env.FCE_SITE_URL||!token)throw new Error('Secrets FCE_SITE_URL ou FCE_SYNC_TOKEN manquants');
-const headers={accept:'application/ld+json, application/json, text/html;q=0.9','accept-language':'fr-FR,fr;q=0.9','user-agent':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/128 Safari/537.36',referer:'https://occitanie.fff.fr/'};
+
+if(!process.env.FCE_SITE_URL||!token)
+  throw new Error('Secrets FCE_SITE_URL ou FCE_SYNC_TOKEN manquants');
+
+const headers={
+  accept:'application/ld+json, application/json, text/html;q=0.9',
+  'accept-language':'fr-FR,fr;q=0.9',
+  'user-agent':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/128 Safari/537.36',
+  referer:'https://occitanie.fff.fr/'
+};
 const first=(...values)=>values.find(value=>value!==undefined&&value!==null&&value!=='');
 const text=value=>typeof value==='string'?value:value?.name||value?.nom||value?.label||value?.short_name||value?.libelle||'';
 const entityName=entity=>text(first(entity?.short_name_federation,entity?.short_name_ligue,entity?.short_name,entity?.name,entity?.label,entity?.nom,entity?.code));

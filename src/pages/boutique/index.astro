@@ -1,0 +1,82 @@
+---
+import Header from '../../components/Header.astro';
+import Footer from '../../components/Footer.astro';
+---
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width">
+    <title>Boutique du club — FC Escalquens</title>
+    <meta name="description" content="Tenues, accessoires et équipements aux couleurs du FC Escalquens. Découvrez la sélection du club et préparez votre commande.">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/enhancements.css">
+    <link rel="stylesheet" href="/brand-charter.css">
+    <link rel="stylesheet" href="/shop.css">
+  </head>
+  <body>
+    <Header/>
+    <main class="shop-page">
+      <section class="shop-hero">
+        <div class="shop-hero-copy">
+          <p class="eyebrow">Boutique du club</p>
+          <h1>Portez les couleurs<br><em>du FCE.</em></h1>
+          <p>Du terrain aux tribunes, retrouvez les tenues et accessoires qui rassemblent toute la famille FCE.</p>
+          <a href="#selection">Découvrir la sélection <span>↓</span></a>
+        </div>
+        <div class="shop-hero-mark" aria-hidden="true">
+          <span>FCE</span>
+          <img src="/logo-fce.png" alt="">
+          <b>1976 · ESCALQUENS</b>
+        </div>
+      </section>
+
+      <section class="shop-feature" aria-labelledby="featured-title">
+        <div class="section-intro">
+          <p class="eyebrow">Le choix du club</p>
+          <h2 id="featured-title">À la une.</h2>
+        </div>
+        <div id="shop-featured" class="featured-product"><p>Chargement de l’article à la une…</p></div>
+      </section>
+
+      <section class="shop-selection" id="selection" aria-labelledby="selection-title">
+        <div class="section-intro split-heading">
+          <div><p class="eyebrow">À chacun ses couleurs</p><h2 id="selection-title">Les incontournables.</h2></div>
+          <p>Une sélection pour les joueurs, les coachs, les familles et les supporters.</p>
+        </div>
+        <div id="shop-categories" class="shop-category-list"><p>Chargement de la sélection…</p></div>
+      </section>
+
+      <section class="catalogue-band">
+        <div><p class="eyebrow">Toutes les références</p><h2>La collection complète.</h2><p>Tailles, coloris, tarifs et options : consultez le catalogue préparé par le club.</p></div>
+        <a id="shop-catalogue" class="catalogue-button" aria-disabled="true">Catalogue bientôt disponible</a>
+      </section>
+
+      <section class="order-process" aria-labelledby="order-title">
+        <div class="section-intro"><p class="eyebrow">Simple et accompagné</p><h2 id="order-title">Comment commander ?</h2></div>
+        <ol>
+          <li><b>01</b><div><h3>Envoyez votre demande</h3><p>Précisez les articles, les quantités, les tailles et les options souhaitées, comme le flocage des initiales.</p></div></li>
+          <li><b>02</b><div><h3>Le club vous confirme tout</h3><p>Nous vérifions la disponibilité et vous répondons avec le prix final et la démarche pour payer par virement, chèque ou espèces.</p></div></li>
+          <li><b>03</b><div><h3>Votre coach vous remet la commande</h3><p>Dès réception du paiement, la commande est lancée puis livrée par le club via le coach de l’équipe.</p></div></li>
+        </ol>
+      </section>
+
+      <section class="order-panel" id="commander" aria-labelledby="request-title">
+        <div>
+          <p class="eyebrow">Préparer ma demande</p>
+          <h2 id="request-title">On s’occupe<br>de la suite.</h2>
+          <p>Ce formulaire ouvre votre application e-mail avec un message déjà préparé. Aucun paiement n’est demandé sur le site. Contact: fcescalquens@gmail.com</p>
+        </div>
+        <form id="shop-order-form">
+          <label><span>Votre adresse e-mail *</span><input name="contact_email" type="email" autocomplete="email" required></label>
+          <label><span>Nom du licencié <small>(facultatif)</small></span><input name="licensed_name" autocomplete="name"></label>
+          <label><span>Équipe ou catégorie <small>(facultatif)</small></span><input name="team" placeholder="Ex. U11, Seniors…"></label>
+          <label class="wide"><span>Articles, quantités, tailles et options</span><textarea name="request" rows="8" required placeholder="Ex. 2 tee-shirts Castolo, taille M, avec initiales AD…"></textarea></label>
+          <p class="price-note">Les tarifs affichés sont indicatifs. Le club confirme le montant exact avant tout paiement.</p>
+          <button type="submit">Envoyer ma demande par e-mail →</button>
+        </form>
+      </section>
+    </main>
+    <Footer/>
+    <script is:inline src="/shop.js"></script>
+  </body>
+</html>

@@ -1,37 +1,52 @@
 name: Synchroniser les matchs
+
 on:
   workflow_dispatch:
+
   schedule:
-    # Deux heures UTC candidates par créneau : le script conserve uniquement
-    # celle qui correspond à l'heure de Paris (été ou hiver).
-    - cron: "0 19,20 * * 3"
-    - cron: "0 14,15 * * 5"
-    - cron: "0 7,8,18,19 * * 6"
-    - cron: "0 18,19 * * 0"
-    - cron: "0 18,19 * * 1"
+    - cron: "7 21 * * 3"
+      timezone: "Europe/Paris"
+
+    - cron: "7 16 * * 5"
+      timezone: "Europe/Paris"
+
+    - cron: "7 9,20 * * 6"
+      timezone: "Europe/Paris"
+
+    - cron: "7 20 * * 0"
+      timezone: "Europe/Paris"
+
+    - cron: "7 20 * * 1"
+      timezone: "Europe/Paris"
+
 concurrency:
   group: sync-matches
   cancel-in-progress: false
+
 jobs:
   sync:
     permissions:
       contents: read
       issues: write
+
     runs-on: ubuntu-latest
     timeout-minutes: 10
+
     steps:
       - uses: actions/checkout@v7
+
       - uses: actions/setup-node@v7
         with:
           node-version: 24
           package-manager-cache: false
+
       - name: Collecter et importer
         run: node scripts/sync-matches.mjs
         env:
           FCE_SITE_URL: ${{ secrets.FCE_SITE_URL }}
           FCE_SYNC_TOKEN: ${{ secrets.FCE_SYNC_TOKEN }}
           ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
-          FORCE_SYNC: ${{ github.event_name == 'workflow_dispatch' }}
+
       - name: Ouvrir l’alerte de synchronisation
         if: failure()
         uses: actions/github-script@v8
@@ -44,6 +59,7 @@ jobs:
               state: 'open',
               per_page: 100
             });
+
             if (!open.some(issue => issue.title === title)) {
               await github.rest.issues.create({
                 owner: context.repo.owner,
@@ -52,6 +68,7 @@ jobs:
                 body: `La synchronisation automatique a échoué ou n’est que partielle.\n\nConsultez l’exécution : ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
               });
             }
+
       - name: Fermer l’alerte après rétablissement
         if: success()
         uses: actions/github-script@v8
@@ -64,6 +81,7 @@ jobs:
               state: 'open',
               per_page: 100
             });
+
             for (const issue of open.filter(issue => issue.title === title)) {
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
@@ -71,6 +89,7 @@ jobs:
                 issue_number: issue.number,
                 body: 'La synchronisation suivante a réussi. L’alerte est refermée automatiquement.'
               });
+
               await github.rest.issues.update({
                 owner: context.repo.owner,
                 repo: context.repo.repo,

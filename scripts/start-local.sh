@@ -10,6 +10,7 @@ if ! grep -q 'seed_applied=true' .dev.vars; then
   npm run db:seed:local
   printf '\nseed_applied=true\n' >> .dev.vars
 fi
+npm run db:seed:shop:local
 echo "Site : http://127.0.0.1:8787"
 echo "Admin : http://127.0.0.1:8787/admin/"
 echo "Jeton local : valeur DEV_ADMIN_TOKEN du fichier .dev.vars"
