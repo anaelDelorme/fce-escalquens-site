@@ -134,7 +134,7 @@ async function api(request: Request, env: Env, url: URL) {
   }
   if (request.method === "DELETE" && id) {
     await env.DB.prepare(`DELETE FROM ${table} WHERE id=?`).bind(id).run();
-    if (table.startsWith("shop_")) {
+    if (table.startsWith("shop_") || table === "site_media") {
       await caches.default.delete(new Request(`${url.origin}/api/page/shop`));
     }
     return json({ ok: true });
@@ -157,7 +157,7 @@ async function api(request: Request, env: Env, url: URL) {
         await env.DB.prepare("UPDATE shop_products SET featured=0,updated_at=CURRENT_TIMESTAMP WHERE id<>?")
           .bind(result.meta.last_row_id).run();
       }
-      if (table.startsWith("shop_")) {
+      if (table.startsWith("shop_") || table === "site_media") {
         await caches.default.delete(new Request(`${url.origin}/api/page/shop`));
       }
       return json({ id: result.meta.last_row_id }, 201);
@@ -177,7 +177,7 @@ async function api(request: Request, env: Env, url: URL) {
         await env.DB.prepare("UPDATE shop_products SET featured=0,updated_at=CURRENT_TIMESTAMP WHERE id<>?")
           .bind(id).run();
       }
-      if (table.startsWith("shop_")) {
+      if (table.startsWith("shop_") || table === "site_media") {
         await caches.default.delete(new Request(`${url.origin}/api/page/shop`));
       }
       return json({ ok: true });
@@ -335,7 +335,7 @@ async function pageData(env: Env, url: URL) {
   }
 
   if (page === "shop") {
-    const [categories, products, settings] = await env.DB.batch<AnyRow>([
+    const [categories, products, settings, media] = await env.DB.batch<AnyRow>([
       env.DB.prepare(`SELECT id,slug,name,description,display_order
         FROM shop_categories WHERE active=1
         ORDER BY display_order,name COLLATE NOCASE`),
@@ -344,7 +344,8 @@ async function pageData(env: Env, url: URL) {
         FROM shop_products WHERE active=1
         ORDER BY featured DESC,display_order,name COLLATE NOCASE`),
       env.DB.prepare(`SELECT contact_email,catalogue_title,catalogue_key,order_subject,updated_at
-        FROM shop_settings WHERE id=1 LIMIT 1`)
+        FROM shop_settings WHERE id=1 LIMIT 1`),
+      env.DB.prepare("SELECT slot,object_key,fallback_path,alt_text FROM site_media WHERE slot='shop_hero' LIMIT 1")
     ]);
     return publicJson({
       categories: resultRows(categories),
@@ -354,7 +355,8 @@ async function pageData(env: Env, url: URL) {
         catalogue_title: "Catalogue complet",
         catalogue_key: "",
         order_subject: "Commande boutique FC Escalquens"
-      }
+      },
+      site_media: resultRows(media)
     });
   }
 

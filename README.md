@@ -172,7 +172,7 @@ données ont bien été importées. Le workflow ouvre alors une issue intitulée
 le prochain passage entièrement réussi. L’administration affiche aussi le
 dernier passage, le dernier succès complet et le détail de chaque source. Sur
 la page publique des matchs, un avertissement apparaît si la synchronisation
-est partielle, en échec ou vieille de plus de 60 heures.
+est partielle, en échec ou vieille de plus de 60 heures réelles.
 
 La synchronisation compare désormais les participants des plateaux avant toute
 écriture : une liste inchangée n’est plus supprimée puis recréée. Les fiches
@@ -213,24 +213,11 @@ Un tournoi peut être relié à plusieurs groupes via « Participations aux
 tournois ». Le lien Tournify, le terrain, l'organisateur, l'inscription et le
 règlement sont gérés séparément.
 
-## Actualités Instagram
+## Réseaux sociaux
 
-Pour activer les actualités :
-
-1. passer le compte Instagram en compte professionnel Business ou Creator ;
-2. le relier à la page Facebook officielle du club ;
-3. créer une application Meta et autoriser la lecture des médias Instagram ;
-4. récupérer l'identifiant du compte et un jeton longue durée ;
-5. enregistrer les secrets dans Cloudflare :
-
-```bash
-npx wrangler secret put INSTAGRAM_USER_ID
-npx wrangler secret put INSTAGRAM_ACCESS_TOKEN
-```
-
-`.github/workflows/sync-instagram.yml` actualise ensuite les publications chaque
-matin. Tant que les secrets ne sont pas configurés, il s'arrête sans casser le
-déploiement. Aucun jeton Meta ne doit être commité.
+La page d’accueil contient de simples liens vers les comptes Instagram et
+Facebook du club. Aucun jeton Meta, lecteur intégré ou travail de
+synchronisation n’est nécessaire.
 
 ## Commandes utiles
 
