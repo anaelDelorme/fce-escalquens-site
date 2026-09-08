@@ -2,7 +2,7 @@ const shopEsc=value=>String(value??'').replace(/[&<>'"]/g,char=>({'&':'&amp;','<
 const shopLines=value=>String(value||'').split(/\s*\|\s*|\n+/).map(line=>line.trim()).filter(Boolean);
 const productVisual=(product,featured=false)=>product.image_key
   ?`<img src="/media/${encodeURIComponent(product.image_key).replace(/%2F/g,'/')}" alt="${shopEsc(product.name)}" ${featured?'':'loading="lazy"'}>`
-  :`<div class="product-placeholder"><img src="/logo-fce.png" alt=""><span>${shopEsc(product.name)}</span><small>Photo à venir</small></div>`;
+  :`<div class="product-placeholder"><img src="/logo-fce.webp" alt=""><span>${shopEsc(product.name)}</span><small>Photo à venir</small></div>`;
 const productMeta=product=>{
   const sizes=shopLines(product.sizes),options=shopLines(product.options),prices=shopLines(product.price_details);
   return `<div class="product-meta">
@@ -24,13 +24,22 @@ async function loadShop(){
     if(!response.ok)throw new Error(data.error||'Boutique indisponible');
     const products=data.products||[],categories=data.categories||[],featured=products.find(product=>Number(product.featured)===1)||products[0];
     window.shopSettings=data.settings||{};
+    const heroMedia=(data.site_media||[]).find(item=>item.slot==='shop_hero');
+    if(heroMedia){
+      const hero=document.querySelector('#shop-hero-image');
+      if(heroMedia.alt_text)hero.alt=heroMedia.alt_text;
+      if(hero&&heroMedia.object_key){
+        const source=`/media/${encodeURIComponent(heroMedia.object_key).replace(/%2F/g,'/')}`,loader=new Image();
+        loader.onload=()=>{hero.src=source};
+        loader.src=source;
+      }
+    }
     if(featured){
       featuredNode.innerHTML=`<div class="featured-visual">${productVisual(featured,true)}<span>À la une</span></div><div class="featured-copy"><small>${shopEsc(featured.price_label||'Prix à confirmer')}</small><h3>${shopEsc(featured.name)}</h3><p>${shopEsc(featured.description||featured.short_description||'')}</p>${productMeta(featured)}${orderButton(featured)}</div>`;
     }else featuredNode.innerHTML='<p class="shop-empty">La sélection de la boutique arrive bientôt.</p>';
     categoriesNode.innerHTML=categories.map((category,categoryIndex)=>{
       const categoryProducts=products.filter(product=>String(product.shop_category_id)===String(category.id));
-      const selected=categoryProducts.filter(product=>Number(product.highlighted)===1);
-      const visible=(selected.length?selected:categoryProducts).slice(0,3);
+      const visible=[...categoryProducts].sort((a,b)=>Number(b.highlighted)-Number(a.highlighted));
       if(!visible.length)return '';
       return `<section class="shop-category"><header><span>${String(categoryIndex+1).padStart(2,'0')}</span><div><h3>${shopEsc(category.name)}</h3><p>${shopEsc(category.description||'')}</p></div></header><div class="shop-product-grid">${visible.map(productCard).join('')}</div></section>`;
     }).join('')||'<p class="shop-empty">La sélection de la boutique arrive bientôt.</p>';

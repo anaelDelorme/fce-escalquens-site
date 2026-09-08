@@ -28,7 +28,7 @@ const files=new Set(['photo_key','logo_key','rules_key','object_key','image_key'
 const textareas=new Set(['description','short_description','price_details','sizes','options','summary','notes','responsibilities']);
 const clubCategories=['Seniors','Formation','Académie','Féminines'];
 const options={group_name:clubCategories.map(value=>[value,value]),gender:[['mixed','Mixte'],['female','Féminin'],['male','Masculin']],weekday:[[1,'Lundi'],[2,'Mardi'],[3,'Mercredi'],[4,'Jeudi'],[5,'Vendredi'],[6,'Samedi'],[7,'Dimanche']],role:[['coach_referent','Coach référent'],['coach','Coach'],['dirigeant','Dirigeant'],['arbitre','Arbitre']],status:[['scheduled','Programmé'],['finished','Terminé'],['postponed','Reporté'],['cancelled','Annulé'],['draft','Brouillon'],['published','Publié'],['open','Ouvert'],['closed','Fermé']],tier:[['majeur','Partenaire majeur'],['premium','Partenaire premium'],['partenaire','Partenaire'],['soutien','Soutien']],kind:[['photo','Photo'],['pdf','PDF'],['boutique','Boutique']]};
-const contactRoles=[['responsable_mecenat','Responsable mécénat'],['presidence','Présidence'],['secretariat','Secrétariat'],['tresorerie','Trésorerie'],['responsable_technique','Responsable technique'],['referent','Référent'],['autre','Autre']];
+const contactRoles=[['responsable_mecenat','Responsable mécénat'],['presidence','Présidence'],['community_manager','Community Manager'],['secretariat','Secrétariat'],['tresorerie','Trésorerie'],['responsable_technique','Responsable technique'],['communication','Communication'],['responsable_sportif','Responsable sportif'],['responsable_boutique','Responsable boutique'],['referent','Référent'],['autre','Autre']];
 let current='teams',editing=null,editingRow={},token=sessionStorage.getItem('admin-token')||'',references={teams:[],club_members:[],venues:[],competition_levels:[],seasons:[],tournaments:[],team_competitions:[],shop_categories:[]},referencesLoaded=false;
 const $=selector=>document.querySelector(selector);
 const authHeaders=()=>({'x-requested-with':'XMLHttpRequest',...(token?{authorization:`Bearer ${token}`}:{})}),jsonHeaders=()=>({'content-type':'application/json',...authHeaders()});
@@ -67,7 +67,7 @@ async function load(){
     matches:'Les rencontres officielles sont récupérées automatiquement et ne sont pas modifiables ici. Vous pouvez ajouter un match amical.',
     tournament_teams:'Associez un ou plusieurs groupes sportifs à un tournoi.',
     sponsors:'Les partenaires actifs seront affichés sur le site.',
-    site_media:'Remplacez ici les principales photos éditoriales. La nouvelle image est mise en ligne dès l’enregistrement.',
+    site_media:'Remplacez ici les principales photos éditoriales, notamment la couverture de la boutique. La nouvelle image est mise en ligne dès l’enregistrement.',
     shop_categories:'Créez les familles visibles dans la boutique, par exemple « Pour jouer » ou « Pour supporter ».',
     shop_products:'Ajoutez les articles, leurs tailles et plusieurs options (une par ligne). Un seul article à la une sera affiché en tête de page ; les articles phares apparaissent dans leur catégorie.',
     shop_settings:'Chargez ici le catalogue PDF et choisissez l’adresse qui recevra les demandes de commande.',
