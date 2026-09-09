@@ -85,12 +85,82 @@ body{background:var(--paper)}
 @media(max-width:760px){.practical-hero:before{right:-22%;width:65%;opacity:.25}}
 
 /* Footer structuré */
-footer{display:grid;grid-template-columns:1.45fr .7fr .7fr 1fr;gap:48px;align-items:start;padding-top:52px;padding-bottom:52px;background:#171313;border-top:8px solid #9F1A1A}
-.footer-brand{display:flex;gap:18px;align-items:center}.footer-brand img{width:92px;height:92px;object-fit:contain}.footer-brand b{font-size:19px;text-transform:uppercase}.footer-brand p{color:#c7bdbd;line-height:1.55;font-size:13px}.footer-links{display:grid;gap:11px}.footer-links strong{color:#ffd000;text-transform:uppercase;font-size:10px;letter-spacing:.14em;margin-bottom:5px}.footer-links a{font-size:13px;color:#e9e2e2}.footer-links a:hover{color:#ffd000}.footer-signature{display:grid;justify-items:end;font-family:Impact,'Arial Narrow',sans-serif;font-size:28px;line-height:.95}.footer-signature span{color:#fff}.footer-signature b{color:#ffd000;font-weight:400}
-.footer-brand{display:flex;gap:18px;align-items:flex-start}
-.footer-brand-logos{display:flex;flex-direction:column;align-items:center;gap:10px}
-.footer-brand-logos img{width:64px;height:64px}
-.footer-brand-text{padding-top:2px}
+footer{
+  display:grid;
+  grid-template-columns:1.2fr .7fr .7fr 1fr;
+  gap:48px;
+  align-items:start;
+  padding-top:52px;
+  padding-bottom:52px;
+  background:#171313;
+  border-top:8px solid #9F1A1A;
+}
+
+/* Bloc identité */
+.footer-brand{
+  display:grid;
+  gap:20px;
+}
+
+.footer-brand-main{
+  display:flex;
+  align-items:center;
+  gap:18px;
+}
+
+.footer-club-logo{
+  width:68px;
+  height:68px;
+  flex:none;
+  object-fit:contain;
+}
+
+.footer-brand-text{
+  padding:0;
+}
+
+.footer-brand-text b{
+  display:block;
+  margin-bottom:8px;
+  font-size:19px;
+  text-transform:uppercase;
+}
+
+.footer-brand-text p{
+  margin:0;
+  color:#c7bdbd;
+  font-size:13px;
+  line-height:1.55;
+}
+
+/* Labels */
+.footer-labels{
+  padding-top:16px;
+  border-top:1px solid rgba(255,255,255,.10);
+}
+
+.footer-labels > span{
+  display:block;
+  margin-bottom:10px;
+  color:#8f8586;
+  font-size:9px;
+  font-weight:700;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+}
+
+.footer-labels-list{
+  display:flex;
+  align-items:center;
+  gap:14px;
+}
+
+.footer-labels-list img{
+  width:auto;
+  height:38px;
+  max-width:90px;
+  object-fit:contain;
+}
 .footer-support{display:grid;gap:6px}.footer-support strong{color:#ffd000;text-transform:uppercase;font-size:10px;letter-spacing:.14em;margin-bottom:5px}.footer-support span{font-size:11px;color:#bdb2b4;margin-top:7px}.footer-support a{font-size:12px;color:#fff;text-decoration:underline;text-decoration-color:#9F1A1A;text-underline-offset:4px}.footer-support a:hover{color:#ffd000}
 .staff{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}.staff article img{width:72px;height:72px;object-fit:cover;border-radius:50%;margin-bottom:10px}
 @media(max-width:850px){footer{grid-template-columns:1fr 1fr}.footer-signature{justify-items:start}}
