@@ -87,7 +87,7 @@ body{background:var(--paper)}
 /* Footer */
 footer{
   display:grid;
-  grid-template-columns:1.45fr .7fr .7fr 1fr;
+  grid-template-columns:1.7fr .7fr .7fr 1fr;
   gap:48px;
   align-items:start;
 
@@ -148,7 +148,7 @@ footer{
    ========================= */
 
 .footer-labels{
-  padding-top:16px;
+  padding-top:12px;
   border-top:1px solid rgba(255,255,255,.10);
 }
 
@@ -166,13 +166,14 @@ footer{
 .footer-labels-list{
   display:flex;
   align-items:center;
-  gap:14px;
+  gap:18px;
+  flex-wrap:wrap;
 }
 
 .footer-labels-list img{
   width:auto;
-  height:42px;
-  max-width:100px;
+  height:58px;
+  max-width:none;
   object-fit:contain;
 }
 
