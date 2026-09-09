@@ -84,22 +84,28 @@ body{background:var(--paper)}
 .practical-hero h1,.practical-hero p{position:relative;z-index:1}
 @media(max-width:760px){.practical-hero:before{right:-22%;width:65%;opacity:.25}}
 
-/* Footer structuré */
+/* Footer */
 footer{
   display:grid;
-  grid-template-columns:1.2fr .7fr .7fr 1fr;
+  grid-template-columns:1.45fr .7fr .7fr 1fr;
   gap:48px;
   align-items:start;
+
   padding-top:52px;
   padding-bottom:52px;
+
   background:#171313;
   border-top:8px solid #9F1A1A;
 }
 
-/* Bloc identité */
+
+/* =========================
+   Identité du club
+   ========================= */
+
 .footer-brand{
   display:grid;
-  gap:20px;
+  gap:18px;
 }
 
 .footer-brand-main{
@@ -122,18 +128,25 @@ footer{
 .footer-brand-text b{
   display:block;
   margin-bottom:8px;
+
+  color:#fff;
   font-size:19px;
   text-transform:uppercase;
 }
 
 .footer-brand-text p{
   margin:0;
+
   color:#c7bdbd;
   font-size:13px;
   line-height:1.55;
 }
 
-/* Labels */
+
+/* =========================
+   Labels FFF
+   ========================= */
+
 .footer-labels{
   padding-top:16px;
   border-top:1px solid rgba(255,255,255,.10);
@@ -142,6 +155,7 @@ footer{
 .footer-labels > span{
   display:block;
   margin-bottom:10px;
+
   color:#8f8586;
   font-size:9px;
   font-weight:700;
@@ -157,11 +171,104 @@ footer{
 
 .footer-labels-list img{
   width:auto;
-  height:38px;
-  max-width:90px;
+  height:42px;
+  max-width:100px;
   object-fit:contain;
 }
-.footer-support{display:grid;gap:6px}.footer-support strong{color:#ffd000;text-transform:uppercase;font-size:10px;letter-spacing:.14em;margin-bottom:5px}.footer-support span{font-size:11px;color:#bdb2b4;margin-top:7px}.footer-support a{font-size:12px;color:#fff;text-decoration:underline;text-decoration-color:#9F1A1A;text-underline-offset:4px}.footer-support a:hover{color:#ffd000}
+
+
+/* =========================
+   Colonnes de liens
+   ========================= */
+
+.footer-links{
+  display:grid;
+  gap:11px;
+}
+
+.footer-links strong{
+  color:#ffd000;
+  text-transform:uppercase;
+  font-size:10px;
+  letter-spacing:.14em;
+  margin-bottom:5px;
+}
+
+.footer-links a{
+  display:block;
+  color:#e9e2e2;
+  font-size:13px;
+  text-decoration:none;
+}
+
+.footer-links a:hover{
+  color:#ffd000;
+}
+
+
+/* =========================
+   Contact
+   ========================= */
+
+.footer-support{
+  display:grid;
+  gap:6px;
+}
+
+.footer-support strong{
+  color:#ffd000;
+  text-transform:uppercase;
+  font-size:10px;
+  letter-spacing:.14em;
+  margin-bottom:5px;
+}
+
+.footer-support span{
+  margin-top:7px;
+  color:#bdb2b4;
+  font-size:11px;
+}
+
+.footer-support a{
+  color:#fff;
+  font-size:12px;
+
+  text-decoration:underline;
+  text-decoration-color:#9F1A1A;
+  text-underline-offset:4px;
+}
+
+.footer-support a:hover{
+  color:#ffd000;
+}
+
+
+/* =========================
+   Responsive
+   ========================= */
+
+@media(max-width:850px){
+  footer{
+    grid-template-columns:1fr 1fr;
+  }
+}
+
+@media(max-width:520px){
+  footer{
+    grid-template-columns:1fr;
+    gap:28px;
+  }
+
+  .footer-club-logo{
+    width:60px;
+    height:60px;
+  }
+
+  .footer-labels-list img{
+    height:38px;
+  }
+}
+
 .staff{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}.staff article img{width:72px;height:72px;object-fit:cover;border-radius:50%;margin-bottom:10px}
 @media(max-width:850px){footer{grid-template-columns:1fr 1fr}.footer-signature{justify-items:start}}
 @media(max-width:520px){footer{grid-template-columns:1fr;gap:28px}.footer-brand img{width:72px;height:72px}}
