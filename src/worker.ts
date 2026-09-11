@@ -121,7 +121,12 @@ async function api(request: Request, env: Env, url: URL) {
   if (url.pathname.startsWith("/admin-api/") && !await admin(request, env)) {
     return json({ error: "Accès administrateur requis" }, 401);
   }
-  if (table === "admins" && request.method === "GET" && !await admin(request, env)) {
+  // Ces tables contiennent des données personnelles (email, téléphone, numéro de
+  // licence…) qui ne doivent jamais être listées en clair sans authentification,
+  // même en lecture seule. Les pages publiques passent par pageData() qui expose
+  // uniquement les champs nécessaires (ex. encadrant d'une équipe).
+  const restrictedRead = new Set(["admins", "club_members"]);
+  if (restrictedRead.has(table) && request.method === "GET" && !await admin(request, env)) {
     return json({ error: "Accès administrateur requis" }, 401);
   }
   if (request.method === "GET") {
