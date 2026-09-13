@@ -53,6 +53,14 @@
     ?`/media/${encodeURIComponent(slide.object_key).replace(/%2F/g,'/')}`
     :fallback.src;
 
+  const sameResource=(a,b)=>{
+    try{
+      return new URL(a,window.location.href).href===new URL(b,window.location.href).href;
+    }catch{
+      return a===b;
+    }
+  };
+
   const preload=source=>new Promise((resolve,reject)=>{
     const loader=new Image();
     loader.onload=()=>resolve(source);
@@ -136,10 +144,17 @@
       await preload(source);
 
       // Premier affichage : aucune animation.
-      // On remplace la photo de secours seulement une fois la bonne photo chargée.
+      // Si l'image HTML de départ EST déjà la première photo du diaporama,
+      // on ne touche pas à son src : pas de rechargement, pas de flash,
+      // pas de "double premier affichage".
       if(instant||reducedMotion.matches){
         const current=buffers[activeBuffer];
-        current.src=source;
+        const currentSource=current.currentSrc||current.getAttribute('src')||'';
+
+        if(!sameResource(currentSource,source)){
+          current.src=source;
+        }
+
         current.classList.add('is-active');
 
         const inactive=buffers[1-activeBuffer];
@@ -341,7 +356,13 @@
     renderDots();
 
     // Important : pas de fondu au premier chargement de la page.
+    // Si le fallback est déjà la première diapositive, son src n'est même pas réassigné.
     await show(0,false,true);
+
+    // Précharge immédiatement la photo suivante pendant les 5 s d'affichage.
+    if(slides.length>1){
+      preload(srcFor(slides[1])).catch(()=>{});
+    }
 
     schedule();
   }).catch(()=>{
