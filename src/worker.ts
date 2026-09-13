@@ -118,7 +118,8 @@ async function api(request: Request, env: Env, url: URL) {
   const table = parts[1];
   const id = parts[2];
   if (!tables.has(table)) return json({ error: "Ressource inconnue" }, 404);
-  if (url.pathname.startsWith("/admin-api/") && !await admin(request, env)) {
+  if (!url.pathname.startsWith("/admin-api/")) return json({ error: "Ressource publique inconnue" }, 404);
+  if (!await admin(request, env)) {
     return json({ error: "Accès administrateur requis" }, 401);
   }
   // Ces tables contiennent des données personnelles (email, téléphone, numéro de
@@ -216,7 +217,8 @@ async function pageData(env: Env, url: URL) {
   if (page === "team-profile") {
     const slug = String(url.searchParams.get("slug") || "").trim();
     if (!slug) return publicJson({ error: "Équipe manquante" }, 400);
-    const team = await env.DB.prepare(`SELECT t.*,
+    const team = await env.DB.prepare(`SELECT
+      t.id,t.slug,t.name,t.category,t.group_name,t.level,t.gender,t.description,t.player_count,t.photo_key,
       CASE
         WHEN TRIM(COALESCE(t.photo_key,''))<>'' THEN '/media/' || t.photo_key
         WHEN TRIM(COALESCE(sm.object_key,''))<>'' THEN '/media/' || sm.object_key
@@ -293,18 +295,24 @@ async function pageData(env: Env, url: URL) {
 
   if (page === "matches") {
     const [matches, participants, standings, sync, teams, entries] = await env.DB.batch<AnyRow>([
-      env.DB.prepare(`SELECT m.*,
+      env.DB.prepare(`SELECT m.id,m.season_id,m.team_id,m.competition_team_id,m.category,m.competition,m.starts_at,
+        m.venue,m.venue_address,m.latitude,m.longitude,m.home_team,m.away_team,m.home_score,m.away_score,m.status,
+        m.event_type,m.source_url,m.home_logo_url,m.away_logo_url,m.time_confirmed,m.raw_json,
         (SELECT COUNT(*) FROM plateau_games pg WHERE pg.plateau_match_id=m.id) AS plateau_game_count
         FROM matches m WHERE m.season_id IS NULL OR m.season_id=${activeSeason} ORDER BY m.starts_at ASC`),
       env.DB.prepare(`SELECT p.* FROM match_participants p JOIN matches m ON m.id=p.match_id
         WHERE m.season_id IS NULL OR m.season_id=${activeSeason} ORDER BY p.match_id,p.display_order`),
-      env.DB.prepare(`SELECT * FROM standings WHERE season_id IS NULL OR season_id=${activeSeason} ORDER BY phase_id,position`),
+      env.DB.prepare(`SELECT id,source,phase_id,season_id,team_id,team_name,position,played,won,drawn,lost,
+        goals_for,goals_against,points
+        FROM standings WHERE season_id IS NULL OR season_id=${activeSeason} ORDER BY phase_id,position`),
       env.DB.prepare(`SELECT id,finished_at,status,imported_count,error_message,
         (SELECT finished_at FROM sync_runs WHERE source='github_actions' AND status='success'
           ORDER BY id DESC LIMIT 1) AS last_success_at
         FROM sync_runs WHERE source='github_actions' ORDER BY id DESC LIMIT 1`),
       env.DB.prepare("SELECT id,name,group_name,active FROM teams WHERE active=1 ORDER BY name COLLATE NOCASE"),
-      env.DB.prepare(`SELECT * FROM team_competitions WHERE active=1 AND (season_id IS NULL OR season_id=${activeSeason}) ORDER BY name COLLATE NOCASE`)
+      env.DB.prepare(`SELECT id,team_id,season_id,name,team_number,category_code,competition_name,division,pool,
+        level_id,active,display_order
+        FROM team_competitions WHERE active=1 AND (season_id IS NULL OR season_id=${activeSeason}) ORDER BY name COLLATE NOCASE`)
     ]);
     return publicJson({ matches: resultRows(matches), participants: resultRows(participants), standings: resultRows(standings), sync: syncRunData(resultRows(sync)[0] || null), teams: resultRows(teams), entries: resultRows(entries) });
   }
@@ -312,20 +320,23 @@ async function pageData(env: Env, url: URL) {
   if (page === "planning") {
     const [teams, sessions, venues] = await env.DB.batch<AnyRow>([
       env.DB.prepare("SELECT id,name,group_name,category FROM teams WHERE active=1 ORDER BY name COLLATE NOCASE"),
-      env.DB.prepare(`SELECT * FROM training_sessions WHERE active=1 AND (season_id IS NULL OR season_id=${activeSeason}) ORDER BY weekday,starts_at`),
-      env.DB.prepare("SELECT * FROM venues WHERE active=1 ORDER BY display_order,name COLLATE NOCASE")
+      env.DB.prepare(`SELECT id,team_id,season_id,category,weekday,starts_at,ends_at,venue,address,venue_id,active
+        FROM training_sessions WHERE active=1 AND (season_id IS NULL OR season_id=${activeSeason}) ORDER BY weekday,starts_at`),
+      env.DB.prepare("SELECT id,name,address,latitude,longitude,maps_url,active,display_order FROM venues WHERE active=1 ORDER BY display_order,name COLLATE NOCASE")
     ]);
     return publicJson({ teams: resultRows(teams), sessions: resultRows(sessions), venues: resultRows(venues) });
   }
 
   if (page === "tournaments") {
     const [tournaments, links, teams, venues] = await env.DB.batch<AnyRow>([
-      env.DB.prepare(`SELECT * FROM tournaments WHERE status IN ('published','open','finished')
+      env.DB.prepare(`SELECT id,slug,name,summary,starts_on,ends_on,venue,categories,registration_url,rules_key,
+        status,season_id,venue_id,tournify_url,organizer
+        FROM tournaments WHERE status IN ('published','open','finished')
         AND (season_id IS NULL OR season_id=${activeSeason}) ORDER BY starts_on`),
-      env.DB.prepare(`SELECT tt.* FROM tournament_teams tt JOIN tournaments t ON t.id=tt.tournament_id
+      env.DB.prepare(`SELECT tt.tournament_id,tt.team_id FROM tournament_teams tt JOIN tournaments t ON t.id=tt.tournament_id
         WHERE t.season_id IS NULL OR t.season_id=${activeSeason} ORDER BY tt.tournament_id`),
       env.DB.prepare("SELECT id,name,group_name FROM teams WHERE active=1 ORDER BY name COLLATE NOCASE"),
-      env.DB.prepare("SELECT * FROM venues WHERE active=1 ORDER BY display_order,name COLLATE NOCASE")
+      env.DB.prepare("SELECT id,name,address,latitude,longitude,maps_url,active,display_order FROM venues WHERE active=1 ORDER BY display_order,name COLLATE NOCASE")
     ]);
     return publicJson({ tournaments: resultRows(tournaments), links: resultRows(links), teams: resultRows(teams), venues: resultRows(venues) });
   }
@@ -399,15 +410,46 @@ async function cachedPlateauGames(request: Request, env: Env, url: URL, ctx: Exe
   return response;
 }
 
+async function publicSiteMedia(env: Env) {
+  const rows = await env.DB.prepare(`SELECT slot,object_key,alt_text
+    FROM site_media ORDER BY display_order,id`).all<AnyRow>();
+  return publicJson(resultRows(rows));
+}
+
+const acceptedUploadTypes = new Set([
+  "image/jpeg", "image/png", "image/gif", "image/webp", "image/avif", "application/pdf"
+]);
+
+function ascii(bytes: Uint8Array, start: number, length: number) {
+  return String.fromCharCode(...bytes.slice(start, start + length));
+}
+
+async function detectUpload(file: File) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const startsWith = (signature: number[]) => signature.every((value, index) => bytes[index] === value);
+  if (startsWith([0xff, 0xd8, 0xff])) return { contentType: "image/jpeg", extension: "jpg", bytes };
+  if (startsWith([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return { contentType: "image/png", extension: "png", bytes };
+  if (ascii(bytes, 0, 4) === "GIF8") return { contentType: "image/gif", extension: "gif", bytes };
+  if (ascii(bytes, 0, 4) === "RIFF" && ascii(bytes, 8, 4) === "WEBP") return { contentType: "image/webp", extension: "webp", bytes };
+  if (ascii(bytes, 4, 4) === "ftyp" && ["avif", "avis"].includes(ascii(bytes, 8, 4))) {
+    return { contentType: "image/avif", extension: "avif", bytes };
+  }
+  if (ascii(bytes, 0, 5) === "%PDF-") return { contentType: "application/pdf", extension: "pdf", bytes };
+  return null;
+}
+
 async function upload(request: Request, env: Env) {
   if (!await admin(request, env)) return json({ error: "Non autorisé" }, 401);
   const form = await request.formData();
   const file = form.get("file");
   if (!(file instanceof File)) return json({ error: "Fichier manquant" }, 400);
   if (file.size > 15_000_000) return json({ error: "Fichier trop volumineux (15 Mo maximum)" }, 413);
-  const safe = file.name.normalize("NFKD").replace(/[^a-zA-Z0-9._-]/g, "-");
-  const key = `uploads/${Date.now()}-${safe}`;
-  await env.MEDIA.put(key, file.stream(), { httpMetadata: { contentType: file.type } });
+  const detected = await detectUpload(file);
+  if (!detected || !acceptedUploadTypes.has(detected.contentType)) {
+    return json({ error: "Type de fichier refusé. Utilisez une image JPG, PNG, GIF, WebP, AVIF ou un PDF." }, 415);
+  }
+  const key = `uploads/${crypto.randomUUID()}.${detected.extension}`;
+  await env.MEDIA.put(key, detected.bytes, { httpMetadata: { contentType: detected.contentType } });
   return json({ key, url: `/media/${key}` }, 201);
 }
 
@@ -799,6 +841,7 @@ export default {
       return cachedPlateauGames(request, env, url, ctx);
     }
     if (url.pathname === "/api/match-sync" && request.method === "GET") return syncMeta(env);
+    if (url.pathname === "/api/site_media" && request.method === "GET") return publicSiteMedia(env);
     if (url.pathname === "/admin-api/sync-health" && request.method === "GET") {
       if (!await admin(request, env)) return json({ error: "Accès administrateur requis" }, 401);
       return syncMeta(env, true);
@@ -808,14 +851,24 @@ export default {
     if (url.pathname === "/admin-api/sync/matches" && request.method === "POST") {
       return json({ error: "Lancez l’action « Synchroniser les matchs » dans GitHub. Elle utilise ZenRows uniquement aux six horaires prévus." }, 409);
     }
-    if (url.pathname.startsWith("/admin-api/") || url.pathname.startsWith("/api/")) {
-      return api(request, env, url);
-    }
+    if (url.pathname.startsWith("/admin-api/")) return api(request, env, url);
+    // Les routes /api/<table> génériques ne sont pas publiques. L'interface
+    // d'administration utilise /admin-api/<table>, ce qui évite qu'un en-tête
+    // d'identité forgeable sur une route publique puisse ouvrir l'API CRUD.
+    if (url.pathname.startsWith("/api/")) return json({ error: "Ressource publique inconnue" }, 404);
     if (url.pathname.startsWith("/media/")) {
       const object = await env.MEDIA.get(url.pathname.slice(7));
-      return object
-        ? new Response(object.body, { headers: { "content-type": object.httpMetadata?.contentType || "application/octet-stream", "cache-control": "public,max-age=31536000,immutable" } })
-        : new Response("Not found", { status: 404 });
+      if (!object) return new Response("Not found", { status: 404 });
+      const rawContentType = object.httpMetadata?.contentType || "application/octet-stream";
+      const knownContentType = acceptedUploadTypes.has(rawContentType);
+      const contentType = knownContentType ? rawContentType : "application/octet-stream";
+      const headers = new Headers({
+        "content-type": contentType,
+        "cache-control": "public,max-age=31536000,immutable",
+        "x-content-type-options": "nosniff"
+      });
+      if (contentType === "application/pdf" || !knownContentType) headers.set("content-disposition", "attachment");
+      return new Response(object.body, { headers });
     }
     return env.ASSETS.fetch(request);
   }

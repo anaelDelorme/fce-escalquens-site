@@ -1,7 +1,16 @@
 const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-const logo=(url,name)=>url
-  ?`<img class="match-logo" src="${esc(url)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
-  :'<span class="match-logo fallback" aria-hidden="true">⚽</span>';
+const safeHttpUrl=value=>{
+  try{
+    const url=new URL(String(value??''),location.origin);
+    return ['http:','https:'].includes(url.protocol)?url.href:'';
+  }catch{return '';}
+};
+const logo=(url,name)=>{
+  const safeUrl=safeHttpUrl(url);
+  return safeUrl
+    ?`<img class="match-logo" src="${esc(safeUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
+    :'<span class="match-logo fallback" aria-hidden="true">⚽</span>';
+};
 const dateFormat=new Intl.DateTimeFormat('fr-FR',{timeZone:'Europe/Paris',weekday:'long',day:'numeric',month:'long',year:'numeric'});
 const timeFormat=new Intl.DateTimeFormat('fr-FR',{timeZone:'Europe/Paris',hour:'2-digit',minute:'2-digit'});
 const statusLabels={postponed:'Reporté',cancelled:'Annulé'};
@@ -158,7 +167,7 @@ const matchCard=row=>{
     `}
     <footer>
       ${matchLocation(row)}
-      ${row.source_url?`<a href="${esc(row.source_url)}" target="_blank" rel="noopener">Source officielle →</a>`:''}
+      ${safeHttpUrl(row.source_url)?`<a href="${esc(safeHttpUrl(row.source_url))}" target="_blank" rel="noopener">Source officielle →</a>`:''}
     </footer>
   </article>`;
 };

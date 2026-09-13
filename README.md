@@ -21,6 +21,14 @@ En local, utilisez « Connexion locale » puis la valeur `DEV_ADMIN_TOKEN` du
 fichier `.dev.vars`. En production, Cloudflare Access transmet l'adresse email
 et le Worker vérifie qu'elle est active dans la table `admins`.
 
+Sur une base neuve, la migration crée seulement un administrateur désactivé de
+remplacement afin qu'aucune adresse personnelle ne soit publiée dans le dépôt.
+Ajoutez ensuite l'adresse autorisée avec Wrangler :
+
+```bash
+npx wrangler d1 execute DB --remote --command="INSERT INTO admins(email,name,active) VALUES('votre-adresse@example.com','Administrateur',1);"
+```
+
 ## Base D1 et médias R2
 
 ```bash
