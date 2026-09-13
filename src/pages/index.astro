@@ -7,7 +7,7 @@ import Footer from '../components/Footer.astro';
     <meta charset="utf-8"><meta name="viewport" content="width=device-width">
     <title>FC Escalquens - Le site du club</title>
     <meta name="description" content="Équipes, entraînements, matchs, résultats et actualités du FC Escalquens">
-    <link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/enhancements.css"><link rel="stylesheet" href="/brand-charter.css"><link rel="stylesheet" href="/home-extra.css">
+    <link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/enhancements.css"><link rel="stylesheet" href="/brand-charter.css"><link rel="stylesheet" href="/home-extra.css"><link rel="stylesheet" href="/home-slideshow.css">
   </head>
   <body>
     <Header/>
@@ -20,7 +20,17 @@ import Footer from '../components/Footer.astro';
           <div class="actions"><a href="/equipes/">Trouver mon équipe →</a><a href="/planning/">Voir le planning</a></div>
           <div class="hero-numbers"><span><b>15</b> équipes</span><span><b>100%</b> passion</span></div>
         </div>
-        <div class="photo"><img data-media-slot="home_collective" src="/equipe-collectif.webp" alt="Une équipe du FC Escalquens réunie en cercle avant le match"><div class="slash">LE FOOT POUR TOUS</div><i></i><i></i><i></i></div>
+        <div class="photo home-slideshow" id="home-slideshow" role="region" aria-roledescription="carrousel" aria-label="Photos du FC Escalquens" aria-busy="true" tabindex="0" data-fallback-src="/equipe-collectif.webp" data-fallback-alt="Une équipe du FC Escalquens réunie en cercle avant le match">
+          <div class="home-slideshow-stage"><img id="home-slide-image" src="/equipe-collectif.webp" alt="Une équipe du FC Escalquens réunie en cercle avant le match" fetchpriority="high" decoding="async"></div>
+          <div class="slash">LE FOOT POUR TOUS</div><i></i><i></i><i></i>
+          <div class="home-slideshow-controls" hidden>
+            <button type="button" data-slide-prev aria-label="Afficher la photo précédente">←</button>
+            <button type="button" class="slide-toggle" data-slide-toggle aria-pressed="false" aria-label="Mettre le diaporama en pause">Pause</button>
+            <button type="button" data-slide-next aria-label="Afficher la photo suivante">→</button>
+          </div>
+          <div class="home-slideshow-dots" role="group" aria-label="Choisir une photo" hidden></div>
+          <p class="sr-only" id="home-slide-status" aria-live="polite" aria-atomic="true"></p>
+        </div>
       </section>
       <section class="match-strip"><div><p class="eyebrow" id="home-match-kicker">Prochainement</p><h2>Matchs & résultats.</h2></div><div id="matches-list"><p>Chargement des rencontres…</p></div><a href="/matchs/" class="circle-arrow" aria-label="Tous les matchs">→</a></section>
       <section class="content teams-home"><div class="section-heading"><div><p class="eyebrow">Du premier ballon aux seniors</p><h2>Toutes nos équipes</h2></div><a href="/equipes/">Tout voir →</a></div><div class="team-rail" id="teams-list"></div></section>
@@ -32,6 +42,7 @@ import Footer from '../components/Footer.astro';
     </main>
     <Footer/>
     <script is:inline src="/site.js"></script>
+    <script is:inline src="/home-slideshow.js"></script>
     <script is:inline src="/sponsors.js"></script>
     <script is:inline src="/site-media.js"></script>
   </body>

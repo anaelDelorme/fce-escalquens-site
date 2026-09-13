@@ -14,7 +14,7 @@ const tables = new Set([
   "teams", "team_competitions", "training_sessions", "contacts", "tournaments",
   "tournament_teams", "matches", "match_participants", "standings", "social_posts",
   "documents", "club_members", "team_staff", "admins", "venues",
-  "competition_levels", "seasons", "sponsors", "site_media",
+  "competition_levels", "seasons", "sponsors", "site_media", "home_slides",
   "shop_categories", "shop_products", "shop_settings"
 ]);
 
@@ -37,6 +37,7 @@ const editable: Record<string, string[]> = {
   seasons: ["label", "starts_on", "ends_on", "active"],
   sponsors: ["name", "logo_key", "website_url", "tier", "description", "active", "display_order"],
   site_media: ["object_key", "alt_text"],
+  home_slides: ["object_key", "alt_text", "display_order", "active"],
   shop_categories: ["slug", "name", "description", "display_order", "active"],
   shop_products: ["shop_category_id", "slug", "name", "short_description", "description", "price_label", "price_details", "sizes", "options", "image_key", "featured", "highlighted", "active", "display_order"],
   shop_settings: ["contact_email", "catalogue_title", "catalogue_key", "order_subject"]
@@ -52,6 +53,7 @@ const defaultOrder: Record<string, string> = {
   tournaments: "starts_on ASC",
   training_sessions: "weekday ASC, starts_at ASC",
   site_media: "display_order ASC, id ASC",
+  home_slides: "display_order ASC, id ASC",
   shop_categories: "display_order ASC, name COLLATE NOCASE ASC",
   shop_products: "display_order ASC, name COLLATE NOCASE ASC",
   shop_settings: "id ASC"
@@ -143,6 +145,9 @@ async function api(request: Request, env: Env, url: URL) {
     if (table.startsWith("shop_") || table === "site_media") {
       await caches.default.delete(new Request(`${url.origin}/api/page/shop`));
     }
+    if (table === "home_slides") {
+      await caches.default.delete(new Request(`${url.origin}/api/page/home`));
+    }
     return json({ ok: true });
   }
   const body = await request.json<Record<string, unknown>>().catch(() => ({}));
@@ -166,6 +171,9 @@ async function api(request: Request, env: Env, url: URL) {
       if (table.startsWith("shop_") || table === "site_media") {
         await caches.default.delete(new Request(`${url.origin}/api/page/shop`));
       }
+      if (table === "home_slides") {
+        await caches.default.delete(new Request(`${url.origin}/api/page/home`));
+      }
       return json({ id: result.meta.last_row_id }, 201);
     } catch (error) { return json({ error: databaseError(error) }, 409); }
   }
@@ -185,6 +193,9 @@ async function api(request: Request, env: Env, url: URL) {
       }
       if (table.startsWith("shop_") || table === "site_media") {
         await caches.default.delete(new Request(`${url.origin}/api/page/shop`));
+      }
+      if (table === "home_slides") {
+        await caches.default.delete(new Request(`${url.origin}/api/page/home`));
       }
       return json({ ok: true });
     } catch (error) { return json({ error: databaseError(error) }, 409); }
@@ -277,7 +288,7 @@ async function pageData(env: Env, url: URL) {
   }
 
   if (page === "home") {
-    const [teams, matches, results, sponsors, media] = await env.DB.batch<AnyRow>([
+    const [teams, matches, results, sponsors, media, slides] = await env.DB.batch<AnyRow>([
       env.DB.prepare(`SELECT id,slug,name,group_name,level,category FROM teams
         WHERE active=1 ORDER BY name COLLATE NOCASE ASC`),
       env.DB.prepare(`SELECT id,starts_at,category,competition,venue,venue_address,latitude,longitude,home_team,away_team,home_score,away_score,status FROM matches
@@ -288,9 +299,12 @@ async function pageData(env: Env, url: URL) {
         AND (status='finished' OR (home_score IS NOT NULL AND away_score IS NOT NULL))
         ORDER BY starts_at DESC LIMIT 3`),
       env.DB.prepare("SELECT name,logo_key,website_url,tier FROM sponsors WHERE active=1 ORDER BY display_order,name COLLATE NOCASE"),
-      env.DB.prepare("SELECT slot,object_key,alt_text FROM site_media WHERE slot IN ('home_collective','home_story')")
+      env.DB.prepare("SELECT slot,object_key,alt_text FROM site_media WHERE slot IN ('home_collective','home_story')"),
+      env.DB.prepare(`SELECT id,object_key,alt_text,display_order,active
+        FROM home_slides WHERE active=1 AND TRIM(COALESCE(object_key,''))<>''
+        ORDER BY display_order,id LIMIT 12`)
     ]);
-    return publicJson({ teams: resultRows(teams), matches: resultRows(matches), results: resultRows(results), sponsors: resultRows(sponsors), site_media: resultRows(media) });
+    return publicJson({ teams: resultRows(teams), matches: resultRows(matches), results: resultRows(results), sponsors: resultRows(sponsors), site_media: resultRows(media), slides: resultRows(slides) });
   }
 
   if (page === "matches") {
