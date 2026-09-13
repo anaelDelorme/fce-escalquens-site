@@ -1,5 +1,12 @@
 ---
 const nav=[['Le club','/'],['Équipes','/equipes/'],['Matchs & résultats','/matchs/'],['Boutique','/boutique/'],['Tournois','/tournois/'],['Planning','/planning/'],['Contacts','/contacts/'],['Mécénat','/mecenat/']];
+const pathname=Astro.url.pathname;
+const isCurrent=(href)=>href==='/'?pathname==='/':pathname.startsWith(href);
 ---
-<header class="site-header"><a class="brand" href="/"><img class="club-logo" src="/logo-fce.webp" alt="FC Escalquens"><span><b>FC ESCALQUENS</b><small>Un maillot. Une famille.</small></span></a><nav>{nav.map(([label,href])=><a href={href}>{label}</a>)}</nav><a class="join" href="/contacts/">Nous rejoindre</a><button class="menu-button" aria-label="Ouvrir le menu" aria-expanded="false"><i></i><i></i><i></i></button></header>
-<script is:inline>document.querySelector('.menu-button')?.addEventListener('click',event=>{const open=document.querySelector('.site-header nav')?.classList.toggle('open');event.currentTarget.setAttribute('aria-expanded',String(Boolean(open)))})</script>
+<a class="skip-link" href="#main-content">Aller au contenu</a>
+<header class="site-header"><a class="brand" href="/"><img class="club-logo" src="/logo-fce.webp" alt=""><span><b>FC ESCALQUENS</b><small>Un maillot. Une famille.</small></span></a><nav aria-label="Navigation principale">{nav.map(([label,href])=><a href={href} aria-current={isCurrent(href)?'page':undefined}>{label}</a>)}</nav><a class="join" href="/contacts/">Nous rejoindre</a><button class="menu-button" type="button" aria-label="Ouvrir le menu" aria-expanded="false"><i></i><i></i><i></i></button></header>
+<span id="main-content" class="skip-target" tabindex="-1"></span>
+<script is:inline>document.querySelector('.menu-button')?.addEventListener('click',event=>{const open=document.querySelector('.site-header nav')?.classList.toggle('open');event.currentTarget.setAttribute('aria-expanded',String(Boolean(open)));event.currentTarget.setAttribute('aria-label',open?'Fermer le menu':'Ouvrir le menu')})</script>
+<style is:global>
+.skip-link{position:fixed;z-index:1000;left:12px;top:12px;transform:translateY(-180%);padding:12px 16px;background:#fff;color:#7d1117;border:3px solid #7d1117;font-weight:900;text-decoration:none}.skip-link:focus{transform:none}.skip-target{display:block;height:0;scroll-margin-top:96px}.skip-target:focus{outline:none}a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #005fcc!important;outline-offset:3px}.site-header nav a[aria-current="page"]{font-weight:900;text-decoration:underline;text-decoration-thickness:3px;text-underline-offset:6px}
+</style>

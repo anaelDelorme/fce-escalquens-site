@@ -3,6 +3,7 @@ const set=(selector,value)=>{const node=document.querySelector(selector);if(node
 const esc=value=>String(value??'').replace(/[&<>'"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
 const logo=(url,name)=>url?`<img class="match-logo" src="${esc(url)}" alt="" loading="lazy" referrerpolicy="no-referrer">`:'<span class="match-logo fallback" aria-hidden="true">⚽</span>';
 const roleLabels={coach_referent:'Coach référent',coach:'Coach',dirigeant:'Dirigeant',arbitre:'Arbitre'};
+const staffCollator=new Intl.Collator('fr',{sensitivity:'base'});
 const dateFormat=new Intl.DateTimeFormat('fr-FR',{timeZone:'Europe/Paris',weekday:'long',day:'numeric',month:'long'});
 const timeFormat=new Intl.DateTimeFormat('fr-FR',{timeZone:'Europe/Paris',hour:'2-digit',minute:'2-digit'});
 const displayDate=value=>{const label=dateFormat.format(new Date(value));return label.charAt(0).toLocaleUpperCase('fr')+label.slice(1)};
@@ -53,7 +54,6 @@ const wirePlateauDetails=()=>document.querySelectorAll('[data-plateau-games]').f
   detail.innerHTML='<p class="plateau-games-loading">Chargement du programme…</p>';
   try{if(!plateauGamesCache.has(id)){const response=await fetch(`/api/plateau-games?plateau_id=${encodeURIComponent(id)}`),data=await response.json();if(!response.ok)throw new Error(data.error||`HTTP ${response.status}`);plateauGamesCache.set(id,data.games||[])}detail.innerHTML=plateauGamesHtml(plateauGamesCache.get(id));detail.dataset.loaded='1'}catch(error){console.error(error);detail.innerHTML='<p class="participant-empty">Le détail est momentanément indisponible.</p>'}
 });
-
 fetch(`/api/page/team-profile?slug=${encodeURIComponent(slug||'')}&v=23`).then(async response=>{
   const data=await response.json();
   if(!response.ok)throw new Error(data.error||`Fiche équipe : ${response.status}`);
@@ -72,10 +72,13 @@ fetch(`/api/page/team-profile?slug=${encodeURIComponent(slug||'')}&v=23`).then(a
   const photo=document.querySelector('#team-photo'),visual=photo.closest('.team-visual');
   const revealPhoto=(source,fallback)=>{const loader=new Image();loader.onload=()=>{photo.src=source;photo.alt=team.photo_alt||`Photo du groupe ${team.name}`;photo.classList.add('is-ready');visual.setAttribute('aria-busy','false')};loader.onerror=()=>{if(source!==fallback)revealPhoto(fallback,fallback);else visual.setAttribute('aria-busy','false')};loader.src=source};
   revealPhoto(teamPhoto,defaultPhoto);
-  document.querySelector('#team-staff').innerHTML=staff.map(item=>`<article>${item.member.photo_key?`<img src="/media/${esc(item.member.photo_key)}" alt="">`:''}<small>${roleLabels[item.role]||esc(item.role)}</small><h3>${esc(item.member.full_name)}</h3>${item.member.email?`<a href="mailto:${esc(item.member.email)}">${esc(item.member.email)}</a>`:''}${item.member.phone?`<a href="tel:${esc(item.member.phone)}">${esc(item.member.phone)}</a>`:''}</article>`).join('')||'<p>Encadrement à venir.</p>';
+  const sortedStaff=[...staff].sort((a,b)=>((a.role==='coach_referent'?0:1)-(b.role==='coach_referent'?0:1))||staffCollator.compare(a.member?.full_name||'',b.member?.full_name||''));
+  const staffNode=document.querySelector('#team-staff');
+  staffNode.innerHTML=sortedStaff.map(item=>`<article class="${item.role==='coach_referent'?'is-referent':''}">${item.member.photo_key?`<img src="/media/${esc(item.member.photo_key)}" alt="">`:''}<small>${roleLabels[item.role]||esc(item.role)}</small><h3>${esc(item.member.full_name)}</h3>${item.member.email?`<a href="mailto:${esc(item.member.email)}">${esc(item.member.email)}</a>`:''}${item.member.phone?`<a href="tel:${esc(item.member.phone)}">${esc(item.member.phone)}</a>`:''}</article>`).join('')||'<p>Encadrement à venir.</p>';
+  staffNode.setAttribute('aria-busy','false');
   const days=['','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
   document.querySelector('#team-training').innerHTML=sessions.map(row=>{const query=row.venue_latitude!=null&&row.venue_longitude!=null?`${row.venue_latitude},${row.venue_longitude}`:row.venue_full_address||row.address||row.venue_name||row.venue,link=row.venue_maps_url||`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;return `<article><b>${days[row.weekday]}</b><span>${row.starts_at} - ${row.ends_at}</span><small>${esc(row.venue_name||row.venue)}</small><a href="${link}" target="_blank" rel="noopener">Itinéraire →</a></article>`}).join('')||'<p>Horaires à venir.</p>';
   document.querySelector('#team-upcoming').innerHTML=upcoming.map(match=>miniMatch(match,true)).join('')||'<p>Les prochaines rencontres arrivent bientôt.</p>';
   document.querySelector('#team-results').innerHTML=results.map(match=>miniMatch(match,false)).join('')||'<p>Aucun résultat publié pour ce groupe.</p>';
   wirePlateauDetails();
-}).catch(error=>{console.error(error);document.querySelector('#team-name').textContent='Informations indisponibles';document.querySelector('#team-description').textContent='La connexion aux données du club a échoué. Merci de réessayer dans quelques instants.'});
+}).catch(error=>{console.error(error);const staffNode=document.querySelector('#team-staff');if(staffNode)staffNode.setAttribute('aria-busy','false');document.querySelector('#team-name').textContent='Informations indisponibles';document.querySelector('#team-description').textContent='La connexion aux données du club a échoué. Merci de réessayer dans quelques instants.'});

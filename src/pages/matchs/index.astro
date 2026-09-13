@@ -23,19 +23,21 @@ import Footer from '../../components/Footer.astro';
             <a href="https://www.fff.fr/680-application-myfff.html" target="_blank" rel="noopener">Découvrir l’application myFFF →</a>
           </div>
         </div>
-        <p id="matches-health" class="matches-health" hidden></p>
-        <div class="tabs"><button class="active" data-tab="upcoming">À venir</button><button data-tab="past">Résultats</button><button data-tab="standings">Classements</button></div>
-        <div class="match-filters" aria-label="Filtrer les rencontres">
+        <p id="matches-health" class="matches-health" role="status" aria-live="polite" hidden></p>
+        <div class="tabs" role="tablist" aria-label="Afficher les rencontres ou les classements"><button type="button" class="active" data-tab="upcoming" role="tab" aria-selected="true" aria-controls="matches-page">À venir</button><button type="button" data-tab="past" role="tab" aria-selected="false" aria-controls="matches-page">Résultats</button><button type="button" data-tab="standings" role="tab" aria-selected="false" aria-controls="standings-page">Classements</button></div>
+        <fieldset class="match-filters">
+          <legend>Filtrer les rencontres</legend>
           <label>Section<select id="section-filter"><option value="">Toutes les sections</option></select></label>
           <label>Groupe sportif<select id="group-filter"><option value="">Tous les groupes sportifs</option></select></label>
           <label>Équipe engagée<select id="entry-filter"><option value="">Toutes les équipes engagées</option></select></label>
-        </div>
-        <div id="matches-page" class="match-calendar"></div>
-        <div id="standings-page" class="standings" hidden></div>
+        </fieldset>
+        <div id="matches-page" class="match-calendar" role="tabpanel"></div>
+        <div id="standings-page" class="standings" role="tabpanel" hidden></div>
         <p class="data-note">Les classements sont affichés uniquement lorsque la FFF ou le District autorise leur diffusion.</p>
       </section>
     </main>
     <Footer/>
     <script is:inline src="/matches.js"></script>
+    <script is:inline src="/matches-accessibility.js"></script>
   </body>
 </html>

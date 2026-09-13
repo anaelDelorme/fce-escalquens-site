@@ -8,28 +8,30 @@
     <link rel="stylesheet" href="/admin-taxonomy.css">
     <link rel="stylesheet" href="/admin-extra.css">
     <link rel="stylesheet" href="/admin-mobile.css">
+    <link rel="stylesheet" href="/admin-team-staff.css">
   </head>
   <body>
+    <a class="admin-skip-link" href="#admin-content">Aller au contenu</a>
     <header>
       <a class="admin-brand" href="/">
-        <img src="/logo-fce.webp" alt="FC Escalquens">
+        <img src="/logo-fce.webp" alt="">
         <span><b>FC ESCALQUENS</b><small>Administration du club</small></span>
       </a>
       <div class="admin-actions">
         <a class="public-link" href="/">Voir le site public →</a>
-        <button id="sync-matches">Aide synchronisation</button>
-        <button id="token-button">Connexion locale</button>
+        <button id="sync-matches" type="button">Aide synchronisation</button>
+        <button id="token-button" type="button">Connexion locale</button>
         <a class="logout-link" href="/cdn-cgi/access/logout">Se déconnecter</a>
       </div>
     </header>
-    <main>
-      <nav><p>Gérer les contenus</p><div id="collections"></div></nav>
+    <main id="admin-content" tabindex="-1">
+      <nav aria-label="Rubriques de l’administration"><p>Gérer les contenus</p><div id="collections"></div></nav>
       <section>
         <div class="head">
           <div><small>Base de données du club</small><h1 id="title">Contenus</h1></div>
           <div class="head-actions">
-            <button id="import-coaches" hidden>Importer un CSV</button>
-            <button id="new">+ Ajouter</button>
+            <button id="import-coaches" type="button" hidden>Importer un CSV</button>
+            <button id="new" type="button">+ Ajouter</button>
           </div>
         </div>
         <div class="sync-health" id="sync-health" aria-live="polite">
@@ -45,14 +47,14 @@
           </div>
           <div id="health-sources"></div>
         </div>
-        <p id="status"></p>
+        <p id="status" role="status" aria-live="polite"></p>
         <div id="records"></div>
       </section>
     </main>
     <dialog id="editor">
       <form method="dialog">
         <h2>Modifier</h2>
-        <p id="editor-status"></p>
+        <p id="editor-status" role="status" aria-live="polite"></p>
         <div id="fields"></div>
         <menu><button value="cancel">Annuler</button><button id="save" value="default">Enregistrer</button></menu>
       </form>
@@ -72,5 +74,6 @@
       </form>
     </dialog>
     <script is:inline src="/admin.js"></script>
+    <script is:inline src="/admin-team-staff.js"></script>
   </body>
 </html>

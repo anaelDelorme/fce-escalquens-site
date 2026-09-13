@@ -17,6 +17,6 @@ fetch('/api/page/teams').then(response=>response.json()).then(data=>{
   draw();
 });
 document.querySelectorAll('[data-group]').forEach(button=>button.addEventListener('click',()=>{
-  document.querySelectorAll('[data-group]').forEach(item=>item.classList.remove('active'));
-  button.classList.add('active');draw(button.dataset.group);
+  document.querySelectorAll('[data-group]').forEach(item=>{const active=item===button;item.classList.toggle('active',active);item.setAttribute('aria-pressed',String(active))});
+  draw(button.dataset.group);
 }));
