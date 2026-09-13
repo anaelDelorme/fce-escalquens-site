@@ -67,7 +67,7 @@
     timer=window.setTimeout(async()=>{
       await show(index+1,false);
       schedule();
-    },4500);
+    },5000);
   };
 
   const updateDots=()=>{
@@ -89,7 +89,7 @@
       await preload(source);
       if(!reducedMotion.matches){
         image.classList.add('is-changing');
-        await new Promise(resolve=>window.setTimeout(resolve,200));
+        await new Promise(resolve=>window.setTimeout(resolve,110));
       }
       image.src=source;
       image.alt=String(slide.alt_text||fallback.alt).trim()||fallback.alt;
