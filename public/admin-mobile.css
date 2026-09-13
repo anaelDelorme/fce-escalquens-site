@@ -1,0 +1,36 @@
+/* Couche smartphone de l'administration, chargée après les feuilles existantes. */
+@media(max-width:640px){
+  html,body{max-width:100%;overflow-x:hidden}
+  header{grid-template-columns:1fr;padding:8px max(10px,env(safe-area-inset-right)) 8px max(10px,env(safe-area-inset-left))}
+  .admin-brand{min-width:0}
+  .admin-brand img{width:44px;height:44px}
+  .admin-brand span{min-width:0}
+  .admin-brand b{font-size:13px;line-height:1.1}
+  .admin-brand small{font-size:9px}
+  .admin-actions{grid-column:1;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+  .admin-actions>*{min-width:0;min-height:44px;white-space:normal}
+
+  main{display:block}
+  nav{padding-left:max(10px,env(safe-area-inset-left));padding-right:max(10px,env(safe-area-inset-right))}
+  nav>p{margin:0 0 6px;font-size:9px}
+  #collections{display:flex;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x proximity;scrollbar-width:none}
+  #collections::-webkit-scrollbar{display:none}
+  #collections button{flex:0 0 auto;white-space:nowrap;scroll-snap-align:start;border-radius:999px}
+
+  section{padding-left:max(12px,env(safe-area-inset-left));padding-right:max(12px,env(safe-area-inset-right));padding-bottom:max(36px,env(safe-area-inset-bottom))}
+  .head{display:grid;grid-template-columns:1fr;align-items:start}
+  .head-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));min-width:0}
+  .head-actions button{width:100%}
+
+  .sync-health-title{flex-direction:column;align-items:stretch}
+  .sync-health-title button{width:100%}
+  .sync-health-grid{grid-template-columns:1fr}
+
+  #records article{grid-template-columns:1fr}
+  #records article>div,#records article button{grid-column:1}
+  #records article button{width:100%}
+
+  dialog{padding-left:max(12px,env(safe-area-inset-left));padding-right:max(12px,env(safe-area-inset-right));padding-bottom:max(18px,env(safe-area-inset-bottom))}
+  dialog menu{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  dialog menu button{width:100%}
+}

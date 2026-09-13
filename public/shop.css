@@ -229,3 +229,7 @@
   .order-panel form{grid-template-columns:minmax(0,1fr);padding:22px}
   .order-panel label{grid-column:1/-1}
 }
+
+/* Ne révèle la couverture boutique qu'une fois la bonne image chargée. */
+.shop-hero-visual>img{opacity:0;transition:opacity .2s ease}
+.shop-hero-visual>img.is-ready{opacity:1}

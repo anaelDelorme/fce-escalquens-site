@@ -61,7 +61,12 @@ fetch(`/api/page/team-profile?slug=${encodeURIComponent(slug||'')}&v=23`).then(a
 }).then(({team,entries=[],sessions=[],staff=[],upcoming=[],results=[],participants=[]})=>{
   savedParticipants=participants;
   document.title=`${team.name} - FC Escalquens`;set('#team-name',team.name);set('#team-description',team.description);set('#player-count',team.player_count||'—');
-  set('#team-level',entries.map(item=>[item.division||item.competition_name,item.pool].filter(Boolean).join(' · ')).filter(Boolean).join(' / ')||team.level);
+  const engagementRows=entries.map((item,index)=>({
+    teamLabel:item.name||item.category_code||[team.name,item.team_number].filter(Boolean).join(' ')||`Équipe ${index+1}`,
+    competition:[item.division||item.competition_name,item.pool].filter(Boolean).join(' · ')
+  }));
+  const levelNode=document.querySelector('#team-level');
+  if(levelNode)levelNode.innerHTML=(engagementRows.length?engagementRows:[{teamLabel:team.level||'À renseigner',competition:''}]).map(item=>`<span class="engagement-chip"><strong>${esc(item.teamLabel)}</strong>${item.competition?`<small>${esc(item.competition)}</small>`:''}</span>`).join('');
   document.querySelector('#player-label').textContent=team.group_name==='Féminines'||team.gender==='female'?'licenciées pratiquantes':'licenciés pratiquants';
   const defaultPhoto='/team-default.webp',teamPhoto=team.photo_url||defaultPhoto;
   const photo=document.querySelector('#team-photo'),visual=photo.closest('.team-visual');

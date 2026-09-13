@@ -14,7 +14,16 @@ import Footer from '../../components/Footer.astro';
       <section class="page-hero wine"><p class="eyebrow">Fiche équipe</p><h1 id="team-name">Chargement…</h1><p id="team-description"></p></section>
       <section class="profile-layout content">
         <div class="team-visual" aria-busy="true"><img id="team-photo" alt="Photo du groupe"></div>
-        <div class="profile-stats"><span><b id="player-count">—</b> <span id="player-label">licenciés pratiquants</span></span><span><b id="team-level">—</b> engagements</span></div>
+        <div class="profile-stats">
+          <div class="profile-stat profile-stat-count">
+            <b id="player-count">—</b>
+            <span id="player-label">licenciés pratiquants</span>
+          </div>
+          <div class="profile-stat profile-stat-engagements">
+            <span class="profile-stat-label">Engagements</span>
+            <div id="team-level" class="engagement-list" aria-live="polite"><span>—</span></div>
+          </div>
+        </div>
         <div class="staff" id="team-staff"><p>Encadrement à venir.</p></div>
         <div><p class="eyebrow">Entraînements</p><h2>Les rendez-vous de la semaine</h2><div id="team-training" class="rows"></div></div>
         <div class="team-results"><p class="eyebrow">Calendrier</p><h2>Les prochains rendez-vous</h2><div id="team-upcoming" class="team-match-list"></div></div>

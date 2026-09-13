@@ -9,3 +9,5 @@ dist/
 !.env.example
 .DS_Store
 worker-configuration.d.ts
+fce-escalquens-ui-fixes.patch
+.gitignore

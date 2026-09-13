@@ -17,6 +17,21 @@ const productCard=product=>`<article class="shop-product-card">
   <div class="product-card-copy"><small>${shopEsc(product.price_label||'Prix à confirmer')}</small><h3>${shopEsc(product.name)}</h3><p>${shopEsc(product.short_description||product.description||'')}</p>${productMeta(product)}${orderButton(product)}</div>
 </article>`;
 
+const revealShopHero=media=>{
+  const hero=document.querySelector('#shop-hero-image');
+  if(!hero)return;
+  const fallback=hero.dataset.fallbackSrc||'/hero-foot.webp';
+  const custom=media?.object_key?`/media/${encodeURIComponent(media.object_key).replace(/%2F/g,'/')}`:'';
+  const source=custom||fallback;
+  if(media?.alt_text)hero.alt=media.alt_text;
+  const load=(candidate,allowFallback)=>{
+    const loader=new Image();
+    loader.onload=()=>{hero.src=candidate;hero.classList.add('is-ready')};
+    loader.onerror=()=>{if(allowFallback&&candidate!==fallback)load(fallback,false)};
+    loader.src=candidate;
+  };
+  load(source,true);
+};
 async function loadShop(){
   const featuredNode=document.querySelector('#shop-featured'),categoriesNode=document.querySelector('#shop-categories');
   try{
@@ -25,15 +40,7 @@ async function loadShop(){
     const products=data.products||[],categories=data.categories||[],featured=products.find(product=>Number(product.featured)===1)||products[0];
     window.shopSettings=data.settings||{};
     const heroMedia=(data.site_media||[]).find(item=>item.slot==='shop_hero');
-    if(heroMedia){
-      const hero=document.querySelector('#shop-hero-image');
-      if(heroMedia.alt_text)hero.alt=heroMedia.alt_text;
-      if(hero&&heroMedia.object_key){
-        const source=`/media/${encodeURIComponent(heroMedia.object_key).replace(/%2F/g,'/')}`,loader=new Image();
-        loader.onload=()=>{hero.src=source};
-        loader.src=source;
-      }
-    }
+    revealShopHero(heroMedia);
     if(featured){
       featuredNode.innerHTML=`<div class="featured-visual">${productVisual(featured,true)}<span>À la une</span></div><div class="featured-copy"><small>${shopEsc(featured.price_label||'Prix à confirmer')}</small><h3>${shopEsc(featured.name)}</h3><p>${shopEsc(featured.description||featured.short_description||'')}</p>${productMeta(featured)}${orderButton(featured)}</div>`;
     }else featuredNode.innerHTML='<p class="shop-empty">La sélection de la boutique arrive bientôt.</p>';
@@ -47,6 +54,7 @@ async function loadShop(){
     if(data.settings?.catalogue_key){catalogue.href=`/media/${encodeURIComponent(data.settings.catalogue_key).replace(/%2F/g,'/')}`;catalogue.textContent=`${data.settings.catalogue_title||'Catalogue complet'} →`;catalogue.target='_blank';catalogue.rel='noopener';catalogue.removeAttribute('aria-disabled')}
     bindProductButtons();
   }catch(error){
+    revealShopHero(null);
     featuredNode.innerHTML='<p class="shop-empty">L’article à la une est momentanément indisponible.</p>';
     categoriesNode.innerHTML='<p class="shop-empty">La boutique ne peut pas être chargée pour le moment. Vous pouvez tout de même préparer une demande ci-dessous.</p>';
   }
