@@ -81,33 +81,49 @@
   function teamNumber(match, entriesById) {
     const entry = entryFor(match, entriesById);
 
-    const directNumber = Number.parseInt(
-      String(entry?.team_number ?? '').trim(),
-      10
-    );
+    const number = Number(entry?.team_number);
 
-    if (Number.isFinite(directNumber) && directNumber > 0) {
-      return directNumber;
+    return Number.isFinite(number) && number > 0
+      ? number
+      : 0;
+  }  
+  function categoryHasSeveralTeams(match, entriesById) {
+    const currentEntry = entryFor(match, entriesById);
+
+    if (!currentEntry) {
+      return false;
     }
 
-    /*
-     * Secours pour un ancien enregistrement qui aurait par exemple
-     * "Seniors 2" dans son nom mais pas encore team_number=2.
-     */
-    const text = normalize(
-      `${entry?.name || ''} ${match.category || ''}`
+    const category = normalize(
+      currentEntry.category_code || ''
     );
 
-    const seniorNumber = text.match(
-      /\bseniors?\s*(?:equipe\s*)?([1-9])\b/
+    const seasonId = String(
+      currentEntry.season_id || ''
     );
 
-    if (seniorNumber) {
-      return Number(seniorNumber[1]);
+    if (!category) {
+      return false;
     }
 
-    return 0;
-  }
+    const numbers = new Set(
+      [...entriesById.values()]
+        .filter(entry => {
+          return (
+            normalize(entry.category_code || '') === category &&
+            String(entry.season_id || '') === seasonId &&
+            Number(entry.active ?? 1) !== 0
+          );
+        })
+        .map(entry => Number(entry.team_number))
+        .filter(number =>
+          Number.isFinite(number) &&
+          number > 0
+        )
+    );
+
+    return numbers.size > 1;
+  } 
 
   function categorySource(match, entriesById) {
     const entry = entryFor(match, entriesById);
@@ -236,32 +252,58 @@
     });
   }
 
-  function visualCategoryLabel(match, entriesById) {
+ function visualCategoryLabel(match, entriesById) {
     const entry = entryFor(match, entriesById);
-    const source = String(
+
+    const category = String(
       entry?.category_code ||
       match.category ||
       entry?.name ||
       'ÉQUIPE'
-    ).trim();
+    )
+      .trim()
+      .toUpperCase();
+
+    const number = teamNumber(
+      match,
+      entriesById
+    );
 
     /*
-     * Pour les seniors le numéro d'équipe est important :
-     *
-     * SÉNIOR 1
-     * SÉNIOR 2
-     *
-     * et non plus deux lignes "SÉNIORS".
-     */
+    * Seniors :
+    * SÉNIOR 1
+    * SÉNIOR 2
+    */
     if (isSenior(match, entriesById)) {
-      const number = teamNumber(match, entriesById);
-
       return number
         ? `SÉNIOR ${number}`
         : 'SÉNIOR';
     }
 
-    return source.toUpperCase();
+    /*
+    * Catégories jeunes :
+    *
+    * U18F 1
+    * U18F 2
+    *
+    * seulement lorsqu'il existe réellement
+    * plusieurs team_number pour cette catégorie
+    * pendant la même saison.
+    *
+    * Un U15 unique reste U15, même si son
+    * team_number vaut 1.
+    */
+    if (
+      number &&
+      categoryHasSeveralTeams(
+        match,
+        entriesById
+      )
+    ) {
+      return `${category} ${number}`;
+    }
+
+    return category;
   }
 
   /*
