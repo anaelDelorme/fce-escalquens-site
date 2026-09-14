@@ -1,36 +1,53 @@
-# Correctif FFF / ZenRows HTTP 413 — version 2
+# Édition temporaire avant génération des PNG
 
-Cette version corrige l'installateur précédent, qui cherchait une ligne de code
-trop exactement et pouvait donc répondre « bloc introuvable ».
+Ce paquet transforme la page de génération des visuels en deux étapes :
 
-Le nouvel installateur utilise des ancres simples présentes dans le collecteur
-actuel :
+1. **Charger les rencontres** pour la date choisie.
+2. Corriger le tableau puis cliquer sur **Générer les PNG**.
 
-- `await Promise.all([...details].flatMap(`
-- `await Promise.all([...plateauSites.values()].map(fetchPlateau));`
+Dans le tableau on peut :
+- inclure / exclure une rencontre ;
+- modifier le libellé d'équipe ;
+- modifier l'adversaire / plateau ;
+- modifier l'heure ;
+- modifier la ville ;
+- modifier le stade ;
+- déplacer une rencontre vers le haut ou le bas.
 
-Il :
-1. conserve une seule réponse de détail réussie par match ;
-2. supprime le DOM Angular de la FFF avant le retour ZenRows ;
-3. ne renvoie que les blocs JSON `fce-*` utiles ;
-4. vérifie le résultat avec `node --check`.
+Les changements sont **uniquement en mémoire dans le navigateur**.  
+Aucun `POST`, `PUT` ou `PATCH` n'est envoyé : D1 et les données FFF restent intactes.
 
-## Codespaces
+Le découpage en visuels de 6 rencontres est fait **après** les exclusions et les
+changements d'ordre.
 
-Depuis la racine du dépôt :
+## Installation dans Codespaces
+
+Décompresse à la racine du dépôt :
 
 ```bash
-unzip -o fce-fix-sync-fff-413-v2.zip
-python3 fix-fff-sync-413-v2.py
-git diff -- scripts/sync-matches.mjs
+unzip -o fce-visuels-insta-edition-temporaire.zip
+python3 install-social-visual-editor.py
 ```
 
-Puis :
+Puis vérifie :
 
 ```bash
-git add scripts/sync-matches.mjs
-git commit -m "Réduit la réponse ZenRows de la synchronisation FFF"
+node --check public/social-visuals.js
+git diff --check
+git diff -- public/social-visuals.js public/social-visuals-editor.css
+npm run build
+```
+
+Si tout est bon :
+
+```bash
+git add public/social-visuals.js public/social-visuals-editor.css
+git commit -m "Ajoute la préparation manuelle des visuels sociaux"
 git push
 ```
 
-Relancer ensuite l'action GitHub **Synchroniser les matchs**.
+Le script crée également une sauvegarde locale :
+
+`public/social-visuals.js.before-editor`
+
+Elle n'a pas besoin d'être commitée.

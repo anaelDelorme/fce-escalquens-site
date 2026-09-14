@@ -253,10 +253,6 @@
   }
 
  function visualCategoryLabel(match, entriesById) {
-    if (match?._visual?.category != null) {
-      return String(match._visual.category).trim().toUpperCase() || 'ÉQUIPE';
-    }
-
     const entry = entryFor(match, entriesById);
 
     const category = String(
@@ -389,13 +385,6 @@
   }
 
   function placeParts(match) {
-    if (match?._visual) {
-      return {
-        city: String(match._visual.city || 'Lieu à confirmer'),
-        stadium: String(match._visual.stadium || 'Stade à confirmer')
-      };
-    }
-
     const venue = String(match.venue || '')
       .replace(/\s+/g, ' ')
       .trim();
@@ -449,10 +438,6 @@
   }
 
   function timeLabel(match) {
-    if (match?._visual?.time != null) {
-      return String(match._visual.time).trim() || 'À CONF.';
-    }
-
     const state = normalize(match.status);
 
     if (state.includes('annul')) {
@@ -478,10 +463,6 @@
   }
 
   function opponentLabel(match, participantsByMatch) {
-    if (match?._visual?.opponent != null) {
-      return String(match._visual.opponent).trim() || 'Adversaire à confirmer';
-    }
-
     if (isPlateau(match)) {
       const count =
         participantsFor(
@@ -968,564 +949,65 @@
 
   /*
    * ------------------------------------------------------------
-   * PRÉPARATION MANUELLE DU VISUEL
-   * ------------------------------------------------------------
-   *
-   * Les modifications ci-dessous ne quittent jamais le navigateur.
-   * Aucun POST / PUT / PATCH n'est envoyé vers l'API.
-   */
-
-  let visualDraftState = null;
-
-  function ensureVisualDraftStyles() {
-    if (document.querySelector('link[data-social-visuals-editor]')) return;
-
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = '/social-visuals-editor.css';
-    link.dataset.socialVisualsEditor = 'true';
-    document.head.append(link);
-  }
-
-  function draftValue(match, field, fallback = '') {
-    const value = match?._visual?.[field];
-
-    return value == null || value === ''
-      ? fallback
-      : value;
-  }
-
-  function createVisualDraft(
-    matches,
-    participantsByMatch,
-    entriesById
-  ) {
-    return matches.map(match => {
-      const place = placeParts(match);
-
-      return {
-        ...match,
-        _visual: {
-          included: true,
-          category: visualCategoryLabel(match, entriesById),
-          opponent: opponentLabel(match, participantsByMatch),
-          time: timeLabel(match),
-          city: place.city || 'Lieu à confirmer',
-          stadium: place.stadium || 'Stade à confirmer'
-        }
-      };
-    });
-  }
-
-  function includedDraftMatches() {
-    return (visualDraftState?.matches || [])
-      .filter(match => match._visual?.included !== false);
-  }
-
-  function updateDraftCount() {
-    const countNode = document.querySelector('#visual-draft-count');
-    if (!countNode || !visualDraftState) return;
-
-    const included = includedDraftMatches().length;
-    const total = visualDraftState.matches.length;
-
-    countNode.textContent =
-      `${included} rencontre${included > 1 ? 's' : ''} incluse${
-        included > 1 ? 's' : ''
-      } sur ${total}`;
-  }
-
-  function draftInput({
-    type = 'text',
-    value = '',
-    field,
-    index,
-    label,
-    className = ''
-  }) {
-    const input = document.createElement('input');
-    input.type = type;
-    input.value = value;
-    input.dataset.draftField = field;
-    input.dataset.draftIndex = String(index);
-    input.setAttribute('aria-label', label);
-
-    if (className) {
-      input.className = className;
-    }
-
-    return input;
-  }
-
-  function renderVisualDraftEditor() {
-    let editor = document.querySelector('#visual-draft-editor');
-
-    if (!editor) {
-      editor = document.createElement('section');
-      editor.id = 'visual-draft-editor';
-      editor.className = 'visual-draft-editor';
-      editor.setAttribute('aria-labelledby', 'visual-draft-title');
-      previews.before(editor);
-    }
-
-    editor.replaceChildren();
-
-    if (!visualDraftState?.matches?.length) {
-      const empty = document.createElement('p');
-      empty.className = 'visual-draft-empty';
-      empty.textContent = 'Aucune rencontre à préparer.';
-      editor.append(empty);
-      return;
-    }
-
-    const head = document.createElement('div');
-    head.className = 'visual-draft-editor__head';
-
-    const headCopy = document.createElement('div');
-
-    const title = document.createElement('h2');
-    title.id = 'visual-draft-title';
-    title.textContent = 'Préparer le visuel';
-
-    const intro = document.createElement('p');
-    intro.textContent =
-      'Corrigez les informations, masquez une rencontre ou changez son ordre avant de générer le PNG.';
-
-    headCopy.append(title, intro);
-    head.append(headCopy);
-
-    const notice = document.createElement('p');
-    notice.className = 'visual-draft-editor__notice';
-    notice.textContent =
-      'Modifications temporaires : ces changements servent uniquement au PNG et ne modifient ni la base ni les données synchronisées depuis la FFF.';
-
-    const toolbar = document.createElement('div');
-    toolbar.className = 'visual-draft-editor__toolbar';
-
-    const count = document.createElement('p');
-    count.id = 'visual-draft-count';
-    count.className = 'visual-draft-editor__count';
-    count.setAttribute('aria-live', 'polite');
-
-    const actions = document.createElement('div');
-    actions.className = 'visual-draft-editor__actions';
-
-    const reset = document.createElement('button');
-    reset.type = 'button';
-    reset.dataset.draftReset = 'true';
-    reset.textContent = 'Réinitialiser';
-
-    const generate = document.createElement('button');
-    generate.type = 'button';
-    generate.className = 'visual-draft-generate';
-    generate.dataset.draftGenerate = 'true';
-    generate.textContent = 'Générer les PNG';
-
-    actions.append(reset, generate);
-    toolbar.append(count, actions);
-
-    const wrap = document.createElement('div');
-    wrap.className = 'visual-draft-table-wrap';
-
-    const table = document.createElement('table');
-    table.className = 'visual-draft-table';
-
-    const caption = document.createElement('caption');
-    caption.className = 'visual-draft-sr-only';
-    caption.textContent =
-      'Rencontres à inclure dans le visuel, avec informations modifiables et ordre manuel.';
-
-    const thead = document.createElement('thead');
-    thead.innerHTML = `
-      <tr>
-        <th scope="col">Inclure</th>
-        <th scope="col">Équipe</th>
-        <th scope="col">Adversaire / plateau</th>
-        <th scope="col">Heure</th>
-        <th scope="col">Ville</th>
-        <th scope="col">Stade</th>
-        <th scope="col">Ordre</th>
-      </tr>
-    `;
-
-    const tbody = document.createElement('tbody');
-
-    visualDraftState.matches.forEach((match, index) => {
-      const row = document.createElement('tr');
-      row.dataset.included =
-        match._visual?.included === false ? 'false' : 'true';
-
-      const includeCell = document.createElement('td');
-      includeCell.className = 'visual-draft-include-cell';
-
-      const includeLabel = document.createElement('label');
-      includeLabel.className = 'visual-draft-include';
-
-      const include = document.createElement('input');
-      include.type = 'checkbox';
-      include.checked = match._visual?.included !== false;
-      include.dataset.draftIncluded = 'true';
-      include.dataset.draftIndex = String(index);
-      include.setAttribute(
-        'aria-label',
-        `Inclure ${match._visual?.category || 'cette rencontre'} dans le visuel`
-      );
-
-      const includeText = document.createElement('span');
-      includeText.textContent = 'Inclure';
-
-      includeLabel.append(include, includeText);
-      includeCell.append(includeLabel);
-
-      const categoryCell = document.createElement('td');
-      categoryCell.dataset.label = 'Équipe';
-      categoryCell.append(
-        draftInput({
-          value: match._visual?.category || '',
-          field: 'category',
-          index,
-          label: `Équipe, ligne ${index + 1}`
-        })
-      );
-
-      const opponentCell = document.createElement('td');
-      opponentCell.dataset.label = 'Adversaire';
-      opponentCell.append(
-        draftInput({
-          value: match._visual?.opponent || '',
-          field: 'opponent',
-          index,
-          label: `Adversaire ou plateau, ligne ${index + 1}`
-        })
-      );
-
-      const timeCell = document.createElement('td');
-      timeCell.dataset.label = 'Heure';
-      timeCell.append(
-        draftInput({
-          value: match._visual?.time || '',
-          field: 'time',
-          index,
-          label: `Heure, ligne ${index + 1}`,
-          className: 'visual-draft-time'
-        })
-      );
-
-      const cityCell = document.createElement('td');
-      cityCell.dataset.label = 'Ville';
-      cityCell.append(
-        draftInput({
-          value: match._visual?.city || '',
-          field: 'city',
-          index,
-          label: `Ville, ligne ${index + 1}`
-        })
-      );
-
-      const stadiumCell = document.createElement('td');
-      stadiumCell.dataset.label = 'Stade';
-      stadiumCell.append(
-        draftInput({
-          value: match._visual?.stadium || '',
-          field: 'stadium',
-          index,
-          label: `Stade, ligne ${index + 1}`
-        })
-      );
-
-      const orderCell = document.createElement('td');
-      orderCell.className = 'visual-draft-order-cell';
-      orderCell.dataset.label = 'Ordre';
-
-      const order = document.createElement('div');
-      order.className = 'visual-draft-order';
-
-      const up = document.createElement('button');
-      up.type = 'button';
-      up.dataset.draftMove = '-1';
-      up.dataset.draftIndex = String(index);
-      up.textContent = '↑';
-      up.disabled = index === 0;
-      up.setAttribute(
-        'aria-label',
-        `Monter ${match._visual?.category || `la ligne ${index + 1}`}`
-      );
-
-      const down = document.createElement('button');
-      down.type = 'button';
-      down.dataset.draftMove = '1';
-      down.dataset.draftIndex = String(index);
-      down.textContent = '↓';
-      down.disabled = index === visualDraftState.matches.length - 1;
-      down.setAttribute(
-        'aria-label',
-        `Descendre ${match._visual?.category || `la ligne ${index + 1}`}`
-      );
-
-      order.append(up, down);
-      orderCell.append(order);
-
-      row.append(
-        includeCell,
-        categoryCell,
-        opponentCell,
-        timeCell,
-        cityCell,
-        stadiumCell,
-        orderCell
-      );
-
-      tbody.append(row);
-    });
-
-    table.append(caption, thead, tbody);
-    wrap.append(table);
-
-    editor.append(head, notice, toolbar, wrap);
-    updateDraftCount();
-  }
-
-  function moveDraftMatch(index, delta) {
-    if (!visualDraftState) return;
-
-    const target = index + delta;
-
-    if (
-      target < 0 ||
-      target >= visualDraftState.matches.length
-    ) {
-      return;
-    }
-
-    const list = visualDraftState.matches;
-
-    [list[index], list[target]] =
-      [list[target], list[index]];
-
-    renderVisualDraftEditor();
-
-    const focusTarget = document.querySelector(
-      `[data-draft-index="${target}"][data-draft-move="${delta}"]`
-    );
-
-    focusTarget?.focus();
-  }
-
-  async function generateVisualDraftPng() {
-    if (!visualDraftState) return;
-
-    const matches = includedDraftMatches();
-
-    if (!matches.length) {
-      status.dataset.state = 'error';
-      status.textContent =
-        'Aucune rencontre n’est incluse dans le visuel.';
-      return;
-    }
-
-    previews.replaceChildren();
-
-    status.removeAttribute('data-state');
-    status.textContent = 'Génération des visuels…';
-
-    const pages = [];
-
-    for (
-      let index = 0;
-      index < matches.length;
-      index += ROWS_PER_IMAGE
-    ) {
-      pages.push(
-        matches.slice(index, index + ROWS_PER_IMAGE)
-      );
-    }
-
-    for (
-      let index = 0;
-      index < pages.length;
-      index += 1
-    ) {
-      const figure =
-        document.createElement('figure');
-
-      figure.className = 'visual-preview';
-
-      const canvas =
-        document.createElement('canvas');
-
-      canvas.width = 1080;
-      canvas.height = 1350;
-
-      const caption =
-        document.createElement('figcaption');
-
-      const label =
-        document.createElement('span');
-
-      label.textContent =
-        pages.length > 1
-          ? `Visuel ${index + 1} sur ${pages.length}`
-          : `${matches.length} rencontre${
-              matches.length > 1 ? 's' : ''
-            }`;
-
-      const button =
-        document.createElement('button');
-
-      button.type = 'button';
-      button.className = 'visual-download';
-      button.textContent = 'Télécharger le PNG';
-
-      button.addEventListener(
-        'click',
-        () =>
-          downloadCanvas(
-            canvas,
-            `${visualDraftState.selectedDate}-matchs-fce-${index + 1}.png`
-          )
-      );
-
-      caption.append(label, button);
-      figure.append(canvas, caption);
-      previews.append(figure);
-
-      await drawVisual(
-        canvas,
-        pages[index],
-        visualDraftState.selectedDate,
-        index,
-        pages.length,
-        visualDraftState.participantsByMatch,
-        visualDraftState.entriesById
-      );
-    }
-
-    status.textContent =
-      `${matches.length} rencontre${
-        matches.length > 1 ? 's' : ''
-      } incluse${
-        matches.length > 1 ? 's' : ''
-      }. Format 1080 × 1350 px, prêt pour Instagram et Facebook.`;
-
-    previews.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start'
-    });
-  }
-
-  document.addEventListener('input', event => {
-    const input = event.target.closest?.('[data-draft-field]');
-    if (!input || !visualDraftState) return;
-
-    const index = Number(input.dataset.draftIndex);
-    const field = input.dataset.draftField;
-    const match = visualDraftState.matches[index];
-
-    if (!match?._visual || !field) return;
-
-    match._visual[field] = input.value;
-  });
-
-  document.addEventListener('change', event => {
-    const checkbox =
-      event.target.closest?.('[data-draft-included]');
-
-    if (!checkbox || !visualDraftState) return;
-
-    const index = Number(checkbox.dataset.draftIndex);
-    const match = visualDraftState.matches[index];
-
-    if (!match?._visual) return;
-
-    match._visual.included = checkbox.checked;
-
-    const row = checkbox.closest('tr');
-
-    if (row) {
-      row.dataset.included =
-        checkbox.checked ? 'true' : 'false';
-    }
-
-    updateDraftCount();
-  });
-
-  document.addEventListener('click', async event => {
-    const move = event.target.closest?.('[data-draft-move]');
-
-    if (move) {
-      moveDraftMatch(
-        Number(move.dataset.draftIndex),
-        Number(move.dataset.draftMove)
-      );
-      return;
-    }
-
-    if (event.target.closest?.('[data-draft-reset]')) {
-      if (!visualDraftState) return;
-
-      visualDraftState.matches = createVisualDraft(
-        visualDraftState.sourceMatches,
-        visualDraftState.participantsByMatch,
-        visualDraftState.entriesById
-      );
-
-      previews.replaceChildren();
-      renderVisualDraftEditor();
-      status.removeAttribute('data-state');
-      status.textContent =
-        'Les modifications temporaires ont été réinitialisées.';
-      return;
-    }
-
-    if (event.target.closest?.('[data-draft-generate]')) {
-      await generateVisualDraftPng();
-    }
-  });
-
-  /*
-   * ------------------------------------------------------------
    * GÉNÉRATION
    * ------------------------------------------------------------
    */
-
-  ensureVisualDraftStyles();
-  status.setAttribute('aria-live', 'polite');
 
   form.addEventListener(
     'submit',
     async event => {
       event.preventDefault();
 
-      const selectedDate = dateInput.value;
+      const selectedDate =
+        dateInput.value;
 
-      if (!selectedDate) return;
+      if (!selectedDate) {
+        return;
+      }
 
       const submit =
-        form.querySelector('button[type="submit"]');
+        form.querySelector(
+          'button[type="submit"]'
+        );
 
       submit.disabled = true;
 
       previews.replaceChildren();
 
-      const oldEditor =
-        document.querySelector('#visual-draft-editor');
+      status.removeAttribute(
+        'data-state'
+      );
 
-      oldEditor?.remove();
-
-      status.removeAttribute('data-state');
       status.textContent =
         'Récupération des rencontres…';
 
       try {
-        const data = await fetchMatchData();
+        const data =
+          await fetchMatchData();
 
-        const participantsByMatch = new Map();
+        /*
+         * Participants des plateaux.
+         */
+        const participantsByMatch =
+          new Map();
 
-        for (const participant of data.participants || []) {
-          const key = String(participant.match_id);
+        for (
+          const participant
+          of data.participants || []
+        ) {
+          const key = String(
+            participant.match_id
+          );
 
-          if (!participantsByMatch.has(key)) {
-            participantsByMatch.set(key, []);
+          if (
+            !participantsByMatch.has(
+              key
+            )
+          ) {
+            participantsByMatch.set(
+              key,
+              []
+            );
           }
 
           participantsByMatch
@@ -1533,30 +1015,60 @@
             .push(participant);
         }
 
+        /*
+         * Correspondance :
+         *
+         * match.competition_team_id
+         *          ↓
+         * team_competitions.id
+         *
+         * C'est cette table qui connaît
+         * le vrai numéro Sénior 1 / Sénior 2.
+         */
         const entriesById = new Map(
-          (data.entries || []).map(entry => [
-            String(entry.id),
-            entry
-          ])
+          (data.entries || []).map(
+            entry => [
+              String(entry.id),
+              entry
+            ]
+          )
         );
 
+        /*
+         * 1. Filtrer la date.
+         * 2. Garder uniquement le FCE.
+         * 3. Supprimer les doublons.
+         * 4. Trier par équipe/catégorie.
+         *
+         * Le tri n'est donc PLUS fait
+         * principalement par heure.
+         */
         const filtered =
-          (data.matches || []).filter(
+          (
+            data.matches || []
+          ).filter(
             match =>
               match.starts_at &&
-              dateKey(match.starts_at) === selectedDate &&
-              isClubMatch(match, participantsByMatch)
+              dateKey(
+                match.starts_at
+              ) === selectedDate &&
+              isClubMatch(
+                match,
+                participantsByMatch
+              )
           );
 
-        const unique = deduplicate(
-          filtered,
-          participantsByMatch
-        );
+        const unique =
+          deduplicate(
+            filtered,
+            participantsByMatch
+          );
 
-        const matches = sortMatchesForVisual(
-          unique,
-          entriesById
-        );
+        const matches =
+          sortMatchesForVisual(
+            unique,
+            entriesById
+          );
 
         if (!matches.length) {
           throw new Error(
@@ -1565,60 +1077,152 @@
         }
 
         /*
-         * Copie purement locale des rencontres.
-         * Rien n'est envoyé à D1 : les corrections sont perdues
-         * au rechargement de la page, volontairement.
+         * Le découpage des PNG est effectué
+         * APRÈS le tri.
+         *
+         * Exemple :
+         *
+         * U11
+         * U12
+         * U13
+         * U15
+         * U15
+         * U15F
+         *
+         * puis sur le visuel suivant :
+         *
+         * SÉNIOR 1
+         * SÉNIOR 2
          */
-        visualDraftState = {
-          selectedDate,
-          sourceMatches: matches.map(match => ({ ...match })),
-          matches: createVisualDraft(
-            matches,
+        const pages = [];
+
+        for (
+          let index = 0;
+          index < matches.length;
+          index += ROWS_PER_IMAGE
+        ) {
+          pages.push(
+            matches.slice(
+              index,
+              index + ROWS_PER_IMAGE
+            )
+          );
+        }
+
+        for (
+          let index = 0;
+          index < pages.length;
+          index += 1
+        ) {
+          const figure =
+            document.createElement(
+              'figure'
+            );
+
+          figure.className =
+            'visual-preview';
+
+          const canvas =
+            document.createElement(
+              'canvas'
+            );
+
+          canvas.width = 1080;
+          canvas.height = 1350;
+
+          const caption =
+            document.createElement(
+              'figcaption'
+            );
+
+          const label =
+            document.createElement(
+              'span'
+            );
+
+          label.textContent =
+            pages.length > 1
+              ? `Visuel ${index + 1} sur ${pages.length}`
+              : `${matches.length} rencontre${
+                  matches.length > 1
+                    ? 's'
+                    : ''
+                }`;
+
+          const button =
+            document.createElement(
+              'button'
+            );
+
+          button.type =
+            'button';
+
+          button.className =
+            'visual-download';
+
+          button.textContent =
+            'Télécharger le PNG';
+
+          button.addEventListener(
+            'click',
+            () =>
+              downloadCanvas(
+                canvas,
+                `${selectedDate}-matchs-fce-${index + 1}.png`
+              )
+          );
+
+          caption.append(
+            label,
+            button
+          );
+
+          figure.append(
+            canvas,
+            caption
+          );
+
+          previews.append(
+            figure
+          );
+
+          await drawVisual(
+            canvas,
+            pages[index],
+            selectedDate,
+            index,
+            pages.length,
             participantsByMatch,
             entriesById
-          ),
-          participantsByMatch,
-          entriesById
-        };
-
-        renderVisualDraftEditor();
+          );
+        }
 
         status.textContent =
           `${matches.length} rencontre${
-            matches.length > 1 ? 's' : ''
-          } chargée${
-            matches.length > 1 ? 's' : ''
-          }. Vérifiez le tableau puis générez les PNG.`;
-
-        document
-          .querySelector('#visual-draft-editor')
-          ?.scrollIntoView({
-            behavior: 'smooth',
-            block: 'start'
-          });
+            matches.length > 1
+              ? 's'
+              : ''
+          } trouvée${
+            matches.length > 1
+              ? 's'
+              : ''
+          }. Format 1080 × 1350 px, prêt pour Instagram et Facebook.`;
 
       } catch (error) {
-        visualDraftState = null;
+        status.dataset.state =
+          'error';
 
-        status.dataset.state = 'error';
         status.textContent =
           error instanceof Error
             ? error.message
-            : 'Impossible de charger les rencontres.';
+            : 'Impossible de générer le visuel.';
 
       } finally {
-        submit.disabled = false;
+        submit.disabled =
+          false;
       }
     }
   );
-
-  dateInput.addEventListener('change', () => {
-    visualDraftState = null;
-    previews.replaceChildren();
-    document
-      .querySelector('#visual-draft-editor')
-      ?.remove();
-  });
 
   dateInput.value =
     nextSaturday();

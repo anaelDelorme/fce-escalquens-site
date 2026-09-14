@@ -13,3 +13,5 @@ fce-escalquens-ui-fixes.patch
 .gitignore
 fix-fff-*
 fce-fix-*
+*.zip
+install-social-visual-editor.py
