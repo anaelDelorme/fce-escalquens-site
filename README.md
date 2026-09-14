@@ -1,22 +1,36 @@
-# Correction transition du diaporama
+# Correctif FFF / ZenRows HTTP 413 — version 2
 
-Cette version remplace uniquement les deux fichiers du module diaporama.
+Cette version corrige l'installateur précédent, qui cherchait une ligne de code
+trop exactement et pouvait donc répondre « bloc introuvable ».
 
-Modifications :
-- photo affichée 5 secondes complètes ;
-- fondu croisé de 800 ms entre deux images ;
-- aucune transition au premier chargement de la page ;
-- préchargement de la photo suivante avant le fondu ;
-- maintien de `prefers-reduced-motion` ;
-- comportement tactile inchangé sur smartphone.
+Le nouvel installateur utilise des ancres simples présentes dans le collecteur
+actuel :
 
-Installation depuis la racine du dépôt :
+- `await Promise.all([...details].flatMap(`
+- `await Promise.all([...plateauSites.values()].map(fetchPlateau));`
+
+Il :
+1. conserve une seule réponse de détail réussie par match ;
+2. supprime le DOM Angular de la FFF avant le retour ZenRows ;
+3. ne renvoie que les blocs JSON `fce-*` utiles ;
+4. vérifie le résultat avec `node --check`.
+
+## Codespaces
+
+Depuis la racine du dépôt :
 
 ```bash
-unzip -o fce-diaporama-transition-smooth.zip
-npm run build
+unzip -o fce-fix-sync-fff-413-v2.zip
+python3 fix-fff-sync-413-v2.py
+git diff -- scripts/sync-matches.mjs
 ```
 
-Les fichiers remplacés sont :
-- `public/home-slideshow.js`
-- `public/home-slideshow.css`
+Puis :
+
+```bash
+git add scripts/sync-matches.mjs
+git commit -m "Réduit la réponse ZenRows de la synchronisation FFF"
+git push
+```
+
+Relancer ensuite l'action GitHub **Synchroniser les matchs**.

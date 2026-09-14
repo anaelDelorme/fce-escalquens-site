@@ -11,3 +11,5 @@ dist/
 worker-configuration.d.ts
 fce-escalquens-ui-fixes.patch
 .gitignore
+fix-fff-*
+fce-fix-*
