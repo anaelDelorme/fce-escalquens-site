@@ -1,4 +1,4 @@
-const SYNC_VERSION='2026.09.04-21',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+const SYNC_VERSION='2026.09.14-23',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 console.log(`Collecteur FCE ${SYNC_VERSION}`);
 const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
 const endpoint=siteUrl+'/internal/sync/matches';
@@ -157,7 +157,58 @@ async function fetchZenRows(targetUrls){
         }
       }catch{}
     }
-    await Promise.all([...details].flatMap(([id,paths])=>paths.map((path,index)=>fetchOne(\`fce-detail-\${id}-\${index}\`,new URL(path,'https://epreuves.fff.fr').href))));
+
+    const fetchBestDetail=async(id,paths)=>{
+      let bestBody='';
+      let bestScore=-1;
+
+      for(const path of paths){
+        try{
+          const response=await fetch(
+            new URL(path,'https://epreuves.fff.fr').href,
+            {
+              credentials:'include',
+              headers:{
+                Accept:'application/json, text/plain, */*',
+                'X-Competition':String(securityToken)
+              }
+            }
+          );
+
+          if(!response.ok)continue;
+
+          const body=await response.text();
+
+          const score=
+            Number(/"(?:terrain|installation|stade)"\s*:/.test(body))*10+
+            Number(/"(?:adresse|address|lieu)"\s*:/.test(body))*5+
+            Math.min(body.length/10000,4);
+
+          if(score>bestScore){
+            bestScore=score;
+            bestBody=body;
+          }
+
+          if(score>=15)break;
+        }catch{}
+      }
+
+      if(!bestBody)return;
+
+      const output=document.createElement('script');
+      output.type='application/json';
+      output.id='fce-detail-'+id;
+      output.textContent=JSON.stringify({
+        status:200,
+        body:bestBody
+      });
+
+      document.body.appendChild(output);
+    };
+
+    await Promise.all(
+      [...details].map(([id,paths])=>fetchBestDetail(id,paths))
+    );
     // Les mini-matchs d'un plateau sont chargés depuis la page SSR dédiée.
     // On ne cible que J-14 à J+21 : les résultats déjà importés restent en
     // base, et on évite de recharger inutilement tous les plateaux de l'année.
@@ -196,6 +247,11 @@ async function fetchZenRows(targetUrls){
       output.textContent=JSON.stringify({status,body});document.body.appendChild(output);
     };
     await Promise.all([...plateauSites.values()].map(fetchPlateau));
+    // Réduire drastiquement la réponse ZenRows : on ne renvoie pas la page
+    // Angular complète, seulement les JSON utiles au collecteur.
+    const fcePayloads=[...document.querySelectorAll('script[id^="fce-"]')];
+    document.head.replaceChildren();
+    document.body.replaceChildren(...fcePayloads);
     document.documentElement.setAttribute('data-fce-sync-done','1');
   })()`;
   const instructions=[
