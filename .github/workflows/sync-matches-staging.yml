@@ -1,0 +1,32 @@
+name: Synchroniser les matchs — préproduction
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: sync-matches-staging
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Récupérer le code develop
+        uses: actions/checkout@v7
+        with:
+          ref: develop
+
+      - name: Installer Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Synchroniser les matchs en préproduction
+        run: node scripts/sync-matches.mjs
+        env:
+          FCE_SITE_URL: ${{ secrets.FCE_STAGING_SITE_URL }}
+          FCE_SYNC_TOKEN: ${{ secrets.FCE_STAGING_SYNC_TOKEN }}
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
