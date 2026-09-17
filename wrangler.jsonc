@@ -3,7 +3,6 @@
 	"name": "fce-escalquens",
 	"main": "src/worker.ts",
 	"compatibility_date": "2026-08-31",
-
 	"assets": {
 		"directory": "./dist",
 		"binding": "ASSETS",
@@ -15,7 +14,6 @@
 			"/media/*"
 		]
 	},
-
 	"d1_databases": [
 		{
 			"binding": "DB",
@@ -23,33 +21,28 @@
 			"database_id": "883401b1-f229-4c0e-9e25-6493f8d01b93"
 		}
 	],
-
 	"r2_buckets": [
 		{
 			"binding": "MEDIA",
 			"bucket_name": "fce-escalquens-media"
 		}
 	],
-
 	"env": {
 		"staging": {
 			"name": "fce-escalquens-staging",
 			"workers_dev": true,
-
 			"vars": {
 				"APP_ENV": "staging",
 				"GITHUB_REPOSITORY": "anaelDelorme/fce-escalquens-site",
 				"STAGING_WORKFLOW_REF": "develop"
 			},
-
 			"d1_databases": [
 				{
 					"binding": "DB",
 					"database_name": "fce-escalquens-staging",
-					"database_id": "a0191744-5aeb-4d66-bc58-54495fe8ecd8"
+					"database_id": "d88cd581-304a-4de5-92ec-d7cb5738ded8"
 				}
 			],
-
 			"r2_buckets": [
 				{
 					"binding": "MEDIA",

@@ -15,3 +15,15 @@ fix-fff-*
 fce-fix-*
 *.zip
 install-social-visual-editor.py
+prod-d1.sql
+staging-reset.sql
+prod-data-staging.sql
+.gitignore
+prod-data.sql
+
+# Copies temporaires D1 prod -> staging
+prod-data.sql
+prod-data-ordered.sql
+staging-schema.sql
+staging-clear-data.sql
+prod-to-staging.sql
