@@ -245,7 +245,7 @@ async function pageData(env: Env, url: URL) {
       FROM teams t LEFT JOIN site_media sm ON sm.slot='team_default'
       WHERE t.slug=? AND t.active=1 LIMIT 1`).bind(slug).first<AnyRow>();
     if (!team) return publicJson({ error: "Équipe introuvable" }, 404);
-    const [entries, staff, sessions, upcoming, results, participants] = await env.DB.batch<AnyRow>([
+    const [entries, staff, sessions, upcoming, results, participants, standings] = await env.DB.batch<AnyRow>([
       env.DB.prepare(`SELECT id,name,division,competition_name,pool FROM team_competitions
         WHERE team_id=? AND active=1 AND (season_id IS NULL OR season_id=${activeSeason})
         ORDER BY display_order,name`).bind(team.id),
@@ -275,7 +275,42 @@ async function pageData(env: Env, url: URL) {
         ORDER BY starts_at DESC LIMIT 5`).bind(team.id, now),
       env.DB.prepare(`SELECT p.* FROM match_participants p JOIN matches m ON m.id=p.match_id
         WHERE m.team_id=? AND (m.season_id IS NULL OR m.season_id=${activeSeason})
-        ORDER BY p.match_id,p.display_order`).bind(team.id)
+        ORDER BY p.match_id,p.display_order`).bind(team.id),
+
+      env.DB.prepare(`SELECT
+        id,
+        source,
+        phase_id,
+        season_id,
+        team_id,
+        competition_team_id,
+        team_name,
+        position,
+        played,
+        won,
+        drawn,
+        lost,
+        goals_for,
+        goals_against,
+        points,
+        competition_name,
+        pool_label,
+        source_url
+
+        FROM standings
+
+        WHERE
+          team_id=?
+          AND (
+            season_id IS NULL
+            OR season_id=${activeSeason}
+          )
+
+        ORDER BY
+          competition_team_id,
+          phase_id,
+          position
+      `).bind(team.id)
     ]);
     return publicJson({
       team,
@@ -288,7 +323,8 @@ async function pageData(env: Env, url: URL) {
       sessions: resultRows(sessions),
       upcoming: resultRows(upcoming),
       results: resultRows(results),
-      participants: resultRows(participants)
+      participants: resultRows(participants),
+      standings: resultRows(standings)
     });
   }
 
@@ -321,9 +357,37 @@ async function pageData(env: Env, url: URL) {
         FROM matches m WHERE m.season_id IS NULL OR m.season_id=${activeSeason} ORDER BY m.starts_at ASC`),
       env.DB.prepare(`SELECT p.* FROM match_participants p JOIN matches m ON m.id=p.match_id
         WHERE m.season_id IS NULL OR m.season_id=${activeSeason} ORDER BY p.match_id,p.display_order`),
-      env.DB.prepare(`SELECT id,source,phase_id,season_id,team_id,team_name,position,played,won,drawn,lost,
-        goals_for,goals_against,points
-        FROM standings WHERE season_id IS NULL OR season_id=${activeSeason} ORDER BY phase_id,position`),
+      env.DB.prepare(`SELECT
+        id,
+        source,
+        phase_id,
+        season_id,
+        team_id,
+        competition_team_id,
+        team_name,
+        position,
+        played,
+        won,
+        drawn,
+        lost,
+        goals_for,
+        goals_against,
+        points,
+        competition_name,
+        pool_label,
+        source_url
+
+        FROM standings
+
+        WHERE
+          season_id IS NULL
+          OR season_id=${activeSeason}
+
+        ORDER BY
+          competition_team_id,
+          phase_id,
+          position
+      `),
       env.DB.prepare(`SELECT id,finished_at,status,imported_count,error_message,
         (SELECT finished_at FROM sync_runs WHERE source='github_actions' AND status='success'
           ORDER BY id DESC LIMIT 1) AS last_success_at
@@ -817,6 +881,7 @@ async function ingestMatches(request: Request, env: Env) {
     new Request(`${origin}/api/page/matches`),
     new Request(`${origin}/api/page/matches?v=19`),
     new Request(`${origin}/api/page/matches?v=20`),
+    new Request(`${origin}/api/page/matches?v=21`),
     new Request(`${origin}/api/page/home`)
   ];
   const currentPlateauIds = await env.DB.prepare(`SELECT id FROM matches
@@ -831,6 +896,443 @@ async function ingestMatches(request: Request, env: Env) {
     removed_plateau_duplicates: removedPlateauDuplicates, status: syncStatus
   });
 }
+
+
+async function ingestStandings(
+  request: Request,
+  env: Env
+) {
+
+  const supplied =
+    request.headers
+      .get("authorization")
+      ?.replace(
+        /^Bearer\s+/i,
+        ""
+      )
+    || "";
+
+  if (
+    !env.FCE_SYNC_TOKEN
+    || !secureToken(
+      supplied,
+      env.FCE_SYNC_TOKEN
+    )
+  ) {
+    return json(
+      {
+        error:
+          "Jeton de synchronisation invalide"
+      },
+      401
+    );
+  }
+
+
+  const body =
+    await request
+      .json<{
+        rows?: AnyRow[]
+      }>()
+      .catch(
+        () => null
+      );
+
+  const rows=
+    body?.rows;
+
+
+  if (
+    !Array.isArray(rows)
+    || rows.length > 1500
+  ) {
+    return json(
+      {
+        error:
+          "Lot de classements invalide"
+      },
+      400
+    );
+  }
+
+
+  const seasonId =
+    await activeSeasonId(env);
+
+
+  if (!seasonId) {
+    return json(
+      {
+        error:
+          "Saison active manquante"
+      },
+      409
+    );
+  }
+
+
+  const loadedEntries =
+    await env.DB
+      .prepare(`
+        SELECT
+          id,
+          team_id,
+          fff_team_id,
+          category_code,
+          team_number
+
+        FROM team_competitions
+
+        WHERE
+          active=1
+          AND season_id=?
+      `)
+      .bind(
+        seasonId
+      )
+      .all<AnyRow>();
+
+
+  const entries=
+    loadedEntries.results
+    || [];
+
+
+  const normalizeCategory=
+    (value: unknown) =>
+      String(value || "")
+        .toUpperCase()
+        .replace(
+          /[^A-Z0-9]/g,
+          ""
+        );
+
+
+  const byFffId=
+    new Map(
+      entries
+        .filter(
+          entry =>
+            String(
+              entry.fff_team_id
+              || ""
+            )
+        )
+        .map(
+          entry => [
+            String(
+              entry.fff_team_id
+            ),
+            entry
+          ]
+        )
+    );
+
+
+  const byCategoryNumber=
+    new Map(
+      entries.map(
+        entry => [
+          `${
+            normalizeCategory(
+              entry.category_code
+            )
+          }|${
+            String(
+              entry.team_number
+              || ""
+            )
+          }`,
+          entry
+        ]
+      )
+    );
+
+
+  const entryFor=
+    (row: AnyRow) => {
+
+      const fffId=
+        String(
+          row.team_fff_id
+          || ""
+        );
+
+
+      if (
+        fffId
+        && byFffId.has(fffId)
+      ) {
+        return byFffId.get(
+          fffId
+        );
+      }
+
+
+      const key=
+        `${
+          normalizeCategory(
+            row.category_code
+          )
+        }|${
+          String(
+            row.team_number
+            || ""
+          )
+        }`;
+
+
+      return (
+        byCategoryNumber.get(key)
+        || null
+      );
+    };
+
+
+  const statements=[
+    env.DB
+      .prepare(`
+        DELETE FROM standings
+
+        WHERE
+          source='fff'
+          AND season_id=?
+      `)
+      .bind(
+        seasonId
+      )
+  ];
+
+
+  let accepted=0;
+  let linked=0;
+
+
+  for (
+    const row of rows
+  ) {
+
+    if (
+      row?.source !== "fff"
+      || !row.phase_id
+      || !row.team_name
+    ) {
+      continue;
+    }
+
+
+    const entry=
+      entryFor(row);
+
+
+    if (entry) {
+      linked++;
+    }
+
+
+    statements.push(
+      env.DB
+        .prepare(`
+          INSERT INTO standings(
+            source,
+            phase_id,
+            season_id,
+            team_id,
+            competition_team_id,
+            team_name,
+            position,
+            played,
+            won,
+            drawn,
+            lost,
+            goals_for,
+            goals_against,
+            points,
+            competition_name,
+            pool_label,
+            source_url,
+            raw_json,
+            synced_at
+          )
+          VALUES(
+            'fff',
+            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
+            CURRENT_TIMESTAMP
+          )
+        `)
+        .bind(
+          String(
+            row.phase_id
+          ),
+
+          seasonId,
+
+          entry?.team_id
+            ?? null,
+
+          entry?.id
+            ?? null,
+
+          String(
+            row.team_name
+          ),
+
+          Number(
+            row.position
+            || 0
+          ),
+
+          Number(
+            row.played
+            || 0
+          ),
+
+          Number(
+            row.won
+            || 0
+          ),
+
+          Number(
+            row.drawn
+            || 0
+          ),
+
+          Number(
+            row.lost
+            || 0
+          ),
+
+          Number(
+            row.goals_for
+            || 0
+          ),
+
+          Number(
+            row.goals_against
+            || 0
+          ),
+
+          Number(
+            row.points
+            || 0
+          ),
+
+          String(
+            row.competition_name
+            || ""
+          ),
+
+          String(
+            row.pool_label
+            || ""
+          ),
+
+          String(
+            row.source_url
+            || ""
+          ),
+
+          typeof row.raw_json
+            === "string"
+
+            ? row.raw_json
+
+            : JSON.stringify(
+                row.raw_json
+                || row
+              )
+        )
+    );
+
+
+    accepted++;
+  }
+
+
+  if (!accepted) {
+    return json(
+      {
+        error:
+          "Aucun classement exploitable reçu"
+      },
+      422
+    );
+  }
+
+
+  await env.DB.batch(
+    statements
+  );
+
+
+  const origin=
+    new URL(
+      request.url
+    ).origin;
+
+
+  const slugs=
+    await env.DB
+      .prepare(`
+        SELECT slug
+        FROM teams
+        WHERE active=1
+      `)
+      .all<{
+        slug: string
+      }>();
+
+
+  const cacheKeys=[
+    new Request(
+      `${origin}/api/page/matches`
+    ),
+
+    new Request(
+      `${origin}/api/page/matches?v=20`
+    ),
+
+    new Request(
+      `${origin}/api/page/matches?v=21`
+    )
+  ];
+
+
+  for (
+    const team of
+      slugs.results || []
+  ) {
+
+    cacheKeys.push(
+      new Request(
+        `${origin}/api/page/team-profile?slug=${
+          encodeURIComponent(
+            team.slug
+          )
+        }&v=24`
+      )
+    );
+  }
+
+
+  await Promise.all(
+    cacheKeys.map(
+      key =>
+        caches.default.delete(
+          key
+        )
+    )
+  );
+
+
+  return json({
+    ok:true,
+    received:rows.length,
+    accepted,
+    linked
+  });
+}
+
 
 async function syncMeta(env: Env, detailed = false) {
   return json(syncRunData(await latestSyncRun(env), detailed));
@@ -952,6 +1454,10 @@ export default {
     }
     if (url.pathname === "/internal/sync/status" && request.method === "POST") {
       return recordSyncStatus(request, env);
+    }
+
+    if (url.pathname === "/internal/sync/standings" && request.method === "POST") {
+      return ingestStandings(request, env);
     }
     const gate = testGate(request, env);
     if (gate) return gate;

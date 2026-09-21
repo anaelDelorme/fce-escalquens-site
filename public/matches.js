@@ -210,8 +210,122 @@ function draw(){
   document.querySelector('#standings-page').hidden=tab!=='standings';
   document.querySelector('#matches-page').hidden=tab==='standings';
   if(tab==='standings'){
-    const rows=standings.filter(row=>filtered(row));
-    document.querySelector('#standings-page').innerHTML=rows.length?`<table><thead><tr><th>#</th><th>Équipe</th><th>J</th><th>G</th><th>N</th><th>P</th><th>Pts</th></tr></thead><tbody>${rows.map(row=>`<tr><td>${row.position}</td><td>${esc(row.team_name)}</td><td>${row.played}</td><td>${row.won}</td><td>${row.drawn}</td><td>${row.lost}</td><td><b>${row.points}</b></td></tr>`).join('')}</tbody></table>`:'<p>Aucun classement n’est actuellement diffusé pour cette sélection.</p>';
+
+    const rows=
+      standings.filter(row=>filtered(row));
+
+    const groups=new Map();
+
+    rows.forEach(row=>{
+
+      const key=String(
+        row.competition_team_id
+        ||row.phase_id
+        ||'classement'
+      );
+
+      if(!groups.has(key)){
+        groups.set(key,[]);
+      }
+
+      groups
+        .get(key)
+        .push(row);
+    });
+
+    document
+      .querySelector('#standings-page')
+      .innerHTML=
+        groups.size
+          ?`<div class="standings-groups">${
+            [...groups.values()]
+              .map(group=>{
+
+                const firstRow=
+                  group[0]||{};
+
+                const title=[
+                  firstRow.competition_name,
+                  firstRow.pool_label
+                ]
+                  .filter(Boolean)
+                  .join(' · ')
+                  ||'Classement';
+
+                const ordered=[
+                  ...group
+                ].sort(
+                  (a,b)=>
+                    Number(a.position||999)
+                    -Number(b.position||999)
+                );
+
+                return `
+                  <section class="standings-group">
+
+                    <header>
+
+                      <h3>${esc(title)}</h3>
+
+                      ${
+                        firstRow.source_url
+                          ?`<a
+                              href="${esc(firstRow.source_url)}"
+                              target="_blank"
+                              rel="noopener"
+                            >Source FFF →</a>`
+                          :''
+                      }
+
+                    </header>
+
+                    <table>
+
+                      <thead>
+                        <tr>
+                          <th scope="col">#</th>
+                          <th scope="col">Équipe</th>
+                          <th scope="col">J</th>
+                          <th scope="col">G</th>
+                          <th scope="col">N</th>
+                          <th scope="col">P</th>
+                          <th scope="col">Pts</th>
+                        </tr>
+                      </thead>
+
+                      <tbody>
+                        ${
+                          ordered.map(row=>`
+                            <tr
+                              class="${
+                                /escalquens/i.test(
+                                  row.team_name||''
+                                )
+                                  ?'is-fce'
+                                  :''
+                              }"
+                            >
+                              <td>${row.position}</td>
+                              <td>${esc(row.team_name)}</td>
+                              <td>${row.played}</td>
+                              <td>${row.won}</td>
+                              <td>${row.drawn}</td>
+                              <td>${row.lost}</td>
+                              <td><b>${row.points}</b></td>
+                            </tr>
+                          `).join('')
+                        }
+                      </tbody>
+
+                    </table>
+
+                  </section>
+                `;
+              })
+              .join('')
+          }</div>`
+          :'<p>Aucun classement n’est actuellement diffusé pour cette sélection.</p>';
+
     return;
   }
   const rows=matches.filter(row=>{
@@ -223,7 +337,7 @@ function draw(){
   wirePlateauDetails();
 }
 
-fetch('/api/page/matches?v=20').then(async response=>{
+fetch('/api/page/matches?v=21').then(async response=>{
   const data=await response.json();
   if(!response.ok)throw new Error(data.error||`Rencontres : ${response.status}`);
   return data;

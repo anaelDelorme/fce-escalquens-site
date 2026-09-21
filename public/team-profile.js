@@ -54,11 +54,11 @@ const wirePlateauDetails=()=>document.querySelectorAll('[data-plateau-games]').f
   detail.innerHTML='<p class="plateau-games-loading">Chargement du programme…</p>';
   try{if(!plateauGamesCache.has(id)){const response=await fetch(`/api/plateau-games?plateau_id=${encodeURIComponent(id)}`),data=await response.json();if(!response.ok)throw new Error(data.error||`HTTP ${response.status}`);plateauGamesCache.set(id,data.games||[])}detail.innerHTML=plateauGamesHtml(plateauGamesCache.get(id));detail.dataset.loaded='1'}catch(error){console.error(error);detail.innerHTML='<p class="participant-empty">Le détail est momentanément indisponible.</p>'}
 });
-fetch(`/api/page/team-profile?slug=${encodeURIComponent(slug||'')}&v=23`).then(async response=>{
+fetch(`/api/page/team-profile?slug=${encodeURIComponent(slug||'')}&v=24`).then(async response=>{
   const data=await response.json();
   if(!response.ok)throw new Error(data.error||`Fiche équipe : ${response.status}`);
   return data;
-}).then(({team,entries=[],sessions=[],staff=[],upcoming=[],results=[],participants=[]})=>{
+}).then(({team,entries=[],sessions=[],staff=[],upcoming=[],results=[],participants=[],standings=[]})=>{
   savedParticipants=participants;
   document.title=`${team.name} - FC Escalquens`;set('#team-name',team.name);set('#team-description',team.description);set('#player-count',team.player_count||'—');
   const engagementRows=entries.map((item,index)=>({
@@ -80,5 +80,118 @@ fetch(`/api/page/team-profile?slug=${encodeURIComponent(slug||'')}&v=23`).then(a
   document.querySelector('#team-training').innerHTML=sessions.map(row=>{const query=row.venue_latitude!=null&&row.venue_longitude!=null?`${row.venue_latitude},${row.venue_longitude}`:row.venue_full_address||row.address||row.venue_name||row.venue,link=row.venue_maps_url||`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;return `<article><b>${days[row.weekday]}</b><span>${row.starts_at} - ${row.ends_at}</span><small>${esc(row.venue_name||row.venue)}</small><a href="${link}" target="_blank" rel="noopener">Itinéraire →</a></article>`}).join('')||'<p>Horaires à venir.</p>';
   document.querySelector('#team-upcoming').innerHTML=upcoming.map(match=>miniMatch(match,true)).join('')||'<p>Les prochaines rencontres arrivent bientôt.</p>';
   document.querySelector('#team-results').innerHTML=results.map(match=>miniMatch(match,false)).join('')||'<p>Aucun résultat publié pour ce groupe.</p>';
+
+  const standingsNode=document.querySelector('#team-standings');
+
+  const standingsGroups=new Map();
+
+  standings.forEach(row=>{
+    const key=String(
+      row.competition_team_id
+      ||row.phase_id
+      ||'classement'
+    );
+
+    if(!standingsGroups.has(key)){
+      standingsGroups.set(key,[]);
+    }
+
+    standingsGroups
+      .get(key)
+      .push(row);
+  });
+
+  standingsNode.innerHTML=
+    standingsGroups.size
+      ?[...standingsGroups.values()]
+        .map(rows=>{
+
+          const firstRow=rows[0]||{};
+
+          const title=[
+            firstRow.competition_name,
+            firstRow.pool_label
+          ]
+            .filter(Boolean)
+            .join(' · ')
+            ||'Classement';
+
+          const ordered=[
+            ...rows
+          ].sort(
+            (a,b)=>
+              Number(a.position||999)
+              -Number(b.position||999)
+          );
+
+          return `
+            <section class="team-standing-card">
+
+              <div class="team-standing-head">
+
+                <h3>${esc(title)}</h3>
+
+                ${
+                  firstRow.source_url
+                    ?`<a
+                        href="${esc(firstRow.source_url)}"
+                        target="_blank"
+                        rel="noopener"
+                      >Source FFF →</a>`
+                    :''
+                }
+
+              </div>
+
+              <div class="standings">
+
+                <table>
+
+                  <thead>
+                    <tr>
+                      <th scope="col">#</th>
+                      <th scope="col">Équipe</th>
+                      <th scope="col">J</th>
+                      <th scope="col">G</th>
+                      <th scope="col">N</th>
+                      <th scope="col">P</th>
+                      <th scope="col">Pts</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    ${
+                      ordered.map(row=>`
+                        <tr
+                          class="${
+                            /escalquens/i.test(
+                              row.team_name||''
+                            )
+                              ?'is-fce'
+                              :''
+                          }"
+                        >
+                          <td>${esc(row.position)}</td>
+                          <td>${esc(row.team_name)}</td>
+                          <td>${esc(row.played)}</td>
+                          <td>${esc(row.won)}</td>
+                          <td>${esc(row.drawn)}</td>
+                          <td>${esc(row.lost)}</td>
+                          <td><b>${esc(row.points)}</b></td>
+                        </tr>
+                      `).join('')
+                    }
+                  </tbody>
+
+                </table>
+
+              </div>
+
+            </section>
+          `;
+        })
+        .join('')
+      :'<p>Aucun classement FFF disponible pour ce groupe.</p>';
+
   wirePlateauDetails();
 }).catch(error=>{console.error(error);const staffNode=document.querySelector('#team-staff');if(staffNode)staffNode.setAttribute('aria-busy','false');document.querySelector('#team-name').textContent='Informations indisponibles';document.querySelector('#team-description').textContent='La connexion aux données du club a échoué. Merci de réessayer dans quelques instants.'});

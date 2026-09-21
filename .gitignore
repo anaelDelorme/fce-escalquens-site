@@ -27,3 +27,7 @@ prod-data-ordered.sql
 staging-schema.sql
 staging-clear-data.sql
 prod-to-staging.sql
+
+# Python
+__pycache__/
+*.pyc

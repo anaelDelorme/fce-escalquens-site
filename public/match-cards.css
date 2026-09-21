@@ -36,3 +36,116 @@
   .team-plateau-card>header{padding:12px 14px}.team-plateau-card>header time{font-size:14px}.team-plateau-card>header>strong{font-size:15px}.team-plateau-card>.plateau-participants{padding:14px}.team-plateau-card .plateau-participants>div{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.team-plateau-card>footer{display:grid}
   .match-filters{grid-template-columns:1fr;padding:14px}
 }
+
+/* FCE 2026-09 — contraste scores plateau */
+
+.plateau-game-score{
+  background:#fff;
+  color:var(--wine);
+  border:2px solid var(--wine);
+  box-shadow:none;
+}
+
+.plateau-game-score i{
+  color:var(--ink);
+}
+
+
+/* FCE 2026-09 — classements fiche équipe */
+
+.team-standings{
+  display:grid;
+  gap:18px;
+}
+
+.team-standing-card{
+  background:#fff;
+  border:1px solid var(--line);
+  border-top:5px solid var(--wine);
+}
+
+.team-standing-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:18px;
+
+  padding:16px 18px;
+  background:#faf5f1;
+}
+
+.team-standing-head h3{
+  margin:0;
+  font-size:22px;
+}
+
+.team-standing-head a{
+  color:var(--wine);
+  font-size:11px;
+  font-weight:900;
+}
+
+.team-standing-card .standings{
+  overflow-x:auto;
+}
+
+.team-standing-card table{
+  min-width:620px;
+}
+
+.team-standing-card tr.is-fce{
+  background:#fff5c7;
+  font-weight:900;
+}
+
+.team-standing-card tr.is-fce td:first-child{
+  border-left:5px solid var(--wine);
+}
+
+
+/* Classements sur /matchs/ */
+
+.standings-groups{
+  display:grid;
+  gap:18px;
+}
+
+.standings-group{
+  background:#fff;
+  border:1px solid var(--line);
+}
+
+.standings-group>header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:16px;
+
+  padding:12px 14px;
+  background:#faf5f1;
+  border-bottom:1px solid var(--line);
+}
+
+.standings-group>header h3{
+  margin:0;
+  font-size:18px;
+}
+
+.standings-group>header a{
+  color:var(--wine);
+  font-size:11px;
+  font-weight:900;
+}
+
+.standings-group tr.is-fce{
+  background:#fff5c7;
+  font-weight:900;
+}
+
+@media(max-width:600px){
+  .team-standing-head,
+  .standings-group>header{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+}
