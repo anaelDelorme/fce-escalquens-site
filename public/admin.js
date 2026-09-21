@@ -32,7 +32,7 @@ const options={group_name:clubCategories.map(value=>[value,value]),gender:[['mix
 const contactRoles=[['responsable_mecenat','Responsable mécénat'],['presidence','Présidence'],['community_manager','Community Manager'],['secretariat','Secrétariat'],['tresorerie','Trésorerie'],['responsable_technique','Responsable technique'],['communication','Communication'],['responsable_sportif','Responsable sportif'],['responsable_boutique','Responsable boutique'],['referent','Référent'],['autre','Autre']];
 let current='teams',editing=null,editingRow={},token=sessionStorage.getItem('admin-token')||'',references={teams:[],club_members:[],venues:[],competition_levels:[],seasons:[],tournaments:[],team_competitions:[],shop_categories:[]},referencesLoaded=false;
 const $=selector=>document.querySelector(selector);
-const authHeaders=()=>({'x-requested-with':'XMLHttpRequest',...(token?{authorization:`Bearer ${token}`}:{})}),jsonHeaders=()=>({'content-type':'application/json',...authHeaders()});
+const authHeaders=()=>({'x-requested-with':'XMLHttpRequest',...(token?{'x-admin-token':token}:{})}),jsonHeaders=()=>({'content-type':'application/json',...authHeaders()});
 const esc=value=>String(value??'').replace(/[&<>'"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
 const syncDate=value=>value?new Date(String(value).endsWith('Z')?value:`${value}Z`).toLocaleString('fr-FR',{timeZone:'Europe/Paris',dateStyle:'medium',timeStyle:'short'}):'Jamais';
 async function loadHealth(){

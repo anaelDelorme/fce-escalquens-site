@@ -6,6 +6,10 @@ interface Env {
   TEST_SITE_PASSWORD?: string;
   TEST_SITE_USER?: string;
   FCE_SYNC_TOKEN?: string;
+  APP_ENV?: string;
+  GITHUB_DISPATCH_TOKEN?: string;
+  GITHUB_REPOSITORY?: string;
+  STAGING_WORKFLOW_REF?: string;
 }
 
 type AnyRow = Record<string, any>;
@@ -97,7 +101,8 @@ async function admin(request: Request, env: Env) {
       .bind(email).first<{ email: string }>();
     if (row) return row.email;
   }
-  const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") || "";
+  const bearer = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") || "";
+  const token = request.headers.get("x-admin-token") || bearer;
   return env.DEV_ADMIN_TOKEN && secureToken(token, env.DEV_ADMIN_TOKEN) ? "local-admin" : null;
 }
 
@@ -831,6 +836,114 @@ async function syncMeta(env: Env, detailed = false) {
   return json(syncRunData(await latestSyncRun(env), detailed));
 }
 
+
+async function stagingAction(request: Request, env: Env) {
+  if (env.APP_ENV !== "staging") {
+    return json({ error: "Disponible uniquement en préproduction" }, 404);
+  }
+
+  if (!await admin(request, env)) {
+    return json({ error: "Accès administrateur requis" }, 401);
+  }
+
+  const origin = request.headers.get("origin");
+  const ownOrigin = new URL(request.url).origin;
+
+  if (origin && origin !== ownOrigin) {
+    return json({ error: "Origine refusée" }, 403);
+  }
+
+  if (request.method === "GET") {
+    return json({
+      environment: "staging",
+      repository: env.GITHUB_REPOSITORY || null
+    });
+  }
+
+  if (request.method !== "POST") {
+    return json({ error: "Méthode non autorisée" }, 405);
+  }
+
+  if (
+    request.headers.get("x-requested-with") !== "XMLHttpRequest"
+  ) {
+    return json({ error: "Requête invalide" }, 400);
+  }
+
+  if (
+    !env.GITHUB_DISPATCH_TOKEN ||
+    !env.GITHUB_REPOSITORY
+  ) {
+    return json({
+      error: "Le déclenchement GitHub n’est pas configuré."
+    }, 503);
+  }
+
+  const body = await request
+    .json<{ action?: string }>()
+    .catch(() => ({}));
+
+  const workflows: Record<string, string> = {
+    sync_matches: "sync-matches-staging.yml",
+    clone_prod: "sync-prod-to-staging.yml"
+  };
+
+  const workflow =
+    workflows[String(body.action || "")];
+
+  if (!workflow) {
+    return json({
+      error: "Action de préproduction inconnue"
+    }, 400);
+  }
+
+  const response = await fetch(
+    `https://api.github.com/repos/${env.GITHUB_REPOSITORY}/actions/workflows/${workflow}/dispatches`,
+    {
+      method: "POST",
+      headers: {
+        "accept": "application/vnd.github+json",
+        "authorization": `Bearer ${env.GITHUB_DISPATCH_TOKEN}`,
+        "content-type": "application/json",
+        "user-agent": "fce-escalquens-staging",
+        "x-github-api-version": "2026-03-10"
+      },
+      body: JSON.stringify({
+        ref: env.STAGING_WORKFLOW_REF || "develop"
+      })
+    }
+  );
+
+  const raw = await response.text();
+
+  let result: AnyRow = {};
+
+  try {
+    result = raw ? JSON.parse(raw) : {};
+  } catch {}
+
+  if (!response.ok) {
+    return json({
+      error:
+        `GitHub HTTP ${response.status} — ` +
+        String(
+          result.message ||
+          raw ||
+          "échec du déclenchement"
+        ).slice(0, 300)
+    }, 502);
+  }
+
+  return json({
+    ok: true,
+    workflow,
+    run_id: result.workflow_run_id || null,
+    html_url:
+      result.html_url ||
+      `https://github.com/${env.GITHUB_REPOSITORY}/actions/workflows/${workflow}`
+  });
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(request.url);
@@ -856,6 +969,9 @@ export default {
     }
     if (url.pathname === "/api/match-sync" && request.method === "GET") return syncMeta(env);
     if (url.pathname === "/api/site_media" && request.method === "GET") return publicSiteMedia(env);
+    if (url.pathname === "/admin-api/staging/actions") {
+      return stagingAction(request, env);
+    }
     if (url.pathname === "/admin-api/sync-health" && request.method === "GET") {
       if (!await admin(request, env)) return json({ error: "Accès administrateur requis" }, 401);
       return syncMeta(env, true);

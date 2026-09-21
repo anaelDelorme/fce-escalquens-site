@@ -1,0 +1,96 @@
+body[data-environment="staging"] header {
+  box-shadow:
+    inset 0 4px 0 #f4c400;
+}
+
+body[data-environment="staging"]
+.admin-brand small::after {
+  content: " · PRÉPROD";
+  color: #f4c400;
+  font-weight: 900;
+}
+
+.staging-tools {
+  margin: 0 0 22px;
+  padding: 18px 20px;
+
+  border: 2px solid #f4c400;
+  background: #fff9d9;
+
+  color: #241819;
+}
+
+.staging-tools-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.staging-tools-head small {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.staging-tools-head h2 {
+  margin: 3px 0 0;
+}
+
+.staging-tools-head > strong {
+  padding: 6px 9px;
+
+  border: 1px solid #1b1213;
+  background: #f4c400;
+
+  font: 900 11px/1 Arial, sans-serif;
+  letter-spacing: .08em;
+}
+
+.staging-tools-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+
+  margin: 14px 0;
+}
+
+.staging-tools-actions button {
+  min-height: 44px;
+}
+
+.staging-tools-warning {
+  margin: 10px 0;
+  padding: 10px 12px;
+
+  border-left: 4px solid #9d171d;
+  background: #fff;
+}
+
+#staging-tools-status {
+  min-height: 1.4em;
+  margin: 10px 0 0;
+
+  font-weight: 800;
+}
+
+#staging-tools-status a {
+  color: #8f141a;
+  text-decoration: underline;
+}
+
+@media (max-width: 640px) {
+  .staging-tools {
+    padding: 14px;
+  }
+
+  .staging-tools-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .staging-tools-actions button {
+    width: 100%;
+  }
+}
