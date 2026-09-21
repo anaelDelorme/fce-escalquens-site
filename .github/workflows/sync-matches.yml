@@ -1,4 +1,4 @@
-name: Synchroniser les matchs
+name: Synchroniser les matchs — production
 
 on:
   workflow_dispatch:
