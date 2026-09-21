@@ -1,278 +1,105 @@
-export async function browserCollectStandings(saved, clubNo) {
-  const first=(...values)=>
-    values.find(
-      value=>
-        value!==undefined
-        &&value!==null
-        &&value!==''
-    );
+export async function browserCollectStandings(_saved, clubNo) {
+  const targets=new Map();
 
-  const items=value=>
-    Array.isArray(value)
-      ?value
-      :value?.['hydra:member']
-        ||value?.items
-        ||value?.data
-        ||value?.matches
-        ||[];
+  const addTarget=raw=>{
+    try{
+      const url=new URL(raw,location.origin);
 
-  const number=value=>{
-    const match=
-      String(value??'')
-        .match(/[0-9]+/);
+      const match=url.pathname.match(
+        /\/competition\/engagement\/([^/]+)\/phase\/(\d+)\/(\d+)(?:\/[^?#]*)?/
+      );
 
-    return match
-      ?Number(match[0])
-      :null;
+      if(!match)return;
+
+      const [,engagement,phase,pool]=match;
+
+      const cpNo=Number(
+        engagement.match(/^\d+/)?.[0]||0
+      );
+
+      if(!cpNo)return;
+
+      const competitionSlug=
+        engagement.replace(/^\d+-?/,'');
+
+      const classementUrl=
+        `${location.origin}/competition/engagement/`+
+        `${engagement}/phase/${phase}/${pool}/classement`;
+
+      targets.set(
+        `${engagement}:${phase}:${pool}`,
+        {
+          url:classementUrl,
+          engagement,
+          cpNo,
+          phase:Number(phase),
+          pool:Number(pool),
+          competitionSlug
+        }
+      );
+
+    }catch{}
   };
-
-  const slug=value=>
-    String(value||'competition')
-      .normalize('NFD')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g,'-')
-      .replace(/^-|-$/g,'');
-
-  const targets=
-    new Map();
 
 
   /*
-   * Les 12 réponses "matches" ont déjà été
-   * chargées dans cette même session ZenRows.
-   *
-   * On en déduit compétition / phase / poule
-   * ainsi que l'identifiant exact de l'équipe FCE.
+   * Source fiable vérifiée dans le navigateur :
+   * les engagements sont présents dans le DOM
+   * de la page club FFF.
    */
+  document
+    .querySelectorAll('a[href]')
+    .forEach(
+      link=>addTarget(
+        link.getAttribute('href')
+      )
+    );
+
+
   for(
-    const result
-    of saved.filter(
-      item=>
-        item.id.startsWith('fce-matches-')
-        &&item.status===200
+    const match
+    of document.documentElement.innerHTML.matchAll(
+      /\/competition\/engagement\/[^"'\\s<]+\/phase\/\d+\/\d+\/(?:accueil|classement|resultats-et-calendrier)/g
     )
   ){
-    try{
-      const payload=
-        JSON.parse(result.body);
-
-      for(
-        const wrapper
-        of items(payload)
-      ){
-        const item=
-          wrapper?.donneesFormatees
-          ||wrapper
-          ||{};
-
-        const competition=
-          item.competition?.donneesFormatees
-          ||item.competition
-          ||{};
-
-        const group=
-          item.groupe
-          ||item.poule
-          ||{};
-
-        const phase=
-          item.phase
-          ||group.phase
-          ||{};
-
-        const home=
-          item.recevant||{};
-
-        const away=
-          item.visiteur||{};
-
-        const clubSide=
-          String(
-            home.club?.clNo
-          )===String(clubNo)
-            ?home
-            :String(
-              away.club?.clNo
-            )===String(clubNo)
-              ?away
-              :null;
-
-        if(!clubSide){
-          continue;
-        }
-
-        const cpNo=
-          number(
-            first(
-              competition.cpNo,
-              competition.cp_no,
-              competition.id,
-              competition['@id']
-            )
-          );
-
-        const phNo=
-          number(
-            first(
-              phase.phNo,
-              phase.ph_no,
-              phase.number,
-              phase.id
-            )
-          )
-          ||1;
-
-        const gpNo=
-          number(
-            first(
-              group.gpNo,
-              group.poNo,
-              group.gp_no,
-              group.po_no,
-              group.number,
-              group.id,
-              group['@id']
-            )
-          );
-
-        if(
-          !cpNo
-          ||!gpNo
-        ){
-          continue;
-        }
-
-        const competitionName=
-          String(
-            first(
-              competition.nom,
-              competition.name,
-              competition.label,
-              cpNo
-            )
-          );
-
-        const poolLabel=
-          String(
-            first(
-              group.nom,
-              group.name,
-              group.label,
-              ''
-            )
-          );
-
-        const teamFffId=
-          String(
-            first(
-              clubSide.equipe?.id,
-              clubSide.equipe?.eqId,
-              clubSide.equipe?.eqNo,
-              ''
-            )
-          );
-
-        const teamNumber=
-          String(
-            first(
-              clubSide.equipe?.eqCod,
-              clubSide.equipe?.number,
-              ''
-            )
-          );
-
-        const categoryCode=
-          teamFffId.split('_')[2]
-          ||String(
-            first(
-              clubSide.equipe?.caCod,
-              ''
-            )
-          );
-
-        const url=
-          new URL(
-            '/competition/engagement/'
-            +cpNo
-            +'-'
-            +slug(competitionName)
-            +'/phase/'
-            +phNo
-            +'/'
-            +gpNo
-            +'/classement',
-            location.origin
-          ).href;
-
-        /*
-         * Deux équipes du club peuvent théoriquement
-         * partager une même poule : garder l'identité
-         * FFF dans la clé évite de les fusionner.
-         */
-        const key=
-          url
-          +'|'
-          +(
-            teamFffId
-            ||teamNumber
-            ||categoryCode
-            ||'fce'
-          );
-
-        targets.set(
-          key,
-          {
-            url,
-            cpNo,
-            phNo,
-            gpNo,
-            competitionName,
-            poolLabel,
-            teamFffId,
-            teamNumber,
-            categoryCode
-          }
-        );
-      }
-
-    }catch{}
+    addTarget(match[0]);
   }
 
 
   const normalizeHeader=value=>
     String(value||'')
       .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g,'')
       .toLowerCase()
-      .replace(
-        /[^a-z0-9]+/g,
-        ''
-      );
+      .replace(/[^a-z0-9]+/g,'');
 
 
   const asNumber=value=>{
-    const match=
+    const found=
       String(value??'')
         .replace(',','.')
-        .match(/-?[0-9]+/);
+        .match(/-?\d+/);
 
-    return match
-      ?Number(match[0])
+    return found
+      ?Number(found[0])
       :0;
   };
 
 
+  const titleFromSlug=slug=>
+    String(slug||'')
+      .replace(/-/g,' ')
+      .replace(/\s+/g,' ')
+      .trim()
+      .toUpperCase();
+
+
   const rows=[];
-  const results=[];
+  const diagnostics=[];
 
 
-  /*
-   * Ces fetch() sont exécutés DANS le navigateur
-   * de la requête ZenRows déjà facturée.
-   */
-  for(
-    const target
-    of targets.values()
-  ){
+  for(const target of targets.values()){
+
     const diagnostic={
       url:target.url,
       status:0,
@@ -280,32 +107,30 @@ export async function browserCollectStandings(saved, clubNo) {
       error:''
     };
 
+
     try{
-      const response=
-        await fetch(
-          target.url,
-          {
-            credentials:'include',
 
-            headers:{
-              Accept:
-                'text/html,application/xhtml+xml'
-            }
+      const response=await fetch(
+        target.url,
+        {
+          credentials:'include',
+          headers:{
+            Accept:'text/html,application/xhtml+xml'
           }
-        );
+        }
+      );
 
-      diagnostic.status=
-        response.status;
 
-      const html=
-        await response.text();
+      diagnostic.status=response.status;
+
+      const html=await response.text();
 
       if(!response.ok){
         throw new Error(
-          'HTTP '
-          +response.status
+          `HTTP ${response.status}`
         );
       }
+
 
       const doc=
         new DOMParser()
@@ -314,258 +139,249 @@ export async function browserCollectStandings(saved, clubNo) {
             'text/html'
           );
 
+
       /*
-       * La FFF rend actuellement deux tableaux :
-       * mobile et détaillé.
+       * La FFF fournit actuellement :
+       * - un tableau mobile
+       * - un tableau détaillé
        *
-       * On prend celui contenant le plus de colonnes.
+       * On garde celui avec le plus de colonnes.
        */
-      const candidates=
-        [
-          ...doc.querySelectorAll(
-            'table'
-          )
-        ]
-          .map(
-            table=>({
-              table,
+      const candidates=[
+        ...doc.querySelectorAll('table')
+      ]
+        .map(table=>({
+          table,
 
-              headers:[
-                ...table.querySelectorAll(
-                  'thead th'
-                )
-              ].map(
-                th=>
-                  normalizeHeader(
-                    th.textContent
-                  )
-              )
-            })
-          )
-          .filter(
-            item=>
-              item.headers.includes(
-                'equipe'
-              )
-              &&item.headers.includes(
-                'pts'
+          headers:[
+            ...table.querySelectorAll(
+              'thead th'
+            )
+          ].map(
+            th=>
+              normalizeHeader(
+                th.textContent
               )
           )
-          .sort(
-            (a,b)=>
-              b.headers.length
-              -a.headers.length
-          );
+        }))
+        .filter(
+          candidate=>
+            candidate.headers.includes('equipe')
+            &&candidate.headers.includes('pts')
+        )
+        .sort(
+          (a,b)=>
+            b.headers.length-a.headers.length
+        );
 
-      const selected=
-        candidates[0];
+
+      const selected=candidates[0];
 
       if(!selected){
-        throw new Error(
-          'tableau de classement introuvable'
-        );
+        diagnostic.error=
+          'Pas de tableau de classement';
+
+        diagnostics.push(diagnostic);
+        continue;
       }
 
 
-      const headers=
-        selected.headers;
+      const headers=selected.headers;
+
 
       const teamIndex=
-        headers.indexOf(
-          'equipe'
-        );
+        headers.indexOf('equipe');
 
       const pointsIndex=
-        headers.indexOf(
-          'pts'
-        );
+        headers.indexOf('pts');
 
       const playedIndex=
-        headers.indexOf(
-          'j'
-        );
+        headers.indexOf('j');
 
       const wonIndex=
-        headers.indexOf(
-          'g'
-        );
+        headers.indexOf('g');
 
       const drawnIndex=
-        headers.indexOf(
-          'n'
-        );
+        headers.indexOf('n');
 
       const lostIndex=
-        headers.indexOf(
-          'p'
-        );
+        headers.indexOf('p');
 
       const goalsForIndex=
-        headers.indexOf(
-          'bp'
-        );
+        headers.indexOf('bp');
 
       const goalsAgainstIndex=
-        headers.indexOf(
-          'bc'
-        );
-
-
-      const tableRows=
-        [
-          ...selected.table
-            .querySelectorAll(
-              'tbody tr'
-            )
-        ]
-          .map(
-            (
-              tr,
-              index
-            )=>{
-
-              const cells=
-                [
-                  ...tr.querySelectorAll(
-                    'td'
-                  )
-                ].map(
-                  td=>
-                    (
-                      td.textContent
-                      ||''
-                    )
-                      .replace(
-                        /\s+/g,
-                        ' '
-                      )
-                      .trim()
-                );
-
-              const teamName=
-                cells[teamIndex]
-                ||'';
-
-              if(!teamName){
-                return null;
-              }
-
-              const teamKey=
-                target.teamFffId
-                ||target.teamNumber
-                ||target.categoryCode
-                ||'fce';
-
-
-              return {
-                source:'fff',
-
-                phase_id:[
-                  target.cpNo,
-                  target.phNo,
-                  target.gpNo,
-                  teamKey
-                ].join(':'),
-
-                team_fff_id:
-                  target.teamFffId,
-
-                category_code:
-                  target.categoryCode,
-
-                team_number:
-                  target.teamNumber,
-
-                competition_name:
-                  target.competitionName,
-
-                pool_label:
-                  target.poolLabel
-                  ||(
-                    'Poule '
-                    +target.gpNo
-                  ),
-
-                source_url:
-                  target.url,
-
-                team_name:
-                  teamName,
-
-                /*
-                 * Sur le tableau détaillé FFF,
-                 * la première cellule contient
-                 * bien le rang.
-                 */
-                position:
-                  asNumber(
-                    cells[0]
-                  )
-                  ||index+1,
-
-                played:
-                  playedIndex>=0
-                    ?asNumber(
-                      cells[playedIndex]
-                    )
-                    :0,
-
-                won:
-                  wonIndex>=0
-                    ?asNumber(
-                      cells[wonIndex]
-                    )
-                    :0,
-
-                drawn:
-                  drawnIndex>=0
-                    ?asNumber(
-                      cells[drawnIndex]
-                    )
-                    :0,
-
-                lost:
-                  lostIndex>=0
-                    ?asNumber(
-                      cells[lostIndex]
-                    )
-                    :0,
-
-                goals_for:
-                  goalsForIndex>=0
-                    ?asNumber(
-                      cells[goalsForIndex]
-                    )
-                    :0,
-
-                goals_against:
-                  goalsAgainstIndex>=0
-                    ?asNumber(
-                      cells[goalsAgainstIndex]
-                    )
-                    :0,
-
-                points:
-                  pointsIndex>=0
-                    ?asNumber(
-                      cells[pointsIndex]
-                    )
-                    :0,
-
-                raw_json:{
-                  headers,
-                  cells
-                }
-              };
-            }
-          )
-          .filter(Boolean);
+        headers.indexOf('bc');
 
 
       /*
-       * Les coupes peuvent produire une URL
-       * /classement mais sans classement
-       * correspondant à Escalquens.
+       * Exemple vérifié :
+       * POULE F
+       */
+      let poolLabel=
+        (
+          doc.querySelector(
+            'select option[selected]'
+          )
+          ||doc.querySelector(
+            'select option:checked'
+          )
+        )
+          ?.textContent
+          ?.replace(/\s+/g,' ')
+          ?.trim()
+        ||'';
+
+
+      if(!poolLabel){
+
+        const possible=[
+          ...doc.querySelectorAll(
+            'h1,h2,h3,h4,label,strong'
+          )
+        ]
+          .map(
+            node=>
+              (
+                node.textContent
+                ||''
+              )
+                .replace(/\s+/g,' ')
+                .trim()
+          )
+          .find(
+            value=>
+              /^poule\b/i.test(value)
+          );
+
+        poolLabel=
+          possible||`Poule ${target.pool}`;
+      }
+
+
+      /*
+       * Le slug officiel de l'URL correspond
+       * au nom de compétition.
+       */
+      const competitionName=
+        titleFromSlug(
+          target.competitionSlug
+        );
+
+
+      const tableRows=[
+        ...selected.table.querySelectorAll(
+          'tbody tr'
+        )
+      ]
+        .map(
+          (tr,index)=>{
+
+            const cells=[
+              ...tr.querySelectorAll('td')
+            ].map(
+              td=>
+                (
+                  td.textContent
+                  ||''
+                )
+                  .replace(/\s+/g,' ')
+                  .trim()
+            );
+
+
+            const teamName=
+              cells[teamIndex]
+              ||'';
+
+
+            if(!teamName){
+              return null;
+            }
+
+
+            return {
+              source:'fff',
+
+              phase_id:
+                `${target.engagement}:`+
+                `${target.phase}:`+
+                `${target.pool}`,
+
+              /*
+               * Le rattachement à notre équipe
+               * sera fait côté Worker via
+               * compétition + poule.
+               */
+              team_fff_id:'',
+              category_code:'',
+              team_number:'',
+
+              competition_name:
+                competitionName,
+
+              pool_label:
+                poolLabel,
+
+              source_url:
+                target.url,
+
+              team_name:
+                teamName,
+
+              position:
+                asNumber(cells[0])
+                ||index+1,
+
+              played:
+                playedIndex>=0
+                  ?asNumber(cells[playedIndex])
+                  :0,
+
+              won:
+                wonIndex>=0
+                  ?asNumber(cells[wonIndex])
+                  :0,
+
+              drawn:
+                drawnIndex>=0
+                  ?asNumber(cells[drawnIndex])
+                  :0,
+
+              lost:
+                lostIndex>=0
+                  ?asNumber(cells[lostIndex])
+                  :0,
+
+              goals_for:
+                goalsForIndex>=0
+                  ?asNumber(cells[goalsForIndex])
+                  :0,
+
+              goals_against:
+                goalsAgainstIndex>=0
+                  ?asNumber(cells[goalsAgainstIndex])
+                  :0,
+
+              points:
+                pointsIndex>=0
+                  ?asNumber(cells[pointsIndex])
+                  :0,
+
+              raw_json:{
+                headers,
+                cells
+              }
+            };
+          }
+        )
+        .filter(Boolean);
+
+
+      /*
+       * Les pages de coupe peuvent avoir
+       * une URL /classement sans classement
+       * utile pour Escalquens.
        */
       if(
         !tableRows.some(
@@ -576,9 +392,10 @@ export async function browserCollectStandings(saved, clubNo) {
         )
       ){
         diagnostic.error=
-          'FC Escalquens absent du tableau';
+          'FC Escalquens absent';
 
       }else{
+
         diagnostic.rows=
           tableRows.length;
 
@@ -587,7 +404,9 @@ export async function browserCollectStandings(saved, clubNo) {
         );
       }
 
+
     }catch(error){
+
       diagnostic.error=
         String(
           error?.message
@@ -596,46 +415,32 @@ export async function browserCollectStandings(saved, clubNo) {
     }
 
 
-    results.push(
+    diagnostics.push(
       diagnostic
     );
   }
 
 
-  const append=
-    (
-      id,
-      data
-    )=>{
+  const append=(id,data)=>{
 
-      const output=
-        document.createElement(
-          'script'
-        );
+    const output=
+      document.createElement('script');
 
-      output.type=
-        'application/json';
+    output.type=
+      'application/json';
 
-      output.id=
-        id;
+    output.id=id;
 
-      /*
-       * Même enveloppe que les autres payloads
-       * du collecteur.
-       */
-      output.textContent=
-        JSON.stringify({
-          status:200,
-          body:JSON.stringify(
-            data
-          )
-        });
+    output.textContent=
+      JSON.stringify({
+        status:200,
+        body:JSON.stringify(data)
+      });
 
-      document.body
-        .appendChild(
-          output
-        );
-    };
+    document.body.appendChild(
+      output
+    );
+  };
 
 
   append(
@@ -647,19 +452,17 @@ export async function browserCollectStandings(saved, clubNo) {
   append(
     'fce-standings-meta',
     {
-      detected:
-        targets.size,
+      detected:targets.size,
 
       parsed:
-        results.filter(
-          item=>
-            item.rows>0
+        diagnostics.filter(
+          item=>item.rows>0
         ).length,
 
       rows:
         rows.length,
 
-      results
+      results:diagnostics
     }
   );
 }

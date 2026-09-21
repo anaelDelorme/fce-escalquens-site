@@ -979,7 +979,9 @@ async function ingestStandings(
           team_id,
           fff_team_id,
           category_code,
-          team_number
+          team_number,
+          competition_name,
+          pool
 
         FROM team_competitions
 
@@ -1049,6 +1051,21 @@ async function ingestStandings(
     );
 
 
+  const normalizeLabel=
+    (value: unknown) =>
+      String(value || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toUpperCase()
+        .replace(/[^A-Z0-9]+/g, "");
+
+
+  const normalizePool=
+    (value: unknown) =>
+      normalizeLabel(value)
+        .replace(/^POULE/, "");
+
+
   const entryFor=
     (row: AnyRow) => {
 
@@ -1069,23 +1086,77 @@ async function ingestStandings(
       }
 
 
-      const key=
-        `${
-          normalizeCategory(
-            row.category_code
-          )
-        }|${
-          String(
-            row.team_number
-            || ""
-          )
-        }`;
+      const category=
+        normalizeCategory(
+          row.category_code
+        );
+
+      const teamNumber=
+        String(
+          row.team_number
+          || ""
+        );
 
 
-      return (
-        byCategoryNumber.get(key)
-        || null
-      );
+      if (
+        category
+        && teamNumber
+      ) {
+
+        const key=
+          `${category}|${teamNumber}`;
+
+        const byCategory=
+          byCategoryNumber.get(key);
+
+        if (byCategory) {
+          return byCategory;
+        }
+      }
+
+
+      /*
+       * Les classements sont rattachés
+       * à l'engagement exact grâce à
+       * compétition + poule.
+       */
+      const competition=
+        normalizeLabel(
+          row.competition_name
+        );
+
+      const pool=
+        normalizePool(
+          row.pool_label
+        );
+
+
+      if (competition) {
+
+        const candidates=
+          entries.filter(
+            entry =>
+              normalizeLabel(
+                entry.competition_name
+              ) === competition
+              && (
+                !pool
+                || normalizePool(
+                  entry.pool
+                ) === pool
+              )
+          );
+
+
+        if (
+          candidates.length === 1
+        ) {
+          return candidates[0];
+        }
+      }
+
+
+      return null;
     };
 
 

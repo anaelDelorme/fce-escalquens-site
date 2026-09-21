@@ -31,10 +31,3 @@ jobs:
           FCE_SYNC_TOKEN: ${{ secrets.FCE_STAGING_SYNC_TOKEN }}
           ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
 
-      - name: Synchroniser les classements FFF
-        run: node scripts/sync-standings.mjs
-        env:
-          FCE_SITE_URL: ${{ secrets.FCE_STAGING_SITE_URL }}
-          FCE_SYNC_TOKEN: ${{ secrets.FCE_STAGING_SYNC_TOKEN }}
-          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
-

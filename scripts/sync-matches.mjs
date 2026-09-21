@@ -592,17 +592,25 @@ async function main(){
 
     if(!detected){
 
+      console.log(
+        '::warning title=Classements FFF::Aucun classement détecté ; la synchronisation des matchs reste valide.'
+      );
+
       sources.push({
         source:'standings',
-        status:'error',
-        error:'Aucun classement FFF détecté dans les rencontres de la saison.'
+        status:'warning',
+        error:'Aucun classement FFF détecté.'
       });
 
     }else if(!latestStandings.length){
 
+      console.log(
+        `::warning title=Classements FFF::${detected} classement(s) détecté(s), mais aucune ligne exploitable.`
+      );
+
       sources.push({
         source:'standings',
-        status:'error',
+        status:'warning',
         error:`${detected} classement(s) détecté(s), mais aucune ligne exploitable.`
       });
 
@@ -684,9 +692,16 @@ async function main(){
 
       }catch(error){
 
+        console.log(
+          `::warning title=Classements FFF::${String(
+            error?.message
+            ||error
+          ).replace(/\r?\n/g,' ')}`
+        );
+
         sources.push({
           source:'standings',
-          status:'error',
+          status:'warning',
           error:String(
             error?.message
             ||error
