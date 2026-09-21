@@ -884,13 +884,13 @@ async function ingestMatches(request: Request, env: Env) {
     new Request(`${origin}/api/page/matches?v=21`),
     new Request(`${origin}/api/page/home`)
   ];
-  const currentPlateauIds = await env.DB.prepare(`SELECT id FROM matches
-    WHERE source='district_fal' AND (season_id=? OR season_id IS NULL)
-    AND event_type IN ('plateau','animation')`).bind(seasonId).all<{ id: number }>();
-  for (const plateau of currentPlateauIds.results || []) {
-    cacheKeys.push(new Request(`${origin}/api/plateau-games?plateau_id=${plateau.id}`));
-  }
-  await Promise.all(cacheKeys.map(key => cache.delete(key)));
+
+  // Ne jamais faire échouer une synchronisation parce qu'une purge
+  // de cache échoue. Les détails de plateau ont un cache court et
+  // se rafraîchiront naturellement.
+  await Promise.allSettled(
+    cacheKeys.map(key => cache.delete(key))
+  );
   return json({
     ok: true, received: rows.length, accepted, changed, discovered,
     removed_plateau_duplicates: removedPlateauDuplicates, status: syncStatus
