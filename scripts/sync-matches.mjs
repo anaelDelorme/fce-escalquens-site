@@ -1,9 +1,19 @@
+import { browserCollectStandings } from './standings-integrated.mjs';
 const SYNC_VERSION='2026.09.14-23',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 console.log(`Collecteur FCE ${SYNC_VERSION}`);
 const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
 const endpoint=siteUrl+'/internal/sync/matches';
+const standingsEndpoint=siteUrl+'/internal/sync/standings';
 const statusEndpoint=siteUrl+'/internal/sync/status';
 const token=process.env.FCE_SYNC_TOKEN;
+
+let latestStandings=[];
+let latestStandingsInfo={
+  attempted:false,
+  detected:0,
+  parsed:0,
+  rows:0
+};
 // Le YAML pilote désormais la cadence via un seul cron par créneau (champ
 // `timezone: Europe/Paris`), donc chaque déclenchement du workflow doit
 // lancer une collecte : plus de vérification d'heure locale ici.
@@ -101,6 +111,8 @@ const epreuvesPayloadFromZenRows=body=>{
   const falPayloads=Array.from({length:12},(_,index)=>embeddedPayloadFromHtml(html,`fce-fal-${index}`)).filter(Boolean);
   const detailPayloads=embeddedPayloadsByPrefix(html,'fce-detail-');
   const falGamePayloads=embeddedEntriesByPrefix(html,'fce-fal-games-');
+  const standings=embeddedPayloadFromHtml(html,'fce-standings')||[];
+  const standingsMeta=embeddedPayloadFromHtml(html,'fce-standings-meta')||{};
   const venueDetails=detailPayloads.filter(payload=>{
     const item=payload?.donneesFormatees||payload||{};
     return /"(?:terrain|installation|stade)"\s*:/.test(JSON.stringify(item));
@@ -109,7 +121,9 @@ const epreuvesPayloadFromZenRows=body=>{
     matches:mergeMatchPayloads([...matchPayloads,...detailPayloads]),fal:mergeFalPayloads(falPayloads),
     matchMonths:matchPayloads.length,falMonths:falPayloads.length,
     detailCount:detailPayloads.length,venueDetailCount:venueDetails,
-    falGamePayloads
+    falGamePayloads,
+    standings,
+    standingsMeta
   };
 };
 async function fetchZenRows(targetUrls){
@@ -247,6 +261,11 @@ async function fetchZenRows(targetUrls){
       output.textContent=JSON.stringify({status,body});document.body.appendChild(output);
     };
     await Promise.all([...plateauSites.values()].map(fetchPlateau));
+
+    // Les classements sont lus dans cette même session navigateur :
+    // aucun second appel ZenRows n'est nécessaire.
+    await (${browserCollectStandings.toString()})(saved,'${CLUB_NO}');
+
     // Réduire drastiquement la réponse ZenRows : on ne renvoie pas la page
     // Angular complète, seulement les JSON utiles au collecteur.
     const fcePayloads=[...document.querySelectorAll('script[id^="fce-"]')];
@@ -500,6 +519,25 @@ async function collectEpreuvesFFF(){
     })
   };
   const {payloads,transport}=await fetchEpreuves(targetUrls);
+
+  latestStandings=
+    Array.isArray(payloads.standings)
+      ?payloads.standings
+      :[];
+
+  latestStandingsInfo={
+    ...(payloads.standingsMeta||{}),
+    attempted:transport==='zenrows-browser'
+  };
+
+  if(latestStandingsInfo.attempted){
+    console.log(
+      `FFF : ${latestStandings.length} ligne(s) de classement capturée(s) `
+      +`sur ${Number(latestStandingsInfo.detected||0)} classement(s) détecté(s), `
+      +'sans requête ZenRows supplémentaire.'
+    );
+  }
+
   const items=payloadItems(payloads.matches);
   const total=Number(payloads.matches['hydra:totalItems']??items.length);
   if(total>items.length)throw new Error(`FFF annonce ${total} matchs mais n'en renvoie que ${items.length}; pagination à ajouter avant import`);
@@ -543,6 +581,121 @@ async function main(){
   const raw=await response.text();
   if(!response.ok)throw new Error(`Import Cloudflare HTTP ${response.status}: ${raw}`);
   console.log(raw);
+
+  if(latestStandingsInfo.attempted){
+
+    const detected=
+      Number(
+        latestStandingsInfo.detected
+        ||0
+      );
+
+    if(!detected){
+
+      sources.push({
+        source:'standings',
+        status:'error',
+        error:'Aucun classement FFF détecté dans les rencontres de la saison.'
+      });
+
+    }else if(!latestStandings.length){
+
+      sources.push({
+        source:'standings',
+        status:'error',
+        error:`${detected} classement(s) détecté(s), mais aucune ligne exploitable.`
+      });
+
+    }else{
+
+      try{
+
+        const standingsResponse=
+          await fetch(
+            standingsEndpoint,
+            {
+              method:'POST',
+
+              headers:{
+                authorization:
+                  `Bearer ${token}`,
+
+                'content-type':
+                  'application/json'
+              },
+
+              body:
+                JSON.stringify({
+                  rows:latestStandings
+                })
+            }
+          );
+
+
+        const standingsRaw=
+          await standingsResponse.text();
+
+
+        if(!standingsResponse.ok){
+
+          throw new Error(
+            `HTTP ${standingsResponse.status}: ${standingsRaw}`
+          );
+        }
+
+
+        let result={};
+
+        try{
+          result=
+            JSON.parse(
+              standingsRaw
+            );
+        }catch{}
+
+
+        console.log(
+          `Classements FFF importés : ${
+            Number(
+              result.accepted
+              ||latestStandings.length
+            )
+          } ligne(s), ${
+            Number(
+              result.linked
+              ||0
+            )
+          } rattachement(s).`
+        );
+
+
+        sources.push({
+          source:'standings',
+          status:'ok',
+          count:Number(
+            result.accepted
+            ||latestStandings.length
+          ),
+          linked:Number(
+            result.linked
+            ||0
+          )
+        });
+
+      }catch(error){
+
+        sources.push({
+          source:'standings',
+          status:'error',
+          error:String(
+            error?.message
+            ||error
+          )
+        });
+      }
+    }
+  }
+
   console.table(sources);
   const failures=sources.filter(item=>item.status==='error');
   for(const source of failures)console.log(`::error title=Source ${source.source} indisponible::${String(source.error).replace(/\r?\n/g,' ')}`);
