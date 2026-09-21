@@ -52,6 +52,7 @@ jobs:
         env:
           FCE_SITE_URL: ${{ secrets.FCE_SITE_URL }}
           FCE_SYNC_TOKEN: ${{ secrets.FCE_SYNC_TOKEN }}
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
 
 
       - name: Ouvrir l’alerte de synchronisation
