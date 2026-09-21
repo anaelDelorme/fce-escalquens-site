@@ -1315,7 +1315,7 @@ async function ingestStandings(
   }
 
 
-  await Promise.all(
+  await Promise.allSettled(
     cacheKeys.map(
       key =>
         caches.default.delete(

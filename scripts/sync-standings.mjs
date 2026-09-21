@@ -1,149 +1,71 @@
-const CLUB_NO='101544';
+const CLUB_NO='101544',CLUB_CODE='550350';
 
-const siteUrl=
-  process.env.FCE_SITE_URL
-    ?.replace(/\/$/,'');
+const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
+const token=process.env.FCE_SYNC_TOKEN;
+const zenrowsKey=process.env.ZENROWS_API_KEY;
 
-const token=
-  process.env.FCE_SYNC_TOKEN;
-
-const zenrowsKey=
-  process.env.ZENROWS_API_KEY;
-
-if(!siteUrl||!token){
+if(!siteUrl||!token||!zenrowsKey){
   throw new Error(
-    'Secrets FCE_SITE_URL ou FCE_SYNC_TOKEN manquants'
+    'FCE_SITE_URL, FCE_SYNC_TOKEN ou ZENROWS_API_KEY manquant'
   );
 }
 
-const endpoint=
-  `${siteUrl}/internal/sync/standings`;
+const endpoint=`${siteUrl}/internal/sync/standings`;
 
-const DOFA=
-  'https://api-dofa.fff.fr';
+const clubPage=
+  `https://epreuves.fff.fr/competition/club/${CLUB_CODE}-f-c-escalquens/club`;
 
+const first=(...v)=>
+  v.find(x=>x!==undefined&&x!==null&&x!=='');
 
-const first=
-  (...values)=>
-    values.find(
-      value=>
-        value!==undefined
-        &&value!==null
-        &&value!==''
-    );
+const num=v=>{
+  if(v===undefined||v===null||v==='')return null;
 
+  const n=Number(
+    String(v)
+      .replace(',','.')
+      .replace(/[^0-9.-]/g,'')
+  );
 
-const list=
-  value=>
-    Array.isArray(value)
-      ?value
-      :value?.['hydra:member']
-        ||value?.items
-        ||value?.data
-        ||value?.results
-        ||[];
+  return Number.isFinite(n)
+    ?n
+    :null;
+};
 
-
-const number=
-  value=>{
-
-    if(
-      value===undefined
-      ||value===null
-      ||value===''
-    ){
-      return null;
-    }
-
-    const parsed=
-      Number(
-        String(value)
-          .replace(',','.')
-          .replace(
-            /[^0-9.-]/g,
-            ''
-          )
-      );
-
-    return Number.isFinite(parsed)
-      ?parsed
-      :null;
-  };
-
-
-const text=
-  value=>{
-
-    if(
-      value===undefined
-      ||value===null
-    ){
-      return '';
-    }
-
-    if(
-      typeof value==='string'
-      ||typeof value==='number'
-    ){
-      return String(value).trim();
-    }
-
-    if(
-      typeof value!=='object'
-    ){
-      return '';
-    }
-
-    return text(
-      first(
-        value.nomAbr,
-        value.short_name,
-        value.shortName,
-        value.name,
-        value.nom,
-        value.label,
-        value.libelle
+const txt=v=>
+  typeof v==='string'||typeof v==='number'
+    ?String(v).trim()
+    :v&&typeof v==='object'
+      ?txt(
+        first(
+          v.nomAbr,
+          v.short_name,
+          v.name,
+          v.nom,
+          v.label,
+          v.libelle,
+          v.eqNom
+        )
       )
-    );
-  };
+      :'';
 
-
-const currentSeasonStart=
-  ()=>{
-
-    const now=
-      new Date();
-
-    return now.getUTCMonth()>=6
-      ?now.getUTCFullYear()
-      :now.getUTCFullYear()-1;
-  };
-
-
-const teamName=
-  row=>
-    text(
-      first(
-        row.equipe?.club?.nomAbr,
-        row.equipe?.club?.nom,
-        row.equipe?.club?.name,
-
-        row.equipe?.nom,
-        row.equipe?.name,
-
-        row.team?.club?.name,
-        row.team?.name,
-
-        row.club?.nomAbr,
-        row.club?.nom,
-        row.club?.name,
-
-        row.team_name,
-        row.teamName,
-        row.nom,
-        row.name
-      )
-    );
+const teamName=r=>
+  txt(
+    first(
+      r?.equipe?.club?.nomAbr,
+      r?.equipe?.club?.nom,
+      r?.equipe?.eqNom,
+      r?.equipe?.nom,
+      r?.team?.name,
+      r?.club?.nomAbr,
+      r?.club?.nom,
+      r?.team_name,
+      r?.teamName,
+      r?.eqNom,
+      r?.nom,
+      r?.name
+    )
+  );
 
 
 function rankingArray(payload){
@@ -151,100 +73,68 @@ function rankingArray(payload){
   let best=[];
   let bestScore=-1;
 
-  const seen=
-    new Set();
+  const seen=new Set();
 
+  const visit=(value,depth=0)=>{
 
-  const visit=
-    (
-      value,
-      depth=0
-    )=>{
+    if(
+      !value
+      ||depth>10
+      ||typeof value!=='object'
+      ||seen.has(value)
+    ){
+      return;
+    }
 
-      if(
-        !value
-        ||depth>8
-        ||typeof value!=='object'
-        ||seen.has(value)
-      ){
-        return;
-      }
+    seen.add(value);
 
+    if(Array.isArray(value)){
 
-      seen.add(value);
+      const rows=value.filter(
+        row=>
+          row
+          &&typeof row==='object'
+          &&!Array.isArray(row)
+          &&teamName(row)
+      );
 
+      if(rows.length>=2){
 
-      if(Array.isArray(value)){
+        const score=
+          rows.length*10
+          +rows.slice(0,5).reduce(
+            (total,row)=>{
 
-        const rows=
-          value.filter(
-            item=>
-              item
-              &&typeof item==='object'
-              &&!Array.isArray(item)
-              &&teamName(item)
+              const raw=
+                JSON.stringify(row);
+
+              return total
+                +(/point|pts/i.test(raw)?4:0)
+                +(/position|rang|class|clt/i.test(raw)?4:0);
+
+            },
+            0
           );
 
-
-        if(rows.length){
-
-          const score=
-            rows.length*10
-            +rows
-              .slice(0,4)
-              .reduce(
-                (
-                  total,
-                  row
-                )=>{
-
-                  const raw=
-                    JSON.stringify(row)
-                      .toLowerCase();
-
-                  return total
-                    +Number(
-                      /point|pts/.test(raw)
-                    )*3
-                    +Number(
-                      /position|rang|class|clt/.test(raw)
-                    )*3;
-
-                },
-                0
-              );
-
-
-          if(score>bestScore){
-            bestScore=score;
-            best=rows;
-          }
+        if(score>bestScore){
+          bestScore=score;
+          best=rows;
         }
-
-
-        value.forEach(
-          child=>
-            visit(
-              child,
-              depth+1
-            )
-        );
-
-        return;
       }
 
+      value.forEach(
+        row=>
+          visit(row,depth+1)
+      );
 
-      Object
-        .values(value)
-        .forEach(
-          child=>
-            visit(
-              child,
-              depth+1
-            )
-        );
-    };
+      return;
+    }
 
+    Object.values(value).forEach(
+      child=>
+        visit(child,depth+1)
+    );
+  };
 
   visit(payload);
 
@@ -252,87 +142,210 @@ function rankingArray(payload){
 }
 
 
-function normalizeRanking(
-  payload,
-  meta
-){
+function identity(row){
+
+  for(
+    const item
+    of [
+      row?.equipe,
+      row?.team,
+      row
+    ]
+  ){
+
+    if(
+      !item
+      ||typeof item!=='object'
+    ){
+      continue;
+    }
+
+    const id=String(
+      first(
+        item.id,
+        item.eqId,
+        item.eq_id,
+        item.eqNo,
+        item.eq_no,
+        item.equipeId,
+        item.teamId,
+        ''
+      )
+      ||''
+    );
+
+    const parts=
+      id.split('_');
+
+    const teamNumber=String(
+      first(
+        item.eqCod,
+        item.team_number,
+        item.teamNumber,
+        item.numero,
+        item.number,
+        item.no,
+        parts[3],
+        ''
+      )
+      ||''
+    );
+
+    const category=String(
+      first(
+        item.caCod,
+        item.category_code,
+        item.categoryCode,
+        parts[2],
+        ''
+      )
+      ||''
+    );
+
+    if(
+      id
+      ||teamNumber
+      ||category
+    ){
+      return {
+        id,
+        teamNumber,
+        category
+      };
+    }
+  }
+
+  return {
+    id:'',
+    teamNumber:'',
+    category:''
+  };
+}
+
+
+function normalize(page){
+
+  const ranking=
+    rankingArray(page);
+
+  if(!ranking.length){
+    return [];
+  }
+
+  const fce=
+    ranking.find(
+      row=>
+        /escalquens/i.test(
+          teamName(row)
+        )
+    );
+
+  if(!fce){
+    return [];
+  }
+
+  const match=
+    new URL(page.url)
+      .pathname
+      .match(
+        /\/competition\/engagement\/([^/]+)\/phase\/(\d+)\/(\d+)\/classement/
+      );
+
+  if(!match){
+    return [];
+  }
+
+  const [
+    ,
+    engagement,
+    phase,
+    pool
+  ]=match;
+
+  const fceIdentity=
+    identity(fce);
 
   const teamKey=
-    meta.teamNumber
-    ||meta.teamFffId
-    ||meta.categoryCode
-    ||'team';
+    fceIdentity.id
+    ||fceIdentity.teamNumber
+    ||fceIdentity.category
+    ||'fce';
+
+  const competitionName=
+    (page.headings||[])
+      .find(
+        value=>
+          /régional|regional|département|departement|senior|u\d|fémin|championnat/i
+            .test(value)
+      )
+    ||engagement
+      .replace(/^\d+-/,'')
+      .replace(/-/g,' ');
+
+  const poolLabel=
+    (page.headings||[])
+      .find(
+        value=>
+          /poule/i.test(value)
+      )
+    ||`Poule ${pool}`;
 
 
-  return rankingArray(payload)
+  return ranking
     .map(
       (
         row,
         index
       )=>{
 
-        const name=
-          teamName(row);
-
-
-        if(!name){
-          return null;
-        }
-
-
         const won=
-          number(
+          num(
             first(
               row.won,
               row.gagnes,
               row.gagne,
               row.victoires,
-              row.v,
+              row.ga,
               row.g
             )
           );
 
-
         const drawn=
-          number(
+          num(
             first(
               row.drawn,
               row.nuls,
               row.nul,
-              row.n,
-              row.d
+              row.nu,
+              row.n
             )
           );
 
-
         const lost=
-          number(
+          num(
             first(
               row.lost,
               row.perdus,
               row.perdu,
               row.defaites,
-              row.defaite,
-              row.p
+              row.pe
             )
           );
 
-
         let played=
-          number(
+          num(
             first(
               row.played,
               row.joues,
               row.joue,
+              row.jo,
               row.matches,
               row.matchs,
               row.nb_matchs,
-              row.nombre_matchs,
-              row.j,
-              row.jo
+              row.nbMatchs,
+              row.mj
             )
           );
-
 
         if(
           played===null
@@ -347,54 +360,34 @@ function normalizeRanking(
 
         return {
 
-          source:
-            'fff',
+          source:'fff',
 
-          /*
-           * teamKey permet d'éviter un conflit
-           * si deux équipes FCE sont dans
-           * la même poule.
-           */
           phase_id:
-            `${
-              meta.cpNo
-            }:${
-              meta.phaseNo
-            }:${
-              meta.poolNo
-            }:${
-              teamKey
-            }`,
+            `${engagement}:${phase}:${pool}:${teamKey}`,
 
           team_fff_id:
-            meta.teamFffId,
+            fceIdentity.id,
 
           category_code:
-            meta.categoryCode,
+            fceIdentity.category,
 
           team_number:
-            meta.teamNumber,
+            fceIdentity.teamNumber,
 
           competition_name:
-            meta.competitionName,
+            competitionName,
 
           pool_label:
-            meta.poolLabel,
+            poolLabel,
 
           source_url:
-            `https://epreuves.fff.fr/competition/engagement/${
-              meta.cpNo
-            }/phase/${
-              meta.phaseNo
-            }/${
-              meta.poolNo
-            }/classement`,
+            page.url,
 
           team_name:
-            name,
+            teamName(row),
 
           position:
-            number(
+            num(
               first(
                 row.position,
                 row.rank,
@@ -419,39 +412,35 @@ function normalizeRanking(
             lost??0,
 
           goals_for:
-            number(
+            num(
               first(
                 row.goals_for,
                 row.goalsFor,
                 row.bp,
-                row.buts_pour,
-                row.butsPour,
-                row.buts_marques,
-                row.butsMarques
+                row.buts_pour
               )
             )
             ??0,
 
           goals_against:
-            number(
+            num(
               first(
                 row.goals_against,
                 row.goalsAgainst,
                 row.bc,
-                row.buts_contre,
-                row.butsContre,
-                row.buts_encaisses,
-                row.butsEncaisses
+                row.buts_contre
               )
             )
             ??0,
 
           points:
-            number(
+            num(
               first(
                 row.points,
                 row.pts,
-                row.point
+                row.point,
+                row.nbPoints,
+                row.nb_points
               )
             )
             ??0,
@@ -461,795 +450,755 @@ function normalizeRanking(
         };
       }
     )
-    .filter(Boolean);
-}
-
-
-const containsEscalquens=
-  rows=>
-    rows.some(
+    .filter(
       row=>
-        /escalquens/i.test(
-          row.team_name
-          ||''
-        )
+        row.team_name
+    );
+}
+
+
+function embedded(
+  html,
+  prefix
+){
+
+  const result=[];
+
+  const pattern=
+    new RegExp(
+      `<script[^>]+id=["'](${prefix}[^"']*)["'][^>]*>([\\s\\S]*?)<\\/script>`,
+      'gi'
     );
 
+  for(
+    const match
+    of String(html||'').matchAll(pattern)
+  ){
 
-async function directJson(url){
+    try{
 
-  const response=
-    await fetch(
-      url,
+      result.push({
+        id:match[1],
+        data:JSON.parse(match[2])
+      });
+
+    }catch{}
+  }
+
+  return result;
+}
+
+
+async function collect(){
+
+  const now=
+    new Date();
+
+  const seasonYear=
+    now.getUTCMonth()>=6
+      ?now.getUTCFullYear()
+      :now.getUTCFullYear()-1;
+
+
+  /*
+   * Même fenêtre annuelle que sync-matches.
+   *
+   * Ces URLs sont appelées DANS le navigateur ZenRows
+   * déjà ouvert : aucun crédit ZenRows supplémentaire.
+   */
+  const matchUrls=
+    Array.from(
       {
-        headers:{
-          accept:
-            'application/json, application/ld+json;q=0.9,*/*;q=0.5',
+        length:12
+      },
+      (
+        _,
+        offset
+      )=>{
 
-          'accept-language':
-            'fr-FR,fr;q=0.9',
-
-          'user-agent':
-            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/128 Safari/537.36'
-        },
-
-        redirect:
-          'follow'
-      }
-    );
-
-
-  const raw=
-    await response.text();
-
-
-  if(!response.ok){
-
-    throw new Error(
-      `HTTP ${
-        response.status
-      } — ${
-        raw
-          .replace(
-            /\s+/g,
-            ' '
-          )
-          .slice(
-            0,
-            180
-          )
-      }`
-    );
-  }
-
-
-  return JSON.parse(
-    raw
-  );
-}
-
-
-/*
- * Collecte directe.
- *
- * Elle est conservée pour le jour où la FFF
- * réautorise les appels serveur-à-serveur.
- */
-async function collectDirect(){
-
-  const clubPayload=
-    await directJson(
-      `${DOFA}/api/clubs/${
-        CLUB_NO
-      }/equipes.json?filter=`
-    );
-
-
-  const teams=
-    list(
-      clubPayload
-    );
-
-
-  const entries=[];
-
-
-  for(const team of teams){
-
-    const categoryCode=
-      String(
-        first(
-          team.category_code,
-          team.categoryCode,
-          ''
-        )
-      );
-
-
-    const teamNumber=
-      String(
-        first(
-          team.number,
-          team.team_number,
-          team.teamNumber,
-          ''
-        )
-      );
-
-
-    const teamFffId=
-      String(
-        first(
-          team.id,
-          team.eq_no,
-          team.eqNo,
-          ''
-        )
-      );
-
-
-    for(
-      const engagement
-      of list(team.engagements)
-    ){
-
-      const competition=
-        engagement.competition
-        ||{};
-
-
-      const type=
-        String(
-          competition.type
-          ||''
-        )
-          .toLowerCase();
-
-
-      if(
-        type
-        &&type!=='ch'
-        &&!type.includes('champ')
-      ){
-        continue;
-      }
-
-
-      const cpNo=
-        number(
-          first(
-            competition.cp_no,
-            competition.cpNo,
-            competition.number,
-            competition.id
-          )
-        );
-
-
-      if(!cpNo){
-        continue;
-      }
-
-
-      const phaseNo=
-        number(
-          first(
-            engagement.phase?.number,
-            engagement.phase?.ph_no,
-            engagement.phase?.phNo,
-            1
-          )
-        )
-        ||1;
-
-
-      const poolNo=
-        number(
-          first(
-            engagement.poule?.stage_number,
-            engagement.poule?.number,
-            engagement.poule?.po_no,
-            engagement.poule?.poNo,
-            1
-          )
-        )
-        ||1;
-
-
-      const payload=
-        await directJson(
-          `${DOFA}/api/compets/${
-            cpNo
-          }/phases/${
-            phaseNo
-          }/poules/${
-            poolNo
-          }/classement_journees`
-        );
-
-
-      const meta={
-        cpNo,
-        phaseNo,
-        poolNo,
-        categoryCode,
-        teamNumber,
-        teamFffId,
-
-        competitionName:
-          text(
-            first(
-              competition.name,
-              competition.nom,
-              competition.label,
-              `Compétition ${cpNo}`
+        const start=
+          new Date(
+            Date.UTC(
+              seasonYear,
+              6+offset,
+              1
             )
-          ),
+          );
 
-        poolLabel:
-          text(
-            first(
-              engagement.poule?.name,
-              engagement.poule?.nom,
-              engagement.poule?.label,
-              ''
+        const end=
+          new Date(
+            Date.UTC(
+              seasonYear,
+              7+offset,
+              0,
+              23,
+              59,
+              59
             )
-          )
-      };
+          );
 
+        const query=
+          new URLSearchParams({
+            dateDebut:
+              start
+                .toISOString()
+                .replace(
+                  '.000Z',
+                  '+00:00'
+                ),
 
-      const rows=
-        normalizeRanking(
-          payload,
-          meta
-        );
+            dateFin:
+              end
+                .toISOString()
+                .replace(
+                  '.000Z',
+                  '+00:00'
+                ),
 
+            clNo:
+              CLUB_NO,
 
-      if(
-        containsEscalquens(rows)
-      ){
-        entries.push(
-          ...rows
+            itemsPerPage:
+              '100',
+
+            pagination:
+              'true'
+          });
+
+        return (
+          'https://epreuves.fff.fr'
+          +'/api/data/matches?'
+          +query
         );
       }
-    }
-  }
-
-
-  return entries;
-}
-
-
-/*
- * Une seule session navigateur ZenRows.
- *
- * La page cible est api-dofa.fff.fr elle-même,
- * ce qui permet ensuite au navigateur de faire
- * les autres fetch() sur le même domaine.
- */
-async function collectZenRows(){
-
-  if(!zenrowsKey){
-
-    throw new Error(
-      'ZENROWS_API_KEY absent'
     );
-  }
-
-
-  const target=
-    `${DOFA}/api/clubs/${
-      CLUB_NO
-    }/equipes.json?filter=`;
 
 
   const browserScript=
     `(async()=>{
 
-      const first=(...values)=>
-        values.find(
-          value=>
-            value!==undefined
-            &&value!==null
-            &&value!==''
+      const matchUrls=
+        ${JSON.stringify(matchUrls)};
+
+      const urls=
+        new Map();
+
+
+      const addUrl=
+        raw=>{
+
+          try{
+
+            const url=
+              new URL(
+                raw,
+                location.href
+              );
+
+            const match=
+              url.pathname.match(
+                /\\/competition\\/engagement\\/([^/]+)\\/phase\\/(\\d+)\\/(\\d+)(?:\\/[^?#]*)?/
+              );
+
+            if(!match){
+              return;
+            }
+
+            const key=
+              [
+                match[1],
+                match[2],
+                match[3]
+              ].join(':');
+
+            urls.set(
+              key,
+              new URL(
+                '/competition/engagement/'
+                +match[1]
+                +'/phase/'
+                +match[2]
+                +'/'
+                +match[3]
+                +'/classement',
+                location.origin
+              ).href
+            );
+
+          }catch{}
+        };
+
+
+      /*
+       * 1. Liens déjà présents sur la page club.
+       */
+      document
+        .querySelectorAll(
+          'a[href]'
+        )
+        .forEach(
+          link=>
+            addUrl(
+              link.getAttribute('href')
+            )
         );
 
-      const list=value=>
-        Array.isArray(value)
-          ?value
-          :value?.['hydra:member']
-            ||value?.items
-            ||value?.data
-            ||value?.results
-            ||[];
 
-      const number=value=>{
-        if(
-          value===undefined
-          ||value===null
-          ||value===''
-        )return null;
-
-        const parsed=Number(
-          String(value)
-            .replace(',','.')
-            .replace(/[^0-9.-]/g,'')
-        );
-
-        return Number.isFinite(parsed)
-          ?parsed
-          :null;
-      };
-
-      const txt=value=>{
-        if(
-          value===undefined
-          ||value===null
-        )return '';
-
-        if(
-          typeof value==='string'
-          ||typeof value==='number'
-        )return String(value).trim();
-
-        if(
-          typeof value!=='object'
-        )return '';
-
-        return txt(
-          first(
-            value.nomAbr,
-            value.short_name,
-            value.shortName,
-            value.name,
-            value.nom,
-            value.label,
-            value.libelle
+      for(
+        const match
+        of document
+          .documentElement
+          .innerHTML
+          .matchAll(
+            /\\/competition\\/engagement\\/[^"'\\s<]+\\/phase\\/\\d+\\/\\d+\\/(?:accueil|classement|resultats-et-calendrier)/g
           )
+      ){
+        addUrl(
+          match[0]
         );
-      };
+      }
 
-      const rankingNames=payload=>{
-        const names=[];
-        const visit=(value,depth=0)=>{
-          if(!value||depth>8)return;
 
-          if(Array.isArray(value)){
-            for(const row of value){
-              if(
-                row
-                &&typeof row==='object'
-              ){
-                const name=txt(
-                  first(
-                    row.equipe?.club?.nomAbr,
-                    row.equipe?.club?.nom,
-                    row.equipe?.nom,
-                    row.team?.name,
-                    row.club?.nomAbr,
-                    row.club?.nom,
-                    row.team_name,
-                    row.teamName,
-                    row.nom,
-                    row.name
-                  )
-                );
+      /*
+       * 2. État Angular de la page.
+       */
+      let state=[];
 
-                if(name)names.push(name);
-              }
+      try{
 
-              visit(row,depth+1);
+        state=
+          JSON.parse(
+            document
+              .querySelector('#ng-state')
+              ?.textContent
+            ||'[]'
+          );
+
+      }catch{}
+
+
+      const scan=
+        value=>{
+
+          if(
+            typeof value==='string'
+          ){
+
+            if(
+              value.includes(
+                '/competition/engagement/'
+              )
+            ){
+              addUrl(value);
             }
 
             return;
           }
 
-          if(typeof value==='object'){
+          if(
+            Array.isArray(value)
+          ){
+
+            value.forEach(scan);
+            return;
+          }
+
+          if(
+            value
+            &&typeof value==='object'
+          ){
+
             Object
               .values(value)
-              .forEach(
-                child=>
-                  visit(
-                    child,
-                    depth+1
-                  )
-              );
+              .forEach(scan);
           }
         };
 
-        visit(payload);
 
-        return names;
-      };
-
-      const fetchJson=async path=>{
-        const response=await fetch(
-          path,
-          {
-            credentials:'include',
-            headers:{
-              Accept:
-                'application/json, application/ld+json, text/plain, */*'
-            }
-          }
-        );
-
-        const raw=
-          await response.text();
-
-        if(!response.ok){
-          throw new Error(
-            'HTTP '
-            +response.status
-            +' '
-            +path
-          );
-        }
-
-        return JSON.parse(raw);
-      };
+      scan(state);
 
 
-      let clubPayload;
-
+      /*
+       * 3. Même jeton X-Competition que le collecteur
+       *    de matchs qui fonctionne déjà.
+       */
       try{
-        clubPayload=
-          JSON.parse(
-            document.body.innerText
+
+        const roots=
+          Array.isArray(state)
+            ?state
+            :[state];
+
+        const entries=
+          roots.flatMap(
+            item=>
+              Object.entries(
+                item||{}
+              )
           );
-      }catch{
-        clubPayload=
-          await fetchJson(
-            '/api/clubs/${CLUB_NO}/equipes.json?filter='
-          );
-      }
 
 
-      let teams=
-        list(clubPayload);
-
-
-      const now=
-        new Date();
-
-      const season=
-        now.getUTCMonth()>=6
-          ?now.getUTCFullYear()
-          :now.getUTCFullYear()-1;
-
-
-      const current=
-        teams.filter(
-          team=>
-            number(team.season)===season
-        );
-
-
-      if(current.length){
-        teams=current;
-      }
-
-
-      const entries=[];
-      const errors=[];
-
-
-      for(const team of teams){
-
-        const categoryCode=
-          String(
-            first(
-              team.category_code,
-              team.categoryCode,
-              ''
+        const securityToken=
+          entries
+            .find(
+              ([key])=>
+                key==='VLJAXE'
             )
-          );
-
-
-        const teamNumber=
-          String(
-            first(
-              team.number,
-              team.team_number,
-              team.teamNumber,
-              ''
+            ?.[1]
+          ||entries
+            .find(
+              (
+                [
+                  key,
+                  value
+                ]
+              )=>
+                key.includes(
+                  '/api/app-security-token/'
+                )
+                &&value?.body?.token
             )
-          );
+            ?.[1]
+            ?.body
+            ?.token;
 
 
-        const teamFffId=
-          String(
-            first(
-              team.id,
-              team.eq_no,
-              team.eqNo,
-              ''
-            )
-          );
+        const number=
+          value=>{
+
+            const match=
+              String(
+                value??''
+              ).match(
+                /\\d+/
+              );
+
+            return match
+              ?Number(match[0])
+              :null;
+          };
 
 
-        for(
-          const engagement
-          of list(team.engagements)
-        ){
-
-          const competition=
-            engagement.competition
-            ||{};
-
-
-          const type=
+        const slug=
+          value=>
             String(
-              competition.type
-              ||''
+              value||'competition'
             )
-              .toLowerCase();
-
-
-          if(
-            type
-            &&type!=='ch'
-            &&!type.includes('champ')
-          ){
-            continue;
-          }
-
-
-          const cpNo=
-            number(
-              first(
-                competition.cp_no,
-                competition.cpNo,
-                competition.number,
-                competition.id
-              )
-            );
-
-
-          if(!cpNo){
-            continue;
-          }
-
-
-          const preferredPhase=
-            number(
-              first(
-                engagement.phase?.number,
-                engagement.phase?.ph_no,
-                engagement.phase?.phNo,
-                1
-              )
-            )
-            ||1;
-
-
-          const preferredPool=
-            number(
-              first(
-                engagement.poule?.stage_number,
-                engagement.poule?.number,
-                engagement.poule?.po_no,
-                engagement.poule?.poNo,
-                1
-              )
-            )
-            ||1;
-
-
-          const competitionName=
-            txt(
-              first(
-                competition.name,
-                competition.nom,
-                competition.label,
-                'Compétition '+cpNo
-              )
-            );
-
-
-          const defaultPoolLabel=
-            txt(
-              first(
-                engagement.poule?.name,
-                engagement.poule?.nom,
-                engagement.poule?.label,
+              .normalize('NFD')
+              .replace(
+                /[\\u0300-\\u036f]/g,
                 ''
               )
-            );
-
-
-          const candidates=[];
-
-
-          candidates.push({
-            phaseNo:
-              preferredPhase,
-
-            poolNo:
-              preferredPool,
-
-            poolLabel:
-              defaultPoolLabel
-          });
-
-
-          /*
-           * Si l'engagement ne suffit pas,
-           * on découvre les autres poules
-           * dans la même session navigateur.
-           */
-          try{
-
-            const poolsPayload=
-              await fetchJson(
-                '/api/compets/'
-                +cpNo
-                +'/phases/'
-                +preferredPhase
-                +'/poules.json?filter='
+              .toLowerCase()
+              .replace(
+                /[^a-z0-9]+/g,
+                '-'
+              )
+              .replace(
+                /^-|-$/g,
+                ''
               );
 
 
-            for(
-              const pool
-              of list(poolsPayload)
-            ){
+        if(securityToken){
 
-              const poolNo=
-                number(
-                  first(
-                    pool.number,
-                    pool.stage_number,
-                    pool.po_no,
-                    pool.poNo,
-                    pool.id
-                  )
-                );
+          const payloads=
+            await Promise.all(
+              matchUrls.map(
+                async source=>{
 
+                  try{
 
-              if(!poolNo){
-                continue;
-              }
+                    const response=
+                      await fetch(
+                        source,
+                        {
+                          credentials:
+                            'include',
 
+                          headers:{
+                            Accept:
+                              'application/json, text/plain, */*',
 
-              if(
-                candidates.some(
-                  item=>
-                    item.phaseNo===preferredPhase
-                    &&item.poolNo===poolNo
-                )
-              ){
-                continue;
-              }
+                            'X-Competition':
+                              String(
+                                securityToken
+                              )
+                          }
+                        }
+                      );
 
 
-              candidates.push({
-                phaseNo:
-                  preferredPhase,
+                    return response.ok
+                      ?await response.json()
+                      :null;
 
-                poolNo,
+                  }catch{
 
-                poolLabel:
-                  txt(
-                    first(
-                      pool.name,
-                      pool.nom,
-                      pool.label,
-                      ''
-                    )
-                  )
-              });
-            }
-
-          }catch{}
-
-
-          let found=null;
+                    return null;
+                  }
+                }
+              )
+            );
 
 
           for(
-            const candidate
-            of candidates
+            const payload
+            of payloads.filter(Boolean)
           ){
 
-            try{
+            const matches=
+              payload['hydra:member']
+              ||payload.items
+              ||payload.data
+              ||[];
 
-              const payload=
-                await fetchJson(
-                  '/api/compets/'
-                  +cpNo
-                  +'/phases/'
-                  +candidate.phaseNo
-                  +'/poules/'
-                  +candidate.poolNo
-                  +'/classement_journees'
+
+            for(
+              const wrapper
+              of matches
+            ){
+
+              const item=
+                wrapper?.donneesFormatees
+                ||wrapper
+                ||{};
+
+              const competition=
+                item.competition
+                  ?.donneesFormatees
+                ||item.competition
+                ||{};
+
+              const group=
+                item.groupe
+                ||item.poule
+                ||{};
+
+              const phase=
+                item.phase
+                ||group.phase
+                ||{};
+
+
+              const competitionNumber=
+                number(
+                  competition.cpNo
+                  ||competition.cp_no
+                  ||competition.id
+                  ||competition['@id']
                 );
 
 
-              const names=
-                rankingNames(payload);
+              const phaseNumber=
+                number(
+                  phase.phNo
+                  ||phase.ph_no
+                  ||phase.number
+                  ||phase.id
+                )
+                ||1;
+
+
+              const poolNumber=
+                number(
+                  group.gpNo
+                  ||group.poNo
+                  ||group.gp_no
+                  ||group.po_no
+                  ||group.number
+                  ||group.id
+                  ||group['@id']
+                );
 
 
               if(
-                names.some(
-                  name=>
-                    /escalquens/i.test(name)
-                )
+                competitionNumber
+                &&poolNumber
               ){
 
-                found={
-                  meta:{
-                    cpNo,
-                    phaseNo:
-                      candidate.phaseNo,
-                    poolNo:
-                      candidate.poolNo,
-                    categoryCode,
-                    teamNumber,
-                    teamFffId,
-                    competitionName,
-                    poolLabel:
-                      candidate.poolLabel
-                      ||defaultPoolLabel
-                  },
-                  payload
-                };
-
-                break;
+                addUrl(
+                  '/competition/engagement/'
+                  +competitionNumber
+                  +'-'
+                  +slug(
+                    competition.nom
+                    ||competition.name
+                    ||competition.label
+                    ||competitionNumber
+                  )
+                  +'/phase/'
+                  +phaseNumber
+                  +'/'
+                  +poolNumber
+                  +'/classement'
+                );
               }
-
-            }catch(error){
-
-              errors.push(
-                String(
-                  error?.message
-                  ||error
-                )
-              );
             }
           }
-
-
-          if(found){
-            entries.push(found);
-          }else{
-            errors.push(
-              competitionName
-              +' : classement non trouvé pour '
-              +categoryCode
-              +' '
-              +teamNumber
-            );
-          }
         }
+
+      }catch{}
+
+
+      /*
+       * 4. Charge chaque page OFFICIELLE de classement
+       *    sur le même domaine epreuves.fff.fr.
+       */
+      const results=[];
+
+      let index=0;
+
+
+      for(
+        const url
+        of urls.values()
+      ){
+
+        const result={
+          url,
+          status:0,
+          headings:[],
+          entries:[],
+          error:''
+        };
+
+
+        try{
+
+          const response=
+            await fetch(
+              url,
+              {
+                credentials:
+                  'include',
+
+                headers:{
+                  Accept:
+                    'text/html,application/xhtml+xml'
+                }
+              }
+            );
+
+
+          result.status=
+            response.status;
+
+
+          const html=
+            await response.text();
+
+
+          const documentPage=
+            new DOMParser()
+              .parseFromString(
+                html,
+                'text/html'
+              );
+
+
+          result.headings=
+            [
+              ...documentPage
+                .querySelectorAll(
+                  'h1,h2,h3'
+                )
+            ]
+              .map(
+                node=>
+                  (
+                    node.textContent
+                    ||''
+                  )
+                    .replace(
+                      /\\s+/g,
+                      ' '
+                    )
+                    .trim()
+              )
+              .filter(Boolean)
+              .slice(
+                0,
+                12
+              );
+
+
+          const stateText=
+            documentPage
+              .querySelector(
+                '#ng-state'
+              )
+              ?.textContent
+            ||'';
+
+
+          if(stateText){
+
+            const pageState=
+              JSON.parse(
+                stateText
+              );
+
+
+            const pageEntries=
+              (
+                Array.isArray(
+                  pageState
+                )
+                  ?pageState
+                  :[pageState]
+              )
+                .flatMap(
+                  item=>
+                    Object.entries(
+                      item||{}
+                    )
+                );
+
+
+            result.entries=
+              pageEntries
+                .filter(
+                  (
+                    [
+                      name,
+                      value
+                    ]
+                  )=>
+                    value?.body
+                    &&(
+                      value.status===undefined
+                      ||value.status===200
+                    )
+                    &&(
+                      name
+                        .toLowerCase()
+                        .includes('class')
+                      ||/"(?:points|pts|classement|rang|position)"\\s*:/
+                          .test(
+                            JSON.stringify(
+                              value.body
+                            )
+                          )
+                    )
+                )
+                .map(
+                  (
+                    [
+                      name,
+                      value
+                    ]
+                  )=>({
+                    name,
+                    body:value.body
+                  })
+                );
+          }
+
+
+          if(
+            !result.entries.length
+          ){
+            result.error=
+              'ng-state sans classement';
+          }
+
+        }catch(error){
+
+          result.error=
+            String(error);
+        }
+
+
+        results.push(
+          result
+        );
+
+
+        const output=
+          document.createElement(
+            'script'
+          );
+
+        output.type=
+          'application/json';
+
+        output.id=
+          'fce-standings-'
+          +index++;
+
+        output.textContent=
+          JSON.stringify(
+            result
+          );
+
+        document.body
+          .appendChild(
+            output
+          );
       }
 
 
-      const output=
+      /*
+       * Toujours produire un diagnostic.
+       */
+      const meta=
         document.createElement(
           'script'
         );
 
-      output.type=
+      meta.type=
         'application/json';
 
-      output.id=
-        'fce-standings-data';
+      meta.id=
+        'fce-standings-meta';
 
-      output.textContent=
+      meta.textContent=
         JSON.stringify({
-          entries,
-          errors
+          discovered:
+            urls.size,
+
+          urls:
+            [...urls.values()],
+
+          results:
+            results.map(
+              item=>({
+                url:item.url,
+                status:item.status,
+                entries:
+                  item.entries.length,
+                error:item.error
+              })
+            )
         });
+
+
+      document.body
+        .appendChild(meta);
+
+
+      const keep=
+        [
+          ...document
+            .querySelectorAll(
+              'script[id^="fce-standings-"]'
+            )
+        ];
 
 
       document.head
         .replaceChildren();
 
-      document.body
-        .replaceChildren(output);
 
-      document.documentElement
+      document.body
+        .replaceChildren(
+          ...keep
+        );
+
+
+      document
+        .documentElement
         .setAttribute(
           'data-fce-standings-done',
           '1'
@@ -1260,64 +1209,63 @@ async function collectZenRows(){
 
   const instructions=[
     {
-      wait:
-        500
+      wait_for:
+        'app-match app-matches-wrapper'
     },
-
+    {
+      wait:500
+    },
     {
       evaluate:
         browserScript
     },
-
     {
       wait_for:
         'html[data-fce-standings-done="1"]'
     },
-
     {
-      wait:
-        300
+      wait:300
     }
   ];
 
 
-  const url=
+  const zenrowsUrl=
     new URL(
       'https://api.zenrows.com/v1/'
     );
 
 
-  url.searchParams.set(
+  zenrowsUrl.searchParams.set(
     'apikey',
     zenrowsKey
   );
 
-  url.searchParams.set(
+  zenrowsUrl.searchParams.set(
     'url',
-    target
+    clubPage
   );
 
-  url.searchParams.set(
+  zenrowsUrl.searchParams.set(
     'js_render',
     'true'
   );
 
-  url.searchParams.set(
+  zenrowsUrl.searchParams.set(
     'premium_proxy',
     'true'
   );
 
-  url.searchParams.set(
+  zenrowsUrl.searchParams.set(
     'proxy_country',
     'fr'
   );
 
-  url.searchParams.set(
+  zenrowsUrl.searchParams.set(
     'json_response',
     'true'
   );
 
-  url.searchParams.set(
+  zenrowsUrl.searchParams.set(
     'js_instructions',
     JSON.stringify(
       instructions
@@ -1327,7 +1275,7 @@ async function collectZenRows(){
 
   const response=
     await fetch(
-      url,
+      zenrowsUrl,
       {
         headers:{
           accept:
@@ -1357,7 +1305,7 @@ async function collectZenRows(){
           )
           .slice(
             0,
-            250
+            220
           )
       }`
     );
@@ -1369,7 +1317,6 @@ async function collectZenRows(){
       'x-request-credits'
     );
 
-
   const cost=
     response.headers.get(
       'x-request-cost'
@@ -1377,17 +1324,19 @@ async function collectZenRows(){
 
 
   if(credits){
+
     console.log(
       `ZenRows classements : ${
         credits
-      } crédit(s) consommé(s).`
+      } crédit(s).`
     );
   }
 
 
   if(cost){
+
     console.log(
-      `ZenRows classements : coût indiqué ${
+      `ZenRows classements : coût ${
         cost
       }.`
     );
@@ -1397,9 +1346,12 @@ async function collectZenRows(){
   let envelope;
 
   try{
+
     envelope=
       JSON.parse(body);
+
   }catch{
+
     envelope={
       html:body
     };
@@ -1411,193 +1363,191 @@ async function collectZenRows(){
     ||'';
 
 
-  const match=
-    html.match(
-      /<script[^>]+id=["']fce-standings-data["'][^>]*>([\s\S]*?)<\/script>/i
-    );
-
-
-  if(!match){
-
-    throw new Error(
-      'ZenRows : données de classement absentes de la page rendue'
-    );
-  }
-
-
-  const data=
-    JSON.parse(
-      match[1]
-    );
-
-
-  for(
-    const error
-    of data.errors
-    ||[]
-  ){
-    console.log(
-      `::warning title=Classement FFF::${
-        String(error)
-          .replace(
-            /\r?\n/g,
-            ' '
-          )
-      }`
-    );
-  }
-
-
-  const rows=[];
-
-
-  for(
-    const entry
-    of data.entries
-    ||[]
-  ){
-
-    const normalized=
-      normalizeRanking(
-        entry.payload,
-        entry.meta
-      );
-
-
-    if(
-      containsEscalquens(
-        normalized
-      )
-    ){
-      rows.push(
-        ...normalized
-      );
-    }
-  }
-
-
-  return rows;
-}
-
-
-async function main(){
-
-  let rows=[];
-
-
-  try{
-
-    rows=
-      await collectDirect();
-
-
-    console.log(
-      `FFF classements : accès direct OK, ${
-        rows.length
-      } ligne(s).`
-    );
-
-  }catch(error){
-
-    console.log(
-      `Accès FFF classements direct indisponible, essai via ZenRows : ${
-        String(
-          error?.message
-          ||error
-        )
-          .replace(
-            /\r?\n/g,
-            ' '
-          )
-      }`
-    );
-
-
-    rows=
-      await collectZenRows();
-  }
-
-
-  const unique=
-    new Map();
-
-
-  for(
-    const row of rows
-  ){
-
-    unique.set(
-      `${
-        row.phase_id
-      }|${
-        row.team_name
-      }`,
-      row
-    );
-  }
-
-
-  rows=[
-    ...unique.values()
-  ];
-
-
-  if(!rows.length){
-
-    throw new Error(
-      'Aucun classement FFF contenant le FC Escalquens n’a été récupéré.'
-    );
-  }
+  const meta=
+    embedded(
+      html,
+      'fce-standings-meta'
+    )[0]
+      ?.data
+    ||{};
 
 
   console.log(
     `FFF classements : ${
-      rows.length
-    } ligne(s) prêtes pour import.`
+      meta.discovered||0
+    } page(s) officielle(s) détectée(s).`
   );
 
 
-  const response=
-    await fetch(
-      endpoint,
-      {
-        method:
-          'POST',
+  for(
+    const page
+    of meta.results||[]
+  ){
 
-        headers:{
-          authorization:
-            `Bearer ${token}`,
-
-          'content-type':
-            'application/json'
-        },
-
-        body:
-          JSON.stringify({
-            rows
-          })
-      }
-    );
-
-
-  const raw=
-    await response.text();
-
-
-  if(!response.ok){
-
-    throw new Error(
-      `Import Cloudflare HTTP ${
-        response.status
-      }: ${
-        raw
+    console.log(
+      `Page classement : HTTP ${
+        page.status||0
+      }, ${
+        page.entries||0
+      } payload(s) — ${
+        page.url
+      }${
+        page.error
+          ?` — ${page.error}`
+          :''
       }`
     );
   }
 
 
-  console.log(raw);
+  const pages=
+    embedded(
+      html,
+      'fce-standings-'
+    )
+      .filter(
+        item=>
+          item.id!==
+          'fce-standings-meta'
+      )
+      .map(
+        item=>
+          item.data
+      );
+
+
+  if(!pages.length){
+
+    throw new Error(
+      `Aucune page de classement capturée. URLs détectées : ${
+        JSON.stringify(
+          meta.urls||[]
+        )
+      }`
+    );
+  }
+
+
+  return pages;
 }
 
 
-await main();
+const pages=
+  await collect();
+
+
+const all=[];
+
+
+for(
+  const page
+  of pages
+){
+
+  const rows=
+    normalize(page);
+
+
+  if(rows.length){
+
+    console.log(
+      `Classement OK : ${
+        rows.length
+      } équipes — ${
+        page.url
+      }`
+    );
+
+    all.push(
+      ...rows
+    );
+
+  }else{
+
+    console.log(
+      `::warning title=Classement ignoré::${
+        page.url
+      }`
+    );
+  }
+}
+
+
+const unique=
+  new Map();
+
+
+for(
+  const row
+  of all
+){
+
+  unique.set(
+    `${
+      row.phase_id
+    }|${
+      row.team_name
+    }`,
+    row
+  );
+}
+
+
+const rows=[
+  ...unique.values()
+];
+
+
+if(!rows.length){
+
+  throw new Error(
+    'Aucun classement FFF contenant Escalquens normalisé.'
+  );
+}
+
+
+const response=
+  await fetch(
+    endpoint,
+    {
+      method:'POST',
+
+      headers:{
+        authorization:
+          `Bearer ${token}`,
+
+        'content-type':
+          'application/json'
+      },
+
+      body:
+        JSON.stringify({
+          rows
+        })
+    }
+  );
+
+
+const raw=
+  await response.text();
+
+
+if(!response.ok){
+
+  throw new Error(
+    `Import Cloudflare HTTP ${
+      response.status
+    }: ${
+      raw
+    }`
+  );
+}
+
+
+console.log(
+  `FFF classements : ${
+    rows.length
+  } ligne(s) envoyée(s).`
+);
+
+console.log(raw);
