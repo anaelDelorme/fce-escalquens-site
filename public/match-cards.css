@@ -282,3 +282,357 @@
     font-size: .92rem;
   }
 }
+
+
+/* FCE standings redesign v2 */
+
+.tabs{
+  align-items:center;
+  gap:10px;
+}
+
+.tabs button{
+  cursor:pointer;
+  border:1px solid #a61928;
+  border-radius:999px;
+  padding:11px 20px;
+  background:#fff;
+  color:var(--wine);
+  transition:
+    background .18s ease,
+    color .18s ease,
+    transform .18s ease,
+    box-shadow .18s ease;
+}
+
+.tabs button:hover{
+  transform:translateY(-1px);
+}
+
+.tabs button.active,
+.tabs button[aria-selected="true"]{
+  background:var(--wine);
+  color:#fff;
+  border-color:var(--wine);
+  box-shadow:0 7px 18px rgba(91,14,26,.22);
+}
+
+.tabs button:focus-visible{
+  outline:3px solid var(--gold);
+  outline-offset:3px;
+}
+
+
+.standings-groups,
+.team-standings{
+  display:grid;
+  gap:28px;
+}
+
+
+.standings-card{
+  overflow:hidden;
+  background:#fff;
+  border:1px solid #e2d8cf;
+  border-radius:18px;
+  box-shadow:
+    0 18px 45px rgba(41,25,20,.08),
+    0 2px 8px rgba(41,25,20,.05);
+}
+
+
+.standings-card .standings-card__header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:22px;
+
+  padding:20px 24px;
+
+  background:
+    radial-gradient(
+      circle at 90% 10%,
+      rgba(255,205,52,.20),
+      transparent 32%
+    ),
+    linear-gradient(
+      120deg,
+      #67101d 0%,
+      #8e1424 55%,
+      #a41a2b 100%
+    );
+
+  color:#fff;
+  border:0;
+}
+
+
+.standings-card__header>div{
+  display:grid;
+  gap:3px;
+}
+
+
+.standings-card__eyebrow{
+  color:var(--gold);
+  font-size:10px;
+  line-height:1;
+  font-weight:900;
+  text-transform:uppercase;
+  letter-spacing:.13em;
+}
+
+
+.standings-card .standings-card__header h3{
+  margin:0;
+  color:#fff;
+  font-size:clamp(19px,2vw,25px);
+  line-height:1.15;
+}
+
+
+.standings-card .standings-card__header a{
+  flex:none;
+  padding:8px 11px;
+  border:1px solid rgba(255,255,255,.35);
+  border-radius:999px;
+
+  color:#fff;
+  font-size:10px;
+  font-weight:900;
+  text-decoration:none;
+
+  transition:
+    background .18s ease,
+    border-color .18s ease;
+}
+
+
+.standings-card .standings-card__header a:hover{
+  background:#fff;
+  border-color:#fff;
+  color:var(--wine);
+}
+
+
+.standings-table-wrap{
+  width:100%;
+  overflow-x:auto;
+  overscroll-behavior-inline:contain;
+}
+
+
+.standings-table-wrap:focus{
+  outline:none;
+}
+
+
+.standings-table{
+  width:100%;
+  min-width:790px;
+  border:0;
+  border-collapse:separate;
+  border-spacing:0;
+  background:#fff;
+}
+
+
+.standings-table thead th{
+  padding:13px 12px;
+
+  background:#f3eee8;
+  border:0;
+  border-bottom:1px solid #ded3ca;
+
+  color:#75655d;
+  font-size:10px;
+  font-weight:900;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  text-align:center;
+}
+
+
+.standings-table thead th:nth-child(2){
+  text-align:left;
+}
+
+
+.standings-table tbody td{
+  height:58px;
+  padding:10px 12px;
+
+  border:0;
+  border-bottom:1px solid #eee7e1;
+
+  color:#241c1b;
+  font-size:14px;
+  text-align:center;
+
+  transition:background .16s ease;
+}
+
+
+.standings-table tbody td:nth-child(2){
+  text-align:left;
+}
+
+
+.standings-table tbody tr:last-child td{
+  border-bottom:0;
+}
+
+
+.standings-table tbody tr:hover td{
+  background:#faf6f1;
+}
+
+
+.standings-table tbody tr.is-club td{
+  background:#fff5cc;
+  font-weight:800;
+}
+
+
+.standings-table tbody tr.is-club:hover td{
+  background:#ffefaf;
+}
+
+
+.standings-table tbody tr.is-club td:first-child{
+  box-shadow:inset 5px 0 0 var(--gold);
+}
+
+
+.standings-rank{
+  display:inline-grid;
+  place-items:center;
+
+  width:32px;
+  height:32px;
+
+  border-radius:10px;
+  background:#eee8e3;
+
+  color:#493c38;
+  font-weight:900;
+}
+
+
+.standings-rank--1{
+  background:var(--gold);
+  color:#3c2700;
+}
+
+
+.standings-rank--2{
+  background:#dedede;
+  color:#333;
+}
+
+
+.standings-rank--3{
+  background:#d9aa7c;
+  color:#432615;
+}
+
+
+.standings-team-cell{
+  min-width:230px;
+}
+
+
+.standings-team{
+  font-weight:800;
+}
+
+
+.standings-club-badge{
+  display:inline-flex;
+  margin-left:9px;
+  padding:3px 7px;
+
+  border-radius:999px;
+  background:var(--wine);
+  color:#fff;
+
+  font-size:9px;
+  font-weight:900;
+  letter-spacing:.08em;
+  vertical-align:middle;
+}
+
+
+.standings-diff{
+  display:inline-flex;
+  justify-content:center;
+  min-width:38px;
+
+  padding:4px 7px;
+  border-radius:999px;
+
+  background:#eeeae7;
+  font-weight:900;
+}
+
+
+.standings-diff--positive{
+  background:#e4f5e9;
+  color:#146b32;
+}
+
+
+.standings-diff--negative{
+  background:#fbe6e7;
+  color:#9a1724;
+}
+
+
+.standings-points{
+  display:inline-grid;
+  place-items:center;
+
+  min-width:40px;
+  height:32px;
+
+  padding:0 9px;
+  border-radius:10px;
+
+  background:#241c1b;
+  color:#fff;
+  font-size:15px;
+  font-weight:900;
+}
+
+
+.standings-table tbody tr.is-club .standings-points{
+  background:var(--wine);
+}
+
+
+@media(max-width:720px){
+
+  .standings-card{
+    border-radius:13px;
+  }
+
+  .standings-card .standings-card__header{
+    align-items:flex-start;
+    flex-direction:column;
+    padding:17px;
+  }
+
+  .standings-table{
+    min-width:730px;
+  }
+
+  .standings-table tbody td{
+    height:52px;
+    padding:8px 9px;
+    font-size:13px;
+  }
+
+  .standings-team-cell{
+    min-width:190px;
+  }
+}

@@ -125,11 +125,14 @@ fetch(`/api/page/team-profile?slug=${encodeURIComponent(slug||'')}&v=25`).then(a
           );
 
           return `
-            <section class="team-standing-card">
+            <section class="team-standing-card standings-card">
 
-              <div class="team-standing-head">
+              <div class="team-standing-head standings-card__header">
 
-                <h3>${esc(title)}</h3>
+                <div>
+                  <span class="standings-card__eyebrow">Classement FFF</span>
+                  <h3>${esc(title)}</h3>
+                </div>
 
                 ${
                   firstRow.source_url
@@ -145,41 +148,91 @@ fetch(`/api/page/team-profile?slug=${encodeURIComponent(slug||'')}&v=25`).then(a
 
               <div class="standings">
 
-                <table>
+                <div class="standings-table-wrap" tabindex="0">
+<table class="standings-table">
+  <thead>
+    <tr>
+      <th scope="col">#</th>
+      <th scope="col">Équipe</th>
+      <th scope="col">J</th>
+      <th scope="col">G</th>
+      <th scope="col">N</th>
+      <th scope="col">P</th>
+      <th scope="col">Bp.</th>
+      <th scope="col">Bc.</th>
+      <th scope="col">Diff.</th>
+      <th scope="col">Pts</th>
+    </tr>
+  </thead>
 
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Équipe</th>
-                    <th>J</th>
-                    <th>G</th>
-                    <th>N</th>
-                    <th>P</th>
-                    <th>Bp.</th>
-                    <th>Bc.</th>
-                    <th>Diff.</th>
-                    <th>Pts</th>
-                  </tr>
-                </thead>
+  <tbody>
+    ${ordered.map(row=>{
+      const diff=
+        Number(row.goals_for||0)
+        -Number(row.goals_against||0);
 
-                 <tbody>
-                    ${rows.map(row=>`
-                      <tr class="${row.isClub ? 'is-club' : ''}">
-                        <td>${row.position ?? ''}</td>
-                        <td>${row.team_name ?? ''}</td>
-                        <td>${row.played ?? 0}</td>
-                        <td>${row.won ?? 0}</td>
-                        <td>${row.drawn ?? 0}</td>
-                        <td>${row.lost ?? 0}</td>
-                        <td>${row.goals_for ?? 0}</td>
-                        <td>${row.goals_against ?? 0}</td>
-                        <td>${(row.goals_for ?? 0) - (row.goals_against ?? 0)}</td>
-                        <td>${row.points ?? 0}</td>
-                      </tr>
-                    `).join('')}
-                  </tbody>
+      const club=
+        /escalquens/i.test(
+          String(row.team_name||'')
+        );
 
-                </table>
+      const rank=
+        Number(row.position||0);
+
+      const rankClass=
+        [1,2,3].includes(rank)
+          ?` standings-rank--${rank}`
+          :'';
+
+      const diffClass=
+        diff>0
+          ?' standings-diff--positive'
+          :diff<0
+            ?' standings-diff--negative'
+            :'';
+
+      return `
+        <tr class="${club?'is-club':''}">
+          <td>
+            <span class="standings-rank${rankClass}">
+              ${esc(row.position??'')}
+            </span>
+          </td>
+
+          <td class="standings-team-cell">
+            <span class="standings-team">
+              ${esc(row.team_name??'')}
+            </span>
+            ${club
+              ?'<span class="standings-club-badge">FCE</span>'
+              :''
+            }
+          </td>
+
+          <td>${esc(row.played??0)}</td>
+          <td>${esc(row.won??0)}</td>
+          <td>${esc(row.drawn??0)}</td>
+          <td>${esc(row.lost??0)}</td>
+          <td>${esc(row.goals_for??0)}</td>
+          <td>${esc(row.goals_against??0)}</td>
+
+          <td>
+            <span class="standings-diff${diffClass}">
+              ${diff>0?'+':''}${diff}
+            </span>
+          </td>
+
+          <td>
+            <strong class="standings-points">
+              ${esc(row.points??0)}
+            </strong>
+          </td>
+        </tr>
+      `;
+    }).join('')}
+  </tbody>
+</table>
+</div>
 
               </div>
 

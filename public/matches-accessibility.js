@@ -9,7 +9,7 @@
     });
     document.querySelectorAll('#standings-page table thead th').forEach((cell,index)=>{
       cell.setAttribute('scope','col');
-      const labels=['Position','Équipe','Matchs joués','Victoires','Matchs nuls','Défaites','Points'];
+      const labels=['Position','Équipe','Matchs joués','Victoires','Matchs nuls','Défaites','Buts pour','Buts contre','Différence de buts','Points'];
       cell.setAttribute('aria-label',labels[index]||cell.textContent.trim());
     });
   };
