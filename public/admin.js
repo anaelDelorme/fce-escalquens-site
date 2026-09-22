@@ -62,6 +62,13 @@ async function load(){
   if(['team_staff','training_sessions','teams','team_competitions','tournament_teams','tournaments','matches','shop_products'].includes(current)){try{await ensureReferences()}catch(error){$('#status').textContent=error.message;$('#records').innerHTML='';return}}
   $('#status').textContent='Chargement…';
   const response=await fetch(`/admin-api/${current}`,{headers:jsonHeaders()});let rows;try{rows=await response.json()}catch{rows={error:response.status===401?'Session Cloudflare expirée. Rechargez la page pour vous reconnecter.':`Accès administrateur impossible (HTTP ${response.status}).`}};
+  if(response.ok&&current==='club_members'&&Array.isArray(rows)){
+    rows.sort((a,b)=>String(a.full_name||'').localeCompare(
+      String(b.full_name||''),
+      'fr',
+      {sensitivity:'base'}
+    ));
+  }
   const help={
     teams:'Un groupe sportif réunit le même staff, les mêmes entraînements et une seule photo (par exemple U9).',
     team_competitions:'Cette liste est remplie automatiquement par la FFF. Ouvrez chaque ligne « À affecter », puis choisissez son groupe sportif. Le numéro et l’identifiant FFF restent en lecture seule.',
