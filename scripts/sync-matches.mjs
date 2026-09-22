@@ -1,5 +1,5 @@
 import { browserCollectStandings } from './standings-integrated.mjs';
-const SYNC_VERSION='2026.09.22-staging-26',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+const SYNC_VERSION='2026.09.22-staging-27',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 console.log(`Collecteur FCE ${SYNC_VERSION}`);
 const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
 const endpoint=siteUrl+'/internal/sync/matches';
@@ -583,6 +583,90 @@ async function reportFailure(error){
     console.log(`::warning title=État de synchronisation non enregistré::${String(reportError?.message||reportError).replace(/\r?\n/g,' ')}`);
   }
 }
+
+async function importLatestStandings(sources){
+  const detected=Number(latestStandingsInfo.detected||0);
+
+  if(!latestStandings.length){
+    const error=detected
+      ?`${detected} classement(s) détecté(s), mais aucune ligne exploitable.`
+      :'Aucun classement FFF détecté.';
+
+    console.log(
+      `::warning title=Classements FFF::${error}`
+    );
+
+    sources.push({
+      source:'standings',
+      status:'warning',
+      error
+    });
+
+    return;
+  }
+
+  console.log(
+    `Classements FFF : import de ${latestStandings.length} ligne(s) vers le Worker...`
+  );
+
+  try{
+    const response=await fetch(
+      standingsEndpoint,
+      {
+        method:'POST',
+        headers:{
+          authorization:`Bearer ${token}`,
+          'content-type':'application/json'
+        },
+        body:JSON.stringify({
+          rows:latestStandings
+        })
+      }
+    );
+
+    const raw=await response.text();
+
+    if(!response.ok){
+      throw new Error(
+        `HTTP ${response.status}: ${raw}`
+      );
+    }
+
+    let result={};
+
+    try{
+      result=JSON.parse(raw);
+    }catch{}
+
+    console.log(
+      `Classements FFF importés : ${Number(result.accepted||latestStandings.length)} ligne(s), `
+      +`${Number(result.linked||0)} rattachement(s).`
+    );
+
+    sources.push({
+      source:'standings',
+      status:'ok',
+      count:Number(result.accepted||latestStandings.length),
+      linked:Number(result.linked||0)
+    });
+
+  }catch(error){
+    const message=String(
+      error?.message||error
+    ).replace(/\r?\n/g,' ');
+
+    console.log(
+      `::warning title=Classements FFF::${message}`
+    );
+
+    sources.push({
+      source:'standings',
+      status:'warning',
+      error:message
+    });
+  }
+}
+
 async function main(){
   let rows=[],sources=[];
   try{
@@ -602,136 +686,10 @@ async function main(){
   const response=await fetch(endpoint,{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({rows,sources})});
   const raw=await response.text();
   if(!response.ok)throw new Error(`Import Cloudflare HTTP ${response.status}: ${raw}`);
+
+  await importLatestStandings(sources);
+
   console.log(raw);
-
-  if(latestStandingsInfo.attempted){
-
-    const detected=
-      Number(
-        latestStandingsInfo.detected
-        ||0
-      );
-
-    if(!detected){
-
-      console.log(
-        '::warning title=Classements FFF::Aucun classement détecté ; la synchronisation des matchs reste valide.'
-      );
-
-      sources.push({
-        source:'standings',
-        status:'warning',
-        error:'Aucun classement FFF détecté.'
-      });
-
-    }else if(!latestStandings.length){
-
-      console.log(
-        `::warning title=Classements FFF::${detected} classement(s) détecté(s), mais aucune ligne exploitable.`
-      );
-
-      sources.push({
-        source:'standings',
-        status:'warning',
-        error:`${detected} classement(s) détecté(s), mais aucune ligne exploitable.`
-      });
-
-    }else{
-
-      try{
-
-        const standingsResponse=
-          await fetch(
-            standingsEndpoint,
-            {
-              method:'POST',
-
-              headers:{
-                authorization:
-                  `Bearer ${token}`,
-
-                'content-type':
-                  'application/json'
-              },
-
-              body:
-                JSON.stringify({
-                  rows:latestStandings
-                })
-            }
-          );
-
-
-        const standingsRaw=
-          await standingsResponse.text();
-
-
-        if(!standingsResponse.ok){
-
-          throw new Error(
-            `HTTP ${standingsResponse.status}: ${standingsRaw}`
-          );
-        }
-
-
-        let result={};
-
-        try{
-          result=
-            JSON.parse(
-              standingsRaw
-            );
-        }catch{}
-
-
-        console.log(
-          `Classements FFF importés : ${
-            Number(
-              result.accepted
-              ||latestStandings.length
-            )
-          } ligne(s), ${
-            Number(
-              result.linked
-              ||0
-            )
-          } rattachement(s).`
-        );
-
-
-        sources.push({
-          source:'standings',
-          status:'ok',
-          count:Number(
-            result.accepted
-            ||latestStandings.length
-          ),
-          linked:Number(
-            result.linked
-            ||0
-          )
-        });
-
-      }catch(error){
-
-        console.log(
-          `::warning title=Classements FFF::${String(
-            error?.message
-            ||error
-          ).replace(/\r?\n/g,' ')}`
-        );
-
-        sources.push({
-          source:'standings',
-          status:'warning',
-          error:String(
-            error?.message
-            ||error
-          )
-        });
-      }
-    }
-  }
 
   console.table(sources);
   const failures=sources.filter(item=>item.status==='error');
