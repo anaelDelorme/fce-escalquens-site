@@ -1,5 +1,5 @@
 import { browserCollectStandings } from './standings-integrated.mjs';
-const SYNC_VERSION='2026.09.14-23',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+const SYNC_VERSION='2026.09.22-staging-25',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 console.log(`Collecteur FCE ${SYNC_VERSION}`);
 const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
 const endpoint=siteUrl+'/internal/sync/matches';
@@ -153,7 +153,10 @@ async function fetchZenRows(targetUrls){
         status=response.status;body=await response.text();
       }catch(error){body=JSON.stringify({fce_error:String(error)})}
       const output=document.createElement('script');
-      output.type='application/json';output.id=id;output.textContent=JSON.stringify({status,body});
+      output.type='application/json';output.id=id;
+      let envelopeBody=body;
+      try{envelopeBody=JSON.parse(body)}catch{}
+      output.textContent=JSON.stringify({status,body:envelopeBody});
       document.body.appendChild(output);saved.push({id,status,body});
     };
     await Promise.all(targets.map(([id,src])=>fetchOne(id,src)));
@@ -212,9 +215,11 @@ async function fetchZenRows(targetUrls){
       const output=document.createElement('script');
       output.type='application/json';
       output.id='fce-detail-'+id;
+      let envelopeBody=bestBody;
+      try{envelopeBody=JSON.parse(bestBody)}catch{}
       output.textContent=JSON.stringify({
         status:200,
-        body:bestBody
+        body:envelopeBody
       });
 
       document.body.appendChild(output);
@@ -258,7 +263,9 @@ async function fetchZenRows(targetUrls){
       }catch(error){body=JSON.stringify({site_key:key,fce_error:String(error)})}
       const output=document.createElement('script');
       output.type='application/json';output.id=\`fce-fal-games-\${key.replaceAll(':','-')}\`;
-      output.textContent=JSON.stringify({status,body});document.body.appendChild(output);
+      let envelopeBody=body;
+      try{envelopeBody=JSON.parse(body)}catch{}
+      output.textContent=JSON.stringify({status,body:envelopeBody});document.body.appendChild(output);
     };
     await Promise.all([...plateauSites.values()].map(fetchPlateau));
 
@@ -286,7 +293,7 @@ async function fetchZenRows(targetUrls){
   url.searchParams.set('js_render','true');
   url.searchParams.set('premium_proxy','true');
   url.searchParams.set('proxy_country','fr');
-  url.searchParams.set('json_response','true');
+  url.searchParams.set('json_response','false');
   url.searchParams.set('js_instructions',JSON.stringify(instructions));
   const response=await fetch(url,{headers:{accept:'application/json'},redirect:'follow'});
   const body=await response.text();

@@ -43,26 +43,145 @@ export async function browserCollectStandings(_saved, clubNo) {
 
 
   /*
-   * Source fiable vérifiée dans le navigateur :
-   * les engagements sont présents dans le DOM
-   * de la page club FFF.
+   * Découverte dynamique.
+   *
+   * On inspecte d'abord le DOM déjà rendu, puis on recharge le HTML
+   * de la page club dans LA MÊME session navigateur ZenRows.
+   *
+   * Cela permet de détecter automatiquement de nouveaux engagements
+   * au fil de la saison sans modifier ce script.
    */
-  document
-    .querySelectorAll('a[href]')
-    .forEach(
-      link=>addTarget(
-        link.getAttribute('href')
+  const scanDocument=doc=>{
+    doc
+      .querySelectorAll('a[href]')
+      .forEach(
+        link=>addTarget(
+          link.getAttribute('href')
+        )
+      );
+  };
+
+
+  const scanHtml=html=>{
+    if(!html)return;
+
+    try{
+      const doc=
+        new DOMParser()
+          .parseFromString(
+            html,
+            'text/html'
+          );
+
+      scanDocument(doc);
+    }catch{}
+
+
+    for(
+      const match
+      of String(html).matchAll(
+        /\/competition\/engagement\/[^"'\\s<]+\/phase\/\d+\/\d+\/(?:accueil|classement|resultats-et-calendrier)/g
       )
-    );
+    ){
+      addTarget(match[0]);
+    }
+  };
 
 
-  for(
-    const match
-    of document.documentElement.innerHTML.matchAll(
-      /\/competition\/engagement\/[^"'\\s<]+\/phase\/\d+\/\d+\/(?:accueil|classement|resultats-et-calendrier)/g
-    )
-  ){
-    addTarget(match[0]);
+  const discovery={
+    dom:0,
+    fetched:0,
+    fallback:0
+  };
+
+
+  scanDocument(document);
+  scanHtml(
+    document.documentElement.innerHTML
+  );
+
+  discovery.dom=
+    targets.size;
+
+
+  /*
+   * Le DOM visible par ZenRows n'est pas toujours aussi complet
+   * que celui d'un navigateur classique. Le HTML de la page club
+   * est donc relu explicitement sans nouveau crédit ZenRows.
+   */
+  try{
+
+    const response=
+      await fetch(
+        location.href,
+        {
+          credentials:'include',
+          headers:{
+            Accept:
+              'text/html,application/xhtml+xml'
+          }
+        }
+      );
+
+    if(response.ok){
+
+      const before=
+        targets.size;
+
+      scanHtml(
+        await response.text()
+      );
+
+      discovery.fetched=
+        targets.size-before;
+    }
+
+  }catch{}
+
+
+  /*
+   * Filet de sécurité temporaire pour la saison 2026-2027.
+   *
+   * Ces engagements ont été vérifiés manuellement sur la page FFF.
+   * Ils complètent la découverte dynamique mais ne la remplacent pas.
+   *
+   * À partir de la saison suivante ce fallback n'est plus utilisé.
+   */
+  const now=
+    new Date();
+
+  const seasonStartYear=
+    now.getUTCMonth()>=6
+      ?now.getUTCFullYear()
+      :now.getUTCFullYear()-1;
+
+
+  if(seasonStartYear===2026){
+
+    const verified2026=[
+      '/competition/engagement/454584-coupe-du-district-u14/phase/1/3/classement',
+      '/competition/engagement/455739-u15-territoire-f/phase/1/6/classement',
+      '/competition/engagement/454583-coupe-du-district-u15/phase/1/11/classement',
+      '/competition/engagement/454576-coupe-du-conseil-departemental-nord/phase/1/1/classement',
+      '/competition/engagement/454557-coupe-feminines-u15f-foot-a-8/phase/1/1/classement',
+      '/competition/engagement/455737-u18-territoire-f/phase/1/8/classement',
+      '/competition/engagement/454541-u15-district-b/phase/1/3/classement',
+      '/competition/engagement/454537-u15-territoire/phase/1/2/classement',
+      '/competition/engagement/454545-u14-district-a/phase/1/2/classement',
+      '/competition/engagement/454552-feminines-u18-a-8-ca-tlse-31/phase/1/1/classement',
+      '/competition/engagement/454408-senior-departemental-4-11teamsports/phase/1/3/classement',
+      '/competition/engagement/454409-senior-departemental-5-11teamsports/phase/1/5/classement'
+    ];
+
+
+    const before=
+      targets.size;
+
+    verified2026
+      .forEach(addTarget);
+
+    discovery.fallback=
+      targets.size-before;
   }
 
 
@@ -434,7 +553,7 @@ export async function browserCollectStandings(_saved, clubNo) {
     output.textContent=
       JSON.stringify({
         status:200,
-        body:JSON.stringify(data)
+        body:data
       });
 
     document.body.appendChild(
@@ -461,6 +580,8 @@ export async function browserCollectStandings(_saved, clubNo) {
 
       rows:
         rows.length,
+
+      discovery,
 
       results:diagnostics
     }

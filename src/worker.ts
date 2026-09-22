@@ -49,6 +49,7 @@ const editable: Record<string, string[]> = {
 
 const defaultOrder: Record<string, string> = {
   teams: "name COLLATE NOCASE ASC",
+  club_members: "full_name COLLATE NOCASE ASC",
   matches: "starts_at ASC",
   match_participants: "match_id ASC, display_order ASC",
   social_posts: "published_at DESC",
