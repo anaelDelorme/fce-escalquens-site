@@ -299,9 +299,22 @@ function refreshFilterChoices(){
   if(filters.group&&!groups.some(team=>String(team.id)===filters.group))filters.group='';
   groupSelect.innerHTML='<option value="">Tous les groupes sportifs</option>'+groups.map(team=>`<option value="${team.id}" ${String(team.id)===filters.group?'selected':''}>${esc(team.name)}</option>`).join('');
   const visibleTeamIds=new Set(groups.map(team=>String(team.id)));
-  const visibleEntries=entries.filter(entry=>Number(entry.active)!==0&&(
-    filters.group?String(entry.team_id)===filters.group:!filters.section||visibleTeamIds.has(String(entry.team_id))
-  ));
+  const visibleEntries=entries
+    .filter(entry=>Number(entry.active)!==0&&(
+      filters.group
+        ?String(entry.team_id)===filters.group
+        :!filters.section||visibleTeamIds.has(String(entry.team_id))
+    ))
+    .sort((a,b)=>
+      entryLabel(a).localeCompare(
+        entryLabel(b),
+        'fr',
+        {
+          numeric:true,
+          sensitivity:'base'
+        }
+      )
+    );
   if(filters.entry&&!visibleEntries.some(entry=>String(entry.id)===filters.entry))filters.entry='';
   entrySelect.innerHTML='<option value="">Toutes les équipes engagées</option>'+visibleEntries.map(entry=>`<option value="${entry.id}" ${String(entry.id)===filters.entry?'selected':''}>${esc(entryLabel(entry))}</option>`).join('');
 }

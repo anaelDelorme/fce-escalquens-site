@@ -524,3 +524,397 @@
     padding:20px;
   }
 }
+
+
+/* FCE visual polish v6 */
+
+
+/* ========================================
+   PLANNING — regroupé par journée
+   ======================================== */
+
+.planning-board{
+  display:grid;
+  gap:24px;
+}
+
+
+.planning-day{
+  overflow:hidden;
+
+  border:1px solid var(--fce-card-border);
+  border-radius:18px;
+
+  background:#fff;
+
+  box-shadow:var(--fce-card-shadow);
+}
+
+
+.planning-day__header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:20px;
+
+  padding:18px 22px;
+
+  background:
+    radial-gradient(
+      circle at 92% 12%,
+      rgba(255,205,52,.20),
+      transparent 34%
+    ),
+    linear-gradient(
+      120deg,
+      #67101d 0%,
+      #8e1424 60%,
+      #a41a2b 100%
+    );
+
+  color:#fff;
+}
+
+
+.planning-day__header>div{
+  display:grid;
+  gap:3px;
+}
+
+
+.planning-day__eyebrow{
+  color:var(--gold);
+
+  font-size:9px;
+  font-weight:900;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+}
+
+
+.planning-day__header h2{
+  margin:0;
+
+  color:#fff;
+
+  font-size:25px;
+  line-height:1;
+}
+
+
+.planning-day__count{
+  flex:none;
+
+  padding:7px 10px;
+
+  border:1px solid rgba(255,255,255,.28);
+  border-radius:999px;
+
+  background:rgba(255,255,255,.10);
+
+  color:#fff;
+
+  font-size:10px;
+  font-weight:900;
+
+  white-space:nowrap;
+}
+
+
+.planning-day__sessions{
+  display:grid;
+}
+
+
+.planning-board .planning-session{
+  display:grid;
+
+  grid-template-columns:
+    105px
+    minmax(135px,.7fr)
+    minmax(230px,1.35fr)
+    auto;
+
+  align-items:center;
+
+  gap:20px;
+
+  margin:0;
+  padding:17px 20px;
+
+  border:0;
+  border-bottom:1px solid #eee7e1;
+  border-radius:0;
+
+  background:#fff;
+
+  box-shadow:none;
+}
+
+
+.planning-board .planning-session::before{
+  display:none;
+}
+
+
+.planning-board .planning-session:last-child{
+  border-bottom:0;
+}
+
+
+.planning-session:hover{
+  background:#faf8f5;
+}
+
+
+.planning-session time{
+  display:grid;
+  gap:1px;
+
+  width:max-content;
+
+  padding:9px 11px;
+
+  border-radius:10px;
+
+  background:#241c1b;
+
+  color:#fff;
+}
+
+
+.planning-session time strong{
+  color:var(--gold);
+
+  font-size:17px;
+  line-height:1;
+}
+
+
+.planning-session time span{
+  color:#ddd4d1;
+
+  font-size:10px;
+}
+
+
+.planning-session__team,
+.planning-session__venue{
+  display:grid;
+  gap:3px;
+
+  min-width:0;
+}
+
+
+.planning-session__team small,
+.planning-session__venue small{
+  color:var(--wine);
+
+  font-size:9px;
+  font-weight:900;
+  letter-spacing:.07em;
+  text-transform:uppercase;
+}
+
+
+.planning-session__team h3{
+  margin:0;
+
+  font-size:18px;
+}
+
+
+.planning-session__venue strong{
+  font-size:14px;
+  line-height:1.25;
+}
+
+
+.planning-session__venue span{
+  color:#756963;
+
+  font-size:12px;
+  line-height:1.35;
+}
+
+
+.planning-board
+.planning-session__map{
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+
+  justify-self:end;
+
+  padding:9px 12px;
+
+  border:1px solid var(--wine);
+  border-radius:999px;
+
+  color:var(--wine);
+
+  font-size:11px;
+  font-weight:900;
+
+  text-decoration:none;
+
+  white-space:nowrap;
+
+  transition:
+    background .18s ease,
+    color .18s ease;
+}
+
+
+.planning-board
+.planning-session__map:hover{
+  background:var(--wine);
+  color:#fff;
+}
+
+
+/* ========================================
+   FICHE ÉQUIPE
+   ======================================== */
+
+#team-profile .team-results>h2{
+  margin-bottom:18px;
+}
+
+
+#team-profile .all-results{
+  display:inline-flex;
+
+  margin-top:18px;
+  padding:10px 14px;
+
+  border:1px solid var(--wine);
+  border-radius:999px;
+
+  color:var(--wine);
+
+  font-size:11px;
+  font-weight:900;
+
+  text-decoration:none;
+}
+
+
+#team-profile .all-results:hover{
+  background:var(--wine);
+  color:#fff;
+}
+
+
+/* ========================================
+   PARTENAIRES
+   ======================================== */
+
+.sponsor-logos a{
+  overflow:hidden;
+
+  border-radius:14px;
+
+  box-shadow:
+    0 8px 22px rgba(41,25,20,.045);
+
+  transition:
+    transform .18s ease,
+    box-shadow .18s ease;
+}
+
+
+.sponsor-logos a:hover{
+  transform:translateY(-2px);
+
+  box-shadow:
+    0 13px 28px rgba(41,25,20,.075);
+}
+
+
+/* ========================================
+   SMARTPHONE
+   ======================================== */
+
+@media(max-width:720px){
+
+  .planning-board{
+    gap:17px;
+  }
+
+
+  .planning-day{
+    border-radius:13px;
+  }
+
+
+  .planning-day__header{
+    padding:15px 16px;
+  }
+
+
+  .planning-day__header h2{
+    font-size:21px;
+  }
+
+
+  .planning-board .planning-session{
+    grid-template-columns:
+      74px
+      minmax(0,1fr);
+
+    gap:8px 12px;
+
+    padding:14px;
+  }
+
+
+  .planning-session time{
+    grid-column:1;
+    grid-row:1 / 4;
+
+    align-self:start;
+
+    padding:8px 9px;
+  }
+
+
+  .planning-session time strong{
+    font-size:15px;
+  }
+
+
+  .planning-session__team{
+    grid-column:2;
+    grid-row:1;
+  }
+
+
+  .planning-session__venue{
+    grid-column:2;
+    grid-row:2;
+  }
+
+
+  .planning-board
+  .planning-session__map{
+    grid-column:2;
+    grid-row:3;
+
+    justify-self:start;
+
+    margin-top:4px;
+  }
+
+
+  .planning-session__team h3{
+    font-size:16px;
+  }
+
+
+  .planning-session__venue strong{
+    font-size:13px;
+  }
+
+}

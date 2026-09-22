@@ -6,7 +6,7 @@ import Footer from '../../components/Footer.astro';
   <head>
     <meta charset="utf-8"><meta name="viewport" content="width=device-width">
     <title>Fiche équipe - FC Escalquens</title>
-    <link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/enhancements.css?v=5"><link rel="stylesheet" href="/brand-charter.css"><link rel="stylesheet" href="/match-cards.css?v=5">
+    <link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/enhancements.css?v=6"><link rel="stylesheet" href="/brand-charter.css"><link rel="stylesheet" href="/match-cards.css?v=6">
     <style>
       .staff article.is-referent{border-top:6px solid var(--gold);background:#fffaf0;box-shadow:0 8px 24px #55101812}.staff article.is-referent small{display:inline-flex;width:max-content;padding:5px 8px;background:var(--wine);color:#fff}.staff article h3{margin:2px 0}.staff article img{width:72px;height:72px;object-fit:cover;border-radius:50%;margin-bottom:10px}
     </style>
@@ -29,8 +29,8 @@ import Footer from '../../components/Footer.astro';
         </div>
         <div class="staff" id="team-staff" aria-busy="true" aria-live="polite"><p>Encadrement à venir.</p></div>
         <div><p class="eyebrow">Entraînements</p><h2>Les rendez-vous de la semaine</h2><div id="team-training" class="rows"></div></div>
-        <div class="team-results"><p class="eyebrow">Calendrier</p><h2>Les prochains rendez-vous</h2><div id="team-upcoming" class="team-match-list"></div></div>
-        <div class="team-results"><p class="eyebrow">Compétitions</p><h2>Derniers résultats</h2><div id="team-results" class="team-match-list"></div><a class="all-results" href="/matchs/">Voir tout le calendrier →</a></div>
+        <div class="team-results"><p class="eyebrow">Calendrier</p><h2>Les prochains rendez-vous</h2><div id="team-upcoming" class="team-match-list match-calendar"></div></div>
+        <div class="team-results"><p class="eyebrow">Compétitions</p><h2>Derniers résultats</h2><div id="team-results" class="team-match-list match-calendar"></div><a class="all-results" href="/matchs/">Voir tout le calendrier →</a></div>
 
         <div class="team-results team-standings-section">
           <p class="eyebrow">Classements FFF</p>
@@ -47,6 +47,6 @@ import Footer from '../../components/Footer.astro';
       </section>
     </main>
     <Footer/>
-    <script is:inline src="/team-profile.js?v=28"></script>
+    <script is:inline src="/team-profile.js?v=29"></script>
   </body>
 </html>

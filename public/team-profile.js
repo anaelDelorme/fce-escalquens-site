@@ -2,11 +2,77 @@ const slug=new URLSearchParams(location.search).get('slug');
 const set=(selector,value)=>{const node=document.querySelector(selector);if(node)node.textContent=value||'À renseigner'};
 const esc=value=>String(value??'').replace(/[&<>'"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
 const logo=(url,name)=>url?`<img class="match-logo" src="${esc(url)}" alt="" loading="lazy" referrerpolicy="no-referrer">`:'<span class="match-logo fallback" aria-hidden="true">⚽</span>';
+
+const safeHttpUrl=value=>{
+  try{
+    const url=
+      new URL(
+        String(value??''),
+        location.origin
+      );
+
+    return ['http:','https:'].includes(
+      url.protocol
+    )
+      ?url.href
+      :'';
+  }catch{
+    return '';
+  }
+};
 const roleLabels={coach_referent:'Coach référent',coach:'Coach',dirigeant:'Dirigeant',arbitre:'Arbitre'};
 const staffCollator=new Intl.Collator('fr',{sensitivity:'base'});
 const dateFormat=new Intl.DateTimeFormat('fr-FR',{timeZone:'Europe/Paris',weekday:'long',day:'numeric',month:'long'});
 const timeFormat=new Intl.DateTimeFormat('fr-FR',{timeZone:'Europe/Paris',hour:'2-digit',minute:'2-digit'});
 const displayDate=value=>{const label=dateFormat.format(new Date(value));return label.charAt(0).toLocaleUpperCase('fr')+label.slice(1)};
+
+const statusLabels={
+  postponed:'Reporté',
+  cancelled:'Annulé'
+};
+
+const teamScoreOrTime=match=>{
+  if(statusLabels[match.status]){
+    return `
+      <span class="match-status ${esc(match.status)}">
+        ${statusLabels[match.status]}
+      </span>
+    `;
+  }
+
+  if(
+    match.status==='finished'
+    ||(
+      match.home_score!=null
+      &&match.away_score!=null
+    )
+  ){
+    return `
+      <strong class="score">
+        ${match.home_score??'–'}
+        <i>:</i>
+        ${match.away_score??'–'}
+      </strong>
+    `;
+  }
+
+  if(Number(match.time_confirmed)===0){
+    return `
+      <strong class="kickoff unconfirmed">
+        À confirmer
+      </strong>
+    `;
+  }
+
+  return `
+    <strong class="kickoff">
+      ${timeFormat.format(
+        new Date(match.starts_at)
+      )}
+    </strong>
+  `;
+};
+
 const mapsUrl=match=>match.latitude!=null&&match.longitude!=null?`https://www.google.com/maps/search/?api=1&query=${match.latitude},${match.longitude}`:[match.venue,match.venue_address].some(Boolean)?`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([match.venue,match.venue_address].filter(Boolean).join(' '))}`:'';
 const cityCase=value=>String(value||'').trim().toLocaleLowerCase('fr').replace(/(^|[\s'’-])([a-zà-öø-ÿ])/g,(_,before,letter)=>before+letter.toLocaleUpperCase('fr'));
 const matchLocation=match=>{const venue=String(match.venue||'').trim(),address=String(match.venue_address||'').trim(),cityMatch=address.match(/\b\d{5}\s+([a-zà-öø-ÿ][a-zà-öø-ÿ'’ -]*)$/i),city=cityMatch?cityCase(cityMatch[1]):'',stadium=venue||(!city?address:'')||'Lieu à confirmer',map=stadium!=='Lieu à confirmer'?mapsUrl(match):'';return `<span class="match-location">📍 ${city?`<b>${esc(city)}</b><i>,</i> `:''}${map?`<a href="${esc(map)}" target="_blank" rel="noopener">${esc(stadium)}</a>`:`<span>${esc(stadium)}</span>`}</span>`};
@@ -99,14 +165,81 @@ const plateauCard=match=>`<article class="team-plateau-card match-card">
   ${participantList(match)}${plateauProgram(match)}
   <footer>${matchLocation(match)}${match.source_url?`<a href="${esc(match.source_url)}" target="_blank" rel="noopener">Source officielle →</a>`:''}</footer>
 </article>`;
-const miniMatch=(match,future=false)=>match.event_type==='plateau'||match.event_type==='animation'?plateauCard(match):`<article class="team-match-row">
-  <time>${displayDate(match.starts_at)}</time>
-  <small>${esc(match.event_type==='plateau'?'Plateau':match.competition)}</small>
-  <div class="match-team">${logo(match.home_logo_url,match.home_team)}<b>${esc(match.home_team)}</b></div>
-  <strong>${future?(Number(match.time_confirmed)===0?'À confirmer':timeFormat.format(new Date(match.starts_at))):`${match.home_score??'–'} : ${match.away_score??'–'}`}</strong>
-  <div class="match-team">${logo(match.away_logo_url,match.away_team)}<b>${esc(match.away_team)}</b></div>
-  ${matchLocation(match)}
-</article>`;
+const miniMatch=match=>
+  match.event_type==='plateau'
+  ||match.event_type==='animation'
+    ?plateauCard(match)
+    :`
+      <article class="match-card ${esc(match.status||'')}">
+
+        <header>
+          <time datetime="${esc(match.starts_at)}">
+            ${displayDate(match.starts_at)}
+          </time>
+
+          <span>
+            ${
+              match.event_type==='friendly'
+                ?'Match amical'
+                :'Match'
+            }
+          </span>
+        </header>
+
+        <p class="competition-name">
+          ${esc(
+            match.competition
+            ||'Rencontre du club'
+          )}
+        </p>
+
+        <div class="scoreboard">
+
+          <div class="match-team">
+            ${logo(
+              match.home_logo_url,
+              match.home_team
+            )}
+            <b>${esc(match.home_team)}</b>
+          </div>
+
+          ${teamScoreOrTime(match)}
+
+          <div class="match-team">
+            ${logo(
+              match.away_logo_url,
+              match.away_team
+            )}
+            <b>${esc(match.away_team)}</b>
+          </div>
+
+        </div>
+
+        <footer>
+          ${matchLocation(match)}
+
+          ${
+            safeHttpUrl(match.source_url)
+              ?`
+                <a
+                  href="${esc(
+                    safeHttpUrl(
+                      match.source_url
+                    )
+                  )}"
+                  target="_blank"
+                  rel="noopener"
+                >
+                  Source officielle →
+                </a>
+              `
+              :''
+          }
+        </footer>
+
+      </article>
+    `;
+
 const wirePlateauDetails=()=>document.querySelectorAll('[data-plateau-games]').forEach(button=>button.onclick=async()=>{
   const id=button.dataset.plateauGames,detail=document.querySelector(`[data-plateau-detail="${id}"]`),opening=button.getAttribute('aria-expanded')!=='true';
   button.setAttribute('aria-expanded',String(opening));button.querySelector('span').textContent=opening?'↑':'↓';detail.hidden=!opening;
