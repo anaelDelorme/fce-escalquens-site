@@ -1,5 +1,5 @@
 import { browserCollectStandings } from './standings-integrated.mjs';
-const SYNC_VERSION='2026.09.22-staging-25',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+const SYNC_VERSION='2026.09.22-staging-26',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 console.log(`Collecteur FCE ${SYNC_VERSION}`);
 const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
 const endpoint=siteUrl+'/internal/sync/matches';
@@ -271,7 +271,11 @@ async function fetchZenRows(targetUrls){
 
     // Les classements sont lus dans cette même session navigateur :
     // aucun second appel ZenRows n'est nécessaire.
-    await (${browserCollectStandings.toString()})(saved,'${CLUB_NO}');
+    await (${browserCollectStandings.toString()})(
+      saved,
+      '${CLUB_NO}',
+      ${Number(targetUrls.seasonYear)}
+    );
 
     // Réduire drastiquement la réponse ZenRows : on ne renvoie pas la page
     // Angular complète, seulement les JSON utiles au collecteur.
@@ -516,6 +520,7 @@ async function collectEpreuvesFFF(){
   });
   const targetUrls={
     probeIndex,
+    seasonYear,
     matches:periods.map(({start,end})=>{
       const query=new URLSearchParams({dateDebut:start.toISOString().replace('.000Z','+00:00'),dateFin:end.toISOString().replace('.000Z','+00:00'),clNo:CLUB_NO,itemsPerPage:'100',pagination:'true'});
       return `https://epreuves.fff.fr/api/data/matches?${query}`;
@@ -538,6 +543,16 @@ async function collectEpreuvesFFF(){
   };
 
   if(latestStandingsInfo.attempted){
+    const discovery=
+      latestStandingsInfo.discovery
+      ||{};
+
+    console.log(
+      `FFF : découverte classements — DOM=${Number(discovery.dom||0)}, `+
+      `HTML=${Number(discovery.fetched||0)}, `+
+      `fallback=${Number(discovery.fallback||0)}.`
+    );
+
     console.log(
       `FFF : ${latestStandings.length} ligne(s) de classement capturée(s) `
       +`sur ${Number(latestStandingsInfo.detected||0)} classement(s) détecté(s), `

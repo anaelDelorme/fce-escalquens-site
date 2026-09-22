@@ -1,4 +1,4 @@
-export async function browserCollectStandings(_saved, clubNo) {
+export async function browserCollectStandings(_saved, clubNo, seasonStartYear) {
   const targets=new Map();
 
   const addTarget=raw=>{
@@ -95,6 +95,25 @@ export async function browserCollectStandings(_saved, clubNo) {
   };
 
 
+  /*
+   * Angular peut encore terminer le rendu de la page club.
+   * On attend au maximum 2,5 secondes, sans faire échouer
+   * la collecte si aucun lien n'apparaît.
+   */
+  for(
+    let attempt=0;
+    attempt<10
+    && !document.querySelector(
+      'a[href*="/competition/engagement/"]'
+    );
+    attempt++
+  ){
+    await new Promise(
+      resolve=>setTimeout(resolve,250)
+    );
+  }
+
+
   scanDocument(document);
   scanHtml(
     document.documentElement.innerHTML
@@ -147,16 +166,7 @@ export async function browserCollectStandings(_saved, clubNo) {
    *
    * À partir de la saison suivante ce fallback n'est plus utilisé.
    */
-  const now=
-    new Date();
-
-  const seasonStartYear=
-    now.getUTCMonth()>=6
-      ?now.getUTCFullYear()
-      :now.getUTCFullYear()-1;
-
-
-  if(seasonStartYear===2026){
+  if(Number(seasonStartYear)===2026){
 
     const verified2026=[
       '/competition/engagement/454584-coupe-du-district-u14/phase/1/3/classement',
@@ -388,6 +398,47 @@ export async function browserCollectStandings(_saved, clubNo) {
         );
 
 
+      /*
+       * La ligne Escalquens contient un lien du type :
+       *
+       * /competition/club/.../equipe/2026_101544_U15F_5
+       *
+       * Cet identifiant est exactement celui enregistré dans
+       * team_competitions. Il permet donc de rattacher le
+       * classement à la bonne équipe, y compris pour les coupes.
+       */
+      const clubRow=[
+        ...selected.table.querySelectorAll(
+          'tbody tr'
+        )
+      ].find(
+        tr=>
+          /escalquens/i.test(
+            tr.textContent||''
+          )
+      );
+
+
+      const clubTeamHref=
+        clubRow
+          ?.querySelector(
+            'a[href*="/equipe/"]'
+          )
+          ?.getAttribute('href')
+        ||'';
+
+
+      const clubTeamFffId=
+        clubTeamHref.match(
+          /\/equipe\/([^/?#]+)/
+        )?.[1]
+        ||'';
+
+
+      diagnostic.team_fff_id=
+        clubTeamFffId;
+
+
       const tableRows=[
         ...selected.table.querySelectorAll(
           'tbody tr'
@@ -432,7 +483,9 @@ export async function browserCollectStandings(_saved, clubNo) {
                * sera fait côté Worker via
                * compétition + poule.
                */
-              team_fff_id:'',
+              team_fff_id:
+                clubTeamFffId,
+
               category_code:'',
               team_number:'',
 
