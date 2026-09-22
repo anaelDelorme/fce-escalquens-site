@@ -805,3 +805,256 @@
     border-radius:14px;
   }
 }
+
+
+/* FCE standings mobile v5 */
+
+/* Les titres ne doivent jamais être tronqués */
+.standings-card__header>div:first-child{
+  min-width:0;
+  max-width:100%;
+}
+
+.standings-card .standings-card__header h3{
+  max-width:100%;
+  white-space:normal;
+  overflow:visible;
+  text-overflow:clip;
+  overflow-wrap:anywhere;
+  word-break:normal;
+}
+
+.standings-mobile-stats{
+  display:none;
+}
+
+.standings-toggle{
+  display:none;
+}
+
+
+/* Une petite amélioration des matchs de la fiche équipe */
+.team-match-row{
+  overflow:hidden;
+  border:1px solid #e2d8cf;
+  border-left:0;
+  border-radius:16px;
+  box-shadow:
+    0 10px 26px rgba(41,25,20,.06),
+    0 2px 6px rgba(41,25,20,.04);
+}
+
+.team-match-row::before{
+  content:"";
+  align-self:stretch;
+  width:5px;
+  background:var(--wine);
+}
+
+
+@media(max-width:720px){
+
+  /*
+   * En mobile on abandonne le tableau large.
+   * Trois colonnes seulement :
+   * rang | équipe | points
+   */
+  .standings-table{
+    width:100%;
+    min-width:0;
+  }
+
+  .standings-table-wrap{
+    overflow:visible;
+  }
+
+  .standings-table thead{
+    display:none;
+  }
+
+  .standings-table tbody{
+    display:grid;
+  }
+
+  .standings-table tbody tr{
+    display:grid;
+    grid-template-columns:
+      42px
+      minmax(0,1fr)
+      48px;
+
+    align-items:start;
+    gap:8px;
+
+    padding:12px 10px;
+
+    border-bottom:1px solid #eee7e1;
+  }
+
+  .standings-table tbody tr:last-child{
+    border-bottom:0;
+  }
+
+  .standings-table tbody td{
+    display:none;
+    height:auto;
+    min-width:0;
+    padding:0;
+    border:0;
+  }
+
+  .standings-table tbody td:nth-child(1),
+  .standings-table tbody td:nth-child(2),
+  .standings-table tbody td:nth-child(10){
+    display:block;
+  }
+
+  .standings-table tbody td:nth-child(1){
+    grid-column:1;
+    grid-row:1;
+  }
+
+  .standings-table tbody td:nth-child(2){
+    grid-column:2;
+    grid-row:1;
+  }
+
+  .standings-table tbody td:nth-child(10){
+    grid-column:3;
+    grid-row:1;
+    text-align:right;
+  }
+
+  .standings-team-cell{
+    min-width:0;
+  }
+
+  .standings-team-identity{
+    align-items:center;
+    gap:8px;
+  }
+
+  .standings-team-identity .match-logo{
+    width:31px;
+    height:31px;
+  }
+
+  .standings-team{
+    min-width:0;
+    line-height:1.2;
+    overflow-wrap:anywhere;
+  }
+
+  /*
+   * Toutes les autres statistiques sont placées
+   * sous le nom de l'équipe.
+   */
+  .standings-mobile-stats{
+    display:grid;
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    gap:5px;
+
+    margin-top:9px;
+  }
+
+  .standings-mobile-stats>span{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:4px;
+
+    min-width:0;
+
+    padding:4px 3px;
+
+    border-radius:7px;
+
+    background:#f3eee8;
+  }
+
+  .standings-mobile-stats small{
+    color:#796b64;
+    font-size:8px;
+    font-weight:900;
+    text-transform:uppercase;
+  }
+
+  .standings-mobile-stats b{
+    font-size:10px;
+  }
+
+
+  /*
+   * En-tête mobile :
+   * le titre peut prendre autant de lignes que nécessaire.
+   */
+  .standings-card .standings-card__header{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+    gap:10px 12px;
+
+    width:100%;
+    padding:16px;
+
+    overflow:visible;
+  }
+
+  .standings-card__header>div:first-child{
+    grid-column:1/-1;
+    width:100%;
+  }
+
+  .standings-card .standings-card__header h3{
+    font-size:18px;
+    line-height:1.25;
+  }
+
+  .standings-card .standings-card__header>a{
+    grid-column:1;
+    justify-self:start;
+  }
+
+  .standings-toggle{
+    grid-column:2;
+
+    display:grid;
+    place-items:center;
+
+    width:36px;
+    height:36px;
+
+    padding:0;
+
+    border:1px solid rgba(255,255,255,.40);
+    border-radius:50%;
+
+    background:rgba(255,255,255,.12);
+    color:#fff;
+
+    font-size:22px;
+    font-weight:700;
+
+    cursor:pointer;
+  }
+
+  .standings-card.is-collapsed .standings-table-wrap{
+    display:none;
+  }
+
+  .standings-card.is-collapsed>.standings{
+    display:none;
+  }
+
+  /*
+   * La carte repliée ne prend quasiment plus
+   * de hauteur : pratique quand il y a 6 classements.
+   */
+  .standings-card.is-collapsed{
+    box-shadow:
+      0 8px 22px rgba(41,25,20,.06);
+  }
+
+  .standings-card.is-collapsed .standings-card__header{
+    border-radius:12px;
+  }
+}

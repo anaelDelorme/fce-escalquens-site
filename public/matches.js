@@ -17,6 +17,66 @@ const statusLabels={postponed:'Reporté',cancelled:'Annulé'};
 let matches=[],participants=[],standings=[],teams=[],entries=[],tab='upcoming';
 let filters={section:'',group:'',entry:''};
 const now=new Date();
+
+const wireStandingsToggles=root=>{
+  if(!root)return;
+
+  const mobile=
+    window.matchMedia(
+      '(max-width:720px)'
+    ).matches;
+
+  [...root.querySelectorAll('.standings-card')]
+    .forEach((card,index)=>{
+      const button=
+        card.querySelector('.standings-toggle');
+
+      if(!button)return;
+
+      const setCollapsed=collapsed=>{
+        card.classList.toggle(
+          'is-collapsed',
+          collapsed
+        );
+
+        button.setAttribute(
+          'aria-expanded',
+          String(!collapsed)
+        );
+
+        button.setAttribute(
+          'aria-label',
+          collapsed
+            ?'Afficher ce classement'
+            :'Réduire ce classement'
+        );
+
+        button.textContent=
+          collapsed
+            ?'+'
+            :'−';
+      };
+
+      /*
+       * Smartphone :
+       * premier classement ouvert,
+       * les suivants repliés.
+       */
+      setCollapsed(
+        mobile && index>0
+      );
+
+      button.onclick=()=>{
+        setCollapsed(
+          !card.classList.contains(
+            'is-collapsed'
+          )
+        );
+      };
+    });
+};
+
+
 const plateauGamesCache=new Map();
 
 const mapsUrl=row=>row.latitude!=null&&row.longitude!=null
@@ -346,6 +406,13 @@ function draw(){
                           :''
                       }
 
+                      <button
+                        type="button"
+                        class="standings-toggle"
+                        aria-expanded="true"
+                        aria-label="Réduire ce classement"
+                      >−</button>
+
                     </header>
 
                     <div class="standings-table-wrap" tabindex="0">
@@ -413,6 +480,21 @@ function draw(){
                 :''
               }
             </span>
+            <span class="standings-mobile-stats" aria-hidden="true">
+              <span><small>J</small><b>${esc(row.played??0)}</b></span>
+              <span><small>G</small><b>${esc(row.won??0)}</b></span>
+              <span><small>N</small><b>${esc(row.drawn??0)}</b></span>
+              <span><small>P</small><b>${esc(row.lost??0)}</b></span>
+              <span><small>Bp</small><b>${esc(row.goals_for??0)}</b></span>
+              <span><small>Bc</small><b>${esc(row.goals_against??0)}</b></span>
+              <span>
+                <small>Diff</small>
+                <b class="${diffClass.trim()}">
+                  ${diff>0?'+':''}${diff}
+                </b>
+              </span>
+            </span>
+
           </td>
 
           <td>${esc(row.played??0)}</td>
@@ -446,6 +528,10 @@ function draw(){
               .join('')
           }</div>`
           :'<p>Aucun classement n’est actuellement diffusé pour cette sélection.</p>';
+
+    wireStandingsToggles(
+      document.querySelector('#standings-page')
+    );
 
     return;
   }

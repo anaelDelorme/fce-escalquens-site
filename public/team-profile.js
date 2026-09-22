@@ -12,6 +12,66 @@ const cityCase=value=>String(value||'').trim().toLocaleLowerCase('fr').replace(/
 const matchLocation=match=>{const venue=String(match.venue||'').trim(),address=String(match.venue_address||'').trim(),cityMatch=address.match(/\b\d{5}\s+([a-zà-öø-ÿ][a-zà-öø-ÿ'’ -]*)$/i),city=cityMatch?cityCase(cityMatch[1]):'',stadium=venue||(!city?address:'')||'Lieu à confirmer',map=stadium!=='Lieu à confirmer'?mapsUrl(match):'';return `<span class="match-location">📍 ${city?`<b>${esc(city)}</b><i>,</i> `:''}${map?`<a href="${esc(map)}" target="_blank" rel="noopener">${esc(stadium)}</a>`:`<span>${esc(stadium)}</span>`}</span>`};
 let savedParticipants=[];
 const plateauGamesCache=new Map();
+
+const wireStandingsToggles=root=>{
+  if(!root)return;
+
+  const mobile=
+    window.matchMedia(
+      '(max-width:720px)'
+    ).matches;
+
+  [...root.querySelectorAll('.standings-card')]
+    .forEach((card,index)=>{
+      const button=
+        card.querySelector('.standings-toggle');
+
+      if(!button)return;
+
+      const setCollapsed=collapsed=>{
+        card.classList.toggle(
+          'is-collapsed',
+          collapsed
+        );
+
+        button.setAttribute(
+          'aria-expanded',
+          String(!collapsed)
+        );
+
+        button.setAttribute(
+          'aria-label',
+          collapsed
+            ?'Afficher ce classement'
+            :'Réduire ce classement'
+        );
+
+        button.textContent=
+          collapsed
+            ?'+'
+            :'−';
+      };
+
+      /*
+       * Smartphone :
+       * premier classement ouvert,
+       * les suivants repliés.
+       */
+      setCollapsed(
+        mobile && index>0
+      );
+
+      button.onclick=()=>{
+        setCollapsed(
+          !card.classList.contains(
+            'is-collapsed'
+          )
+        );
+      };
+    });
+};
+
+
 const rawSource=match=>{try{const raw=typeof match.raw_json==='string'?JSON.parse(match.raw_json||'{}'):match.raw_json||{};return raw.site||raw}catch{return {}}};
 const canonical=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('fr').replace(/[^a-z0-9]+/g,' ').trim();
 const plateauParticipants=match=>{
@@ -183,6 +243,13 @@ fetch(`/api/page/team-profile?slug=${encodeURIComponent(slug||'')}&v=26`).then(a
                     :''
                 }
 
+                <button
+                  type="button"
+                  class="standings-toggle"
+                  aria-expanded="true"
+                  aria-label="Réduire ce classement"
+                >−</button>
+
               </div>
 
               <div class="standings">
@@ -252,6 +319,21 @@ fetch(`/api/page/team-profile?slug=${encodeURIComponent(slug||'')}&v=26`).then(a
                 :''
               }
             </span>
+            <span class="standings-mobile-stats" aria-hidden="true">
+              <span><small>J</small><b>${esc(row.played??0)}</b></span>
+              <span><small>G</small><b>${esc(row.won??0)}</b></span>
+              <span><small>N</small><b>${esc(row.drawn??0)}</b></span>
+              <span><small>P</small><b>${esc(row.lost??0)}</b></span>
+              <span><small>Bp</small><b>${esc(row.goals_for??0)}</b></span>
+              <span><small>Bc</small><b>${esc(row.goals_against??0)}</b></span>
+              <span>
+                <small>Diff</small>
+                <b class="${diffClass.trim()}">
+                  ${diff>0?'+':''}${diff}
+                </b>
+              </span>
+            </span>
+
           </td>
 
           <td>${esc(row.played??0)}</td>
@@ -286,6 +368,8 @@ fetch(`/api/page/team-profile?slug=${encodeURIComponent(slug||'')}&v=26`).then(a
         })
         .join('')
       :'<p>Aucun classement FFF disponible pour ce groupe.</p>';
+
+  wireStandingsToggles(standingsNode);
 
   wirePlateauDetails();
 }).catch(error=>{console.error(error);const staffNode=document.querySelector('#team-staff');if(staffNode)staffNode.setAttribute('aria-busy','false');document.querySelector('#team-name').textContent='Informations indisponibles';document.querySelector('#team-description').textContent='La connexion aux données du club a échoué. Merci de réessayer dans quelques instants.'});
