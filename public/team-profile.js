@@ -147,40 +147,36 @@ fetch(`/api/page/team-profile?slug=${encodeURIComponent(slug||'')}&v=25`).then(a
 
                 <table>
 
-                  <thead>
-                    <tr>
-                      <th scope="col">#</th>
-                      <th scope="col">Équipe</th>
-                      <th scope="col">J</th>
-                      <th scope="col">G</th>
-                      <th scope="col">N</th>
-                      <th scope="col">P</th>
-                      <th scope="col">Pts</th>
-                    </tr>
-                  </thead>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Équipe</th>
+                    <th>J</th>
+                    <th>G</th>
+                    <th>N</th>
+                    <th>P</th>
+                    <th>Bp.</th>
+                    <th>Bc.</th>
+                    <th>Diff.</th>
+                    <th>Pts</th>
+                  </tr>
+                </thead>
 
-                  <tbody>
-                    ${
-                      ordered.map(row=>`
-                        <tr
-                          class="${
-                            /escalquens/i.test(
-                              row.team_name||''
-                            )
-                              ?'is-fce'
-                              :''
-                          }"
-                        >
-                          <td>${esc(row.position)}</td>
-                          <td>${esc(row.team_name)}</td>
-                          <td>${esc(row.played)}</td>
-                          <td>${esc(row.won)}</td>
-                          <td>${esc(row.drawn)}</td>
-                          <td>${esc(row.lost)}</td>
-                          <td><b>${esc(row.points)}</b></td>
-                        </tr>
-                      `).join('')
-                    }
+                 <tbody>
+                    ${rows.map(row=>`
+                      <tr class="${row.isClub ? 'is-club' : ''}">
+                        <td>${row.position ?? ''}</td>
+                        <td>${row.team_name ?? ''}</td>
+                        <td>${row.played ?? 0}</td>
+                        <td>${row.won ?? 0}</td>
+                        <td>${row.drawn ?? 0}</td>
+                        <td>${row.lost ?? 0}</td>
+                        <td>${row.goals_for ?? 0}</td>
+                        <td>${row.goals_against ?? 0}</td>
+                        <td>${(row.goals_for ?? 0) - (row.goals_against ?? 0)}</td>
+                        <td>${row.points ?? 0}</td>
+                      </tr>
+                    `).join('')}
                   </tbody>
 
                 </table>

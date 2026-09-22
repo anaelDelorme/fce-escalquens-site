@@ -149,3 +149,136 @@
     flex-direction:column;
   }
 }
+
+.standings-block {
+  margin-top: 2rem;
+  border: 1px solid var(--border, #d7cfc3);
+  background: linear-gradient(180deg, #f8f5ef 0%, #f3eee4 100%);
+  box-shadow: 0 10px 24px rgba(0,0,0,.08);
+  overflow: hidden;
+}
+
+.standings-block__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: linear-gradient(90deg, #7a0f19 0%, #a51724 100%);
+  color: #fff;
+}
+
+.standings-block__title {
+  margin: 0;
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: .02em;
+}
+
+.standings-block__meta {
+  font-size: .9rem;
+  opacity: .9;
+}
+
+.standings-table-wrap {
+  overflow-x: auto;
+}
+
+.standings-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+  background: #fffdf9;
+}
+
+.standings-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: .9rem .85rem;
+  text-align: left;
+  font-size: .92rem;
+  font-weight: 800;
+  color: #5f0d17;
+  background: #efe7d3;
+  border-bottom: 2px solid #d8c59b;
+}
+
+.standings-table tbody td {
+  padding: .95rem .85rem;
+  border-bottom: 1px solid #ece4d8;
+  font-size: 1rem;
+  vertical-align: middle;
+}
+
+.standings-table tbody tr:nth-child(even) {
+  background: #fcfaf6;
+}
+
+.standings-table tbody tr:hover {
+  background: #f7f0df;
+}
+
+.standings-table tbody tr.is-club {
+  background: #f3e7b5;
+  font-weight: 700;
+}
+
+.standings-table tbody tr.is-club td:first-child {
+  border-left: 4px solid #b31224;
+}
+
+.standings-rank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  background: #7a0f19;
+  color: #fff;
+  font-weight: 800;
+}
+
+.standings-team {
+  font-weight: 700;
+  color: #251d18;
+}
+
+.standings-diff--positive {
+  color: #147a36;
+  font-weight: 700;
+}
+
+.standings-diff--negative {
+  color: #a61d24;
+  font-weight: 700;
+}
+
+.standings-points {
+  font-weight: 800;
+  color: #7a0f19;
+}
+
+.standings-source {
+  color: #fff;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+@media (max-width: 720px) {
+  .standings-block__header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .standings-block__title {
+    font-size: 1.25rem;
+  }
+
+  .standings-table thead th,
+  .standings-table tbody td {
+    padding: .75rem .65rem;
+    font-size: .92rem;
+  }
+}
