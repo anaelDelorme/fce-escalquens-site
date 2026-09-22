@@ -246,7 +246,7 @@ async function pageData(env: Env, url: URL) {
       FROM teams t LEFT JOIN site_media sm ON sm.slot='team_default'
       WHERE t.slug=? AND t.active=1 LIMIT 1`).bind(slug).first<AnyRow>();
     if (!team) return publicJson({ error: "Équipe introuvable" }, 404);
-    const [entries, staff, sessions, upcoming, results, participants, standings] = await env.DB.batch<AnyRow>([
+    const [entries, staff, sessions, upcoming, results, participants, standings, standingLogos] = await env.DB.batch<AnyRow>([
       env.DB.prepare(`SELECT id,name,division,competition_name,pool FROM team_competitions
         WHERE team_id=? AND active=1 AND (season_id IS NULL OR season_id=${activeSeason})
         ORDER BY display_order,name`).bind(team.id),
@@ -311,7 +311,60 @@ async function pageData(env: Env, url: URL) {
           competition_team_id,
           phase_id,
           position
-      `).bind(team.id)
+      `).bind(team.id),
+
+      env.DB.prepare(`
+        SELECT
+          team_name,
+          MAX(logo_url) AS logo_url
+
+        FROM (
+          SELECT
+            home_team AS team_name,
+            home_logo_url AS logo_url
+
+          FROM matches
+
+          WHERE
+            team_id=?
+            AND (
+              season_id IS NULL
+              OR season_id=${activeSeason}
+            )
+            AND TRIM(
+              COALESCE(
+                home_logo_url,
+                ''
+              )
+            )<>''
+
+          UNION ALL
+
+          SELECT
+            away_team AS team_name,
+            away_logo_url AS logo_url
+
+          FROM matches
+
+          WHERE
+            team_id=?
+            AND (
+              season_id IS NULL
+              OR season_id=${activeSeason}
+            )
+            AND TRIM(
+              COALESCE(
+                away_logo_url,
+                ''
+              )
+            )<>''
+        )
+
+        GROUP BY team_name
+      `).bind(
+        team.id,
+        team.id
+      )
     ]);
     return publicJson({
       team,
@@ -325,7 +378,8 @@ async function pageData(env: Env, url: URL) {
       upcoming: resultRows(upcoming),
       results: resultRows(results),
       participants: resultRows(participants),
-      standings: resultRows(standings)
+      standings: resultRows(standings),
+      standing_logos: resultRows(standingLogos)
     });
   }
 
@@ -1383,6 +1437,16 @@ async function ingestStandings(
             team.slug
           )
         }&v=25`
+      )
+    );
+
+    cacheKeys.push(
+      new Request(
+        `${origin}/api/page/team-profile?slug=${
+          encodeURIComponent(
+            team.slug
+          )
+        }&v=26`
       )
     );
   }

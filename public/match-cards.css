@@ -636,3 +636,172 @@
     min-width:190px;
   }
 }
+
+
+/* FCE matches redesign v3 */
+
+#matches-page[hidden],
+#standings-page[hidden]{
+  display:none!important;
+}
+
+.match-information{
+  position:relative;
+  overflow:hidden;
+  border:1px solid #e2d8cf;
+  border-radius:18px;
+  padding:20px 22px;
+  background:#fff;
+  box-shadow:0 16px 40px rgba(41,25,20,.07);
+}
+
+.match-information::before{
+  content:"";
+  position:absolute;
+  inset:0 auto 0 0;
+  width:6px;
+  background:var(--gold);
+}
+
+.match-information strong{
+  color:var(--wine);
+}
+
+.match-filters{
+  gap:16px;
+  border:1px solid #e2d8cf;
+  border-radius:18px;
+  padding:22px 20px 20px;
+  background:#fff;
+  box-shadow:0 16px 40px rgba(41,25,20,.06);
+}
+
+.match-filters legend{
+  padding:7px 12px;
+  border-radius:999px;
+  background:var(--wine);
+  color:#fff;
+  font-size:10px;
+  font-weight:900;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+}
+
+.match-filters select{
+  min-height:46px;
+  border:1px solid #ddd2c9;
+  border-radius:10px;
+  background:#faf8f5;
+}
+
+.match-calendar{
+  gap:22px;
+}
+
+.match-calendar .match-card,
+.team-plateau-card{
+  overflow:hidden;
+  border:1px solid #e2d8cf;
+  border-top:0;
+  border-radius:18px;
+  background:#fff;
+  box-shadow:
+    0 18px 45px rgba(41,25,20,.08),
+    0 2px 8px rgba(41,25,20,.05);
+}
+
+.match-card>header,
+.team-plateau-card>header{
+  padding:17px 19px;
+  background:
+    radial-gradient(
+      circle at 92% 15%,
+      rgba(255,205,52,.20),
+      transparent 35%
+    ),
+    linear-gradient(
+      120deg,
+      #67101d 0%,
+      #8e1424 60%,
+      #a41a2b 100%
+    );
+  color:#fff;
+}
+
+.match-card>header time{
+  color:#fff;
+}
+
+.match-card>header span{
+  padding:5px 8px;
+  border-radius:999px;
+  background:rgba(255,255,255,.14);
+  color:var(--gold);
+}
+
+.match-card .competition-name{
+  min-height:0;
+  padding:13px 19px;
+  background:#f3eee8;
+  border-bottom:1px solid #e7ded7;
+  color:#76665f;
+  font-size:10px;
+  font-weight:900;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+}
+
+.score,
+.kickoff,
+.match-status{
+  border-radius:12px;
+}
+
+.match-card>footer{
+  background:#faf8f5;
+}
+
+.standings-team-identity{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-width:0;
+}
+
+.standings-team-identity .match-logo{
+  flex:none;
+  width:34px;
+  height:34px;
+  object-fit:contain;
+}
+
+.standings-team-identity .match-logo.fallback{
+  display:grid;
+  place-items:center;
+  border:1px solid #ddd2c9;
+  border-radius:50%;
+  background:#f5f0eb;
+  font-size:15px;
+}
+
+.data-note{
+  margin-top:22px;
+  padding:13px 16px;
+  border-radius:12px;
+  background:#f3eee8;
+  color:#75665f;
+  font-size:11px;
+}
+
+@media(max-width:720px){
+  .match-information{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+
+  .match-filters,
+  .match-calendar .match-card,
+  .team-plateau-card{
+    border-radius:14px;
+  }
+}

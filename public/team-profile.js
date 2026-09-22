@@ -54,11 +54,11 @@ const wirePlateauDetails=()=>document.querySelectorAll('[data-plateau-games]').f
   detail.innerHTML='<p class="plateau-games-loading">Chargement du programme…</p>';
   try{if(!plateauGamesCache.has(id)){const response=await fetch(`/api/plateau-games?plateau_id=${encodeURIComponent(id)}`),data=await response.json();if(!response.ok)throw new Error(data.error||`HTTP ${response.status}`);plateauGamesCache.set(id,data.games||[])}detail.innerHTML=plateauGamesHtml(plateauGamesCache.get(id));detail.dataset.loaded='1'}catch(error){console.error(error);detail.innerHTML='<p class="participant-empty">Le détail est momentanément indisponible.</p>'}
 });
-fetch(`/api/page/team-profile?slug=${encodeURIComponent(slug||'')}&v=25`).then(async response=>{
+fetch(`/api/page/team-profile?slug=${encodeURIComponent(slug||'')}&v=26`).then(async response=>{
   const data=await response.json();
   if(!response.ok)throw new Error(data.error||`Fiche équipe : ${response.status}`);
   return data;
-}).then(({team,entries=[],sessions=[],staff=[],upcoming=[],results=[],participants=[],standings=[]})=>{
+}).then(({team,entries=[],sessions=[],staff=[],upcoming=[],results=[],participants=[],standings=[],standing_logos=[]})=>{
   savedParticipants=participants;
   document.title=`${team.name} - FC Escalquens`;set('#team-name',team.name);set('#team-description',team.description);set('#player-count',team.player_count||'—');
   const engagementRows=entries.map((item,index)=>({
@@ -80,6 +80,45 @@ fetch(`/api/page/team-profile?slug=${encodeURIComponent(slug||'')}&v=25`).then(a
   document.querySelector('#team-training').innerHTML=sessions.map(row=>{const query=row.venue_latitude!=null&&row.venue_longitude!=null?`${row.venue_latitude},${row.venue_longitude}`:row.venue_full_address||row.address||row.venue_name||row.venue,link=row.venue_maps_url||`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;return `<article><b>${days[row.weekday]}</b><span>${row.starts_at} - ${row.ends_at}</span><small>${esc(row.venue_name||row.venue)}</small><a href="${link}" target="_blank" rel="noopener">Itinéraire →</a></article>`}).join('')||'<p>Horaires à venir.</p>';
   document.querySelector('#team-upcoming').innerHTML=upcoming.map(match=>miniMatch(match,true)).join('')||'<p>Les prochaines rencontres arrivent bientôt.</p>';
   document.querySelector('#team-results').innerHTML=results.map(match=>miniMatch(match,false)).join('')||'<p>Aucun résultat publié pour ce groupe.</p>';
+
+
+  const standingKey=value=>
+    String(value||'')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g,'')
+      .toLocaleLowerCase('fr')
+      .replace(/[^a-z0-9]+/g,' ')
+      .trim()
+      .split(/\s+/)
+      .filter(token=>
+        token
+        && ![
+          'a','c','e','f','j','o','s','t','u',
+          'ao','es','fc','js','ts','us',
+          'club','football'
+        ].includes(token)
+      )
+      .join(' ');
+
+  const standingLogoUrl=name=>{
+    if(/escalquens/i.test(String(name||''))){
+      return '/logo-fce.webp';
+    }
+
+    const target=standingKey(name);
+
+    const found=standing_logos.find(item=>{
+      const candidate=standingKey(item.team_name);
+
+      return candidate && (
+        candidate===target
+        || candidate.includes(target)
+        || target.includes(candidate)
+      );
+    });
+
+    return found?.logo_url||'';
+  };
 
   const standingsNode=document.querySelector('#team-standings');
 
@@ -200,13 +239,19 @@ fetch(`/api/page/team-profile?slug=${encodeURIComponent(slug||'')}&v=25`).then(a
           </td>
 
           <td class="standings-team-cell">
-            <span class="standings-team">
-              ${esc(row.team_name??'')}
+            <span class="standings-team-identity">
+              ${logo(
+                standingLogoUrl(row.team_name),
+                row.team_name
+              )}
+              <span class="standings-team">
+                ${esc(row.team_name??'')}
+              </span>
+              ${club
+                ?'<span class="standings-club-badge">FCE</span>'
+                :''
+              }
             </span>
-            ${club
-              ?'<span class="standings-club-badge">FCE</span>'
-              :''
-            }
           </td>
 
           <td>${esc(row.played??0)}</td>

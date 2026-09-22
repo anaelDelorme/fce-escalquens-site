@@ -43,6 +43,46 @@ const canonicalClubName=value=>String(value||'')
   .replace(/[^a-z0-9]+/g,' ').trim().split(/\s+/)
   .filter(token=>token&&!['a','c','e','f','j','o','s','t','u','ao','es','fc','js','ts','us','club','football'].includes(token))
   .join(' ');
+
+const standingLogoUrl=name=>{
+  if(/escalquens/i.test(String(name||''))){
+    return '/logo-fce.webp';
+  }
+
+  const target=canonicalClubName(name);
+
+  if(!target){
+    return '';
+  }
+
+  for(const row of matches){
+    if(
+      canonicalClubName(row.home_team)===target
+      && row.home_logo_url
+    ){
+      return row.home_logo_url;
+    }
+
+    if(
+      canonicalClubName(row.away_team)===target
+      && row.away_logo_url
+    ){
+      return row.away_logo_url;
+    }
+  }
+
+  for(const participant of participants){
+    if(
+      canonicalClubName(participant.name)===target
+      && participant.logo_url
+    ){
+      return participant.logo_url;
+    }
+  }
+
+  return '';
+};
+
 const rawParticipants=row=>{
   const source=rawSource(row);
   return (source.equipes||source.participants||[]).map(item=>({
@@ -219,8 +259,22 @@ function draw(){
         ?'Filtrer les classements'
         :'Filtrer les rencontres';
   }
-  document.querySelector('#standings-page').hidden=tab!=='standings';
-  document.querySelector('#matches-page').hidden=tab==='standings';
+  const standingsPage=document.querySelector('#standings-page');
+  const matchesPage=document.querySelector('#matches-page');
+  const showStandings=tab==='standings';
+
+  standingsPage.hidden=!showStandings;
+  matchesPage.hidden=showStandings;
+
+  standingsPage.style.display=
+    showStandings
+      ?'block'
+      :'none';
+
+  matchesPage.style.display=
+    showStandings
+      ?'none'
+      :'grid';
   if(tab==='standings'){
 
     const rows=
@@ -346,13 +400,19 @@ function draw(){
           </td>
 
           <td class="standings-team-cell">
-            <span class="standings-team">
-              ${esc(row.team_name??'')}
+            <span class="standings-team-identity">
+              ${logo(
+                standingLogoUrl(row.team_name),
+                row.team_name
+              )}
+              <span class="standings-team">
+                ${esc(row.team_name??'')}
+              </span>
+              ${club
+                ?'<span class="standings-club-badge">FCE</span>'
+                :''
+              }
             </span>
-            ${club
-              ?'<span class="standings-club-badge">FCE</span>'
-              :''
-            }
           </td>
 
           <td>${esc(row.played??0)}</td>
