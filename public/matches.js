@@ -219,8 +219,8 @@ function draw(){
     rows.forEach(row=>{
 
       const key=String(
-        row.competition_team_id
-        ||row.phase_id
+        row.phase_id
+        ||row.competition_team_id
         ||'classement'
       );
 
@@ -337,7 +337,7 @@ function draw(){
   wirePlateauDetails();
 }
 
-fetch('/api/page/matches?v=21').then(async response=>{
+fetch('/api/page/matches?v=22').then(async response=>{
   const data=await response.json();
   if(!response.ok)throw new Error(data.error||`Rencontres : ${response.status}`);
   return data;

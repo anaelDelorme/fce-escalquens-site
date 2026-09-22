@@ -883,6 +883,7 @@ async function ingestMatches(request: Request, env: Env) {
     new Request(`${origin}/api/page/matches?v=19`),
     new Request(`${origin}/api/page/matches?v=20`),
     new Request(`${origin}/api/page/matches?v=21`),
+    new Request(`${origin}/api/page/matches?v=22`),
     new Request(`${origin}/api/page/home`)
   ];
 
@@ -1381,7 +1382,7 @@ async function ingestStandings(
           encodeURIComponent(
             team.slug
           )
-        }&v=24`
+        }&v=25`
       )
     );
   }
