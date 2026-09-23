@@ -32,3 +32,5 @@ prod-to-staging.sql
 __pycache__/
 *.pyc
 test.sql
+backups/prod-20260923-191114.sql
+backups/prod-20260923-191114.sql.sha256
