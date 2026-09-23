@@ -230,6 +230,21 @@ async function api(request: Request, env: Env, url: URL) {
     }
   }
 
+  if (table === "shop_products") {
+    const imageKey =
+      String(body.image_key ?? "").trim();
+
+    /*
+     * Un article sans photo ne peut jamais
+     * être publié dans la boutique.
+     */
+    if (!imageKey) {
+      body.active = 0;
+      body.featured = 0;
+      body.highlighted = 0;
+    }
+  }
+
   const allowed = editable[table] || [];
   const values = Object.entries(body).filter(([key]) => allowed.includes(key));
   if (!values.length) return json({ error: "Aucun champ valide" }, 400);
@@ -578,7 +593,10 @@ async function pageData(env: Env, url: URL) {
         ORDER BY display_order,name COLLATE NOCASE`),
       env.DB.prepare(`SELECT id,shop_category_id,slug,name,short_description,description,
         price_label,price_details,sizes,options,image_key,featured,highlighted,display_order
-        FROM shop_products WHERE active=1
+        FROM shop_products
+        WHERE
+          active=1
+          AND TRIM(COALESCE(image_key,''))<>''
         ORDER BY featured DESC,display_order,name COLLATE NOCASE`),
       env.DB.prepare(`SELECT contact_email,catalogue_title,catalogue_key,order_subject,updated_at
         FROM shop_settings WHERE id=1 LIMIT 1`),
