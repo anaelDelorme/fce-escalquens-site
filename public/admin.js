@@ -116,7 +116,7 @@ async function load(){
   const teamName=id=>references.teams.find(x=>x.id===id)?.name||`Groupe #${id}`;
   const assignedTeam=row=>references.teams.find(x=>String(x.id)===String(row.team_id)&&Number(x.active)!==0);
   const recordTitle=row=>current==='home_slides'?`Photo ${row.display_order??row.id}`:current==='team_staff'?`${teamName(row.team_id)} — ${references.club_members.find(x=>x.id===row.member_id)?.full_name||`Licencié #${row.member_id}`}`:current==='training_sessions'?`${teamName(row.team_id)} — ${dayName(row.weekday)}`:current==='team_competitions'?`${assignedTeam(row)?.name||'À affecter'} — ${row.category_code||row.name}${row.team_number?` n°${row.team_number}`:''}`:current==='tournament_teams'?`${references.tournaments.find(x=>x.id===row.tournament_id)?.name||`Tournoi #${row.tournament_id}`} — ${teamName(row.team_id)}`:current==='matches'?`${row.home_team} — ${row.away_team}`:current==='shop_settings'?'Réglages de la boutique':row.full_name||row.name||row.title||row.label||row.category||row.slug||`#${row.id}`;
-  const recordDetail=row=>current==='home_slides'?(row.alt_text||'Description à renseigner'):current==='training_sessions'?`${references.venues.find(x=>x.id===row.venue_id)?.name||row.venue||'Terrain non renseigné'} · ${row.starts_at||''}–${row.ends_at||''}`:current==='team_competitions'?`${row.competition_name||row.division||'Compétition à préciser'}${row.pool?` · ${row.pool}`:''} · ${row.fff_team_id}`:current==='matches'?`${new Date(row.starts_at).toLocaleString('fr-FR')} · ${row.competition||'Match amical'} · ${[row.venue,row.venue_address].filter((value,index,list)=>value&&list.indexOf(value)===index).join(' — ')||'lieu à confirmer'}`:current==='recruitment_posts'?`${row.target||'Tous publics'} · ${row.status||'open'}`:current==='shop_products'?`${row.price_label||'Prix à confirmer'} · ${references.shop_categories.find(x=>String(x.id)===String(row.shop_category_id))?.name||'Sans catégorie'}${Number(row.featured)===1?' · À la une':''}${Number(row.highlighted)===1?' · Phare':''}`:current==='shop_settings'?`${row.contact_email} · ${row.catalogue_key?'Catalogue chargé':'Catalogue à charger'}`:current==='site_media'?(row.alt_text||'Description à renseigner'):options.role?.find(x=>x[0]===row.role)?.[1]||row.role||row.group_name||row.venue||row.starts_at||'';
+  const recordDetail=row=>current==='home_slides'?(row.alt_text||'Description à renseigner'):current==='training_sessions'?`${references.venues.find(x=>x.id===row.venue_id)?.name||row.venue||'Terrain non renseigné'} · ${row.starts_at||''}–${row.ends_at||''}`:current==='team_competitions'?`${row.competition_name||row.division||'Compétition à préciser'}${row.pool?` · ${row.pool}`:''} · ${row.fff_team_id}`:current==='matches'?`${new Date(row.starts_at).toLocaleString('fr-FR')} · ${row.competition||'Match amical'} · ${[row.venue,row.venue_address].filter((value,index,list)=>value&&list.indexOf(value)===index).join(' — ')||'lieu à confirmer'}`:current==='recruitment_posts'?`${row.target||'Tous publics'} · ${row.status||'open'}`:current==='shop_products'?`${row.price_label||'Prix à confirmer'} · ${references.shop_categories.find(x=>String(x.id)===String(row.shop_category_id))?.name||'Sans catégorie'} · ${Number(row.active)===1?'Visible':'Masqué'}${!String(row.image_key||'').trim()?' · Sans photo':''}${Number(row.featured)===1?' · À la une':''}${Number(row.highlighted)===1?' · Phare':''}`:current==='shop_settings'?`${row.contact_email} · ${row.catalogue_key?'Catalogue chargé':'Catalogue à charger'}`:current==='site_media'?(row.alt_text||'Description à renseigner'):options.role?.find(x=>x[0]===row.role)?.[1]||row.role||row.group_name||row.venue||row.starts_at||'';
   $('#records').innerHTML=response.ok?rows.map(row=>{const automatic=current==='matches'&&row.source!=='manual';const protectedRow=current==='shop_settings';return `<article class="${automatic?'automatic':''}"><div><b>${esc(recordTitle(row))}</b><small>${esc(recordDetail(row))}</small>${automatic?'<em>Synchronisé automatiquement</em>':''}</div>${automatic?'':`<button data-edit='${JSON.stringify(row).replace(/'/g,'&#39;')}'>Modifier</button>${protectedRow?'':`<button data-delete="${row.id}">Supprimer</button>`}`}</article>`}).join(''):'';
   document.querySelectorAll('[data-edit]').forEach(button=>button.onclick=()=>open(JSON.parse(button.dataset.edit)));
   document.querySelectorAll('[data-delete]').forEach(button=>button.onclick=()=>remove(button.dataset.delete));
@@ -124,6 +124,43 @@ async function load(){
 function field(name,value){
   const title=`<span>${labels[name]||name}</span><small>${name}</small>`;
   if(current==='team_competitions'&&Number(editingRow.discovered_automatically)===1&&['name','team_number','fff_team_id','category_code','competition_name','division','pool'].includes(name))return `<label><span class="field-title">${title}</span><input type="text" name="${name}" value="${esc(value)}" readonly></label>`;
+  if(
+    current==='shop_products'
+    &&name==='active'
+  ){
+    return `
+      <label class="toggle-field shop-active-toggle">
+        <span class="field-title">
+          <span>Article visible dans la boutique</span>
+          <small>active</small>
+        </span>
+
+        <input
+          type="hidden"
+          name="active"
+          value="0"
+        >
+
+        <input
+          type="checkbox"
+          name="active"
+          value="1"
+          ${Number(value)!==0?'checked':''}
+        >
+
+        <i></i>
+
+        <b>
+          ${
+            Number(value)!==0
+              ?'Visible'
+              :'Masqué'
+          }
+        </b>
+      </label>
+    `;
+  }
+
   if(booleans.has(name))return `<label class="toggle-field"><span class="field-title">${title}</span><input type="hidden" name="${name}" value="0"><input type="checkbox" name="${name}" value="1" ${Number(value)!==0?'checked':''}><i></i><b>${Number(value)!==0?'Oui':'Non'}</b></label>`;
   if(files.has(name)){const imageField=['photo_key','logo_key','image_key'].includes(name)||(['site_media','home_slides'].includes(current)&&name==='object_key');return `<label class="file-field"><span class="field-title">${title}</span><input type="hidden" name="${name}" value="${esc(value)}"><input type="file" data-upload="${name}" data-image="${imageField?'1':'0'}" accept="${imageField?'image/*':'.pdf'}"><span class="file-state">${value?`Fichier actuel : ${esc(value)}`:'Choisir un fichier'}</span>${value&&imageField?`<img src="/media/${esc(value)}" alt="Aperçu">`:value?`<a href="/media/${esc(value)}" target="_blank" rel="noopener">Ouvrir le fichier actuel</a>`:''}</label>`}
   if(['team_id','competition_team_id','tournament_id','member_id','venue_id','level_id','season_id','shop_category_id'].includes(name)){const rows=name==='team_id'?references.teams:name==='competition_team_id'?references.team_competitions:name==='tournament_id'?references.tournaments:name==='member_id'?references.club_members:name==='venue_id'?references.venues:name==='season_id'?references.seasons:name==='shop_category_id'?references.shop_categories:references.competition_levels;const required=current==='team_competitions'&&name==='team_id'?'required':'';return `<label><span class="field-title">${title}</span><select name="${name}" ${required}><option value="">Sélectionner…</option>${rows.filter(row=>row.active!==0).map(row=>`<option value="${row.id}" ${String(row.id)===String(value)?'selected':''}>${esc(row.name||row.full_name||row.label)}</option>`).join('')}</select></label>`}
@@ -214,7 +251,14 @@ async function open(row={}){
           display_order:0,
           active:1
         }
-      :{};
+      :current==='shop_products'
+        ?{
+            active:0,
+            featured:0,
+            highlighted:0,
+            display_order:0
+          }
+        :{};
 
   $('#fields').innerHTML=schemas[current]
     .map(name=>
@@ -226,7 +270,27 @@ async function open(row={}){
       )
     )
     .join('');
-  document.querySelectorAll('.toggle-field input[type=checkbox]').forEach(input=>input.onchange=()=>input.closest('label').querySelector('b').textContent=input.checked?'Oui':'Non');
+  document.querySelectorAll('.toggle-field input[type=checkbox]').forEach(input=>{
+    input.onchange=()=>{
+      const label=input.closest('label');
+      const text=label.querySelector('b');
+
+      if(
+        current==='shop_products'
+        &&input.name==='active'
+      ){
+        text.textContent=
+          input.checked
+            ?'Visible'
+            :'Masqué';
+      }else{
+        text.textContent=
+          input.checked
+            ?'Oui'
+            :'Non';
+      }
+    };
+  });
   document.querySelectorAll('[data-upload]').forEach(input=>input.onchange=()=>upload(input));$('#editor').showModal();
 }
 async function upload(input){
@@ -295,7 +359,20 @@ async function save(event){
   if(current==='matches'){const team=references.teams.find(item=>String(item.id)===String(values.team_id));values.source=editingRow.source||'manual';values.source_id=editingRow.source_id||`manual-${Date.now()}`;values.category=team?.category||team?.name||'';values.event_type='friendly';values.manually_created=1;values.time_confirmed=1;values.raw_json='{}';}
   if(current==='documents')values.slug=editingRow.slug||slugify(values.title);
   if(current==='shop_categories')values.slug=editingRow.slug||slugify(values.name);
-  if(current==='shop_products')values.slug=editingRow.slug||slugify(values.name);
+  if(current==='shop_products'){
+    values.slug=
+      editingRow.slug
+      ||slugify(values.name);
+
+    values.image_key=
+      String(values.image_key||'').trim();
+
+    if(!values.image_key){
+      values.active=0;
+      values.featured=0;
+      values.highlighted=0;
+    }
+  }
   const response=await fetch(`/admin-api/${current}${editing?`/${editing}`:''}`,{method:editing?'PUT':'POST',headers:jsonHeaders(),body:JSON.stringify(values)});if(response.ok){if(['teams','club_members','venues','competition_levels','seasons','tournaments','team_competitions','shop_categories'].includes(current))referencesLoaded=false;$('#editor').close();load()}else{let result={};try{result=await response.json()}catch{}$('#editor-status').textContent=response.status===401?'Votre session Cloudflare a expiré. Rechargez la page pour recevoir un nouveau code de connexion.':response.status===403?'Cette adresse e-mail n’est pas autorisée dans la liste des administrateurs du site.':result.error||'Enregistrement impossible. Vérifiez qu’une affectation identique n’existe pas déjà.';}
 }
 function parseCsv(text){
