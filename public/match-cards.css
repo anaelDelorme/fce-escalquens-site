@@ -1223,3 +1223,52 @@
   }
 
 }
+
+/* Correctif définitif : titres de classement longs sur mobile */
+.standings-card .standings-card__header{
+  height:auto;
+  min-height:84px;
+}
+
+@media(max-width:720px){
+
+  .standings-card .standings-card__header{
+    height:auto;
+    min-height:0;
+
+    padding:
+      16px
+      58px
+      17px
+      16px;
+  }
+
+  .standings-card .standings-card__header h3{
+    display:block;
+
+    width:100%;
+    max-width:100%;
+
+    margin:5px 0 0;
+
+    line-height:1.25;
+
+    white-space:normal;
+    overflow:visible;
+
+    word-break:normal;
+    overflow-wrap:break-word;
+    hyphens:none;
+  }
+
+  .standings-card.is-collapsed
+  .standings-card__header{
+    height:auto;
+    min-height:0;
+  }
+
+  .standings-toggle{
+    top:14px;
+    right:14px;
+  }
+}
