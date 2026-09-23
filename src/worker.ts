@@ -1426,7 +1426,7 @@ async function ingestStandings(
           )
           VALUES(
             'fff',
-            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
+            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
             CURRENT_TIMESTAMP
           )
         `)
@@ -1536,73 +1536,26 @@ async function ingestStandings(
 
 
   const origin=
-    new URL(
-      request.url
-    ).origin;
+    new URL(request.url).origin;
 
-
-  const slugs=
-    await env.DB
-      .prepare(`
-        SELECT slug
-        FROM teams
-        WHERE active=1
-      `)
-      .all<{
-        slug: string
-      }>();
-
-
-  const cacheKeys=[
-    new Request(
-      `${origin}/api/page/matches`
+  /*
+   * Purge volontairement limitée :
+   * ne jamais multiplier les sous-requêtes
+   * de cache après une synchronisation.
+   */
+  await Promise.allSettled([
+    caches.default.delete(
+      new Request(
+        `${origin}/api/page/matches`
+      )
     ),
 
-    new Request(
-      `${origin}/api/page/matches?v=20`
-    ),
-
-    new Request(
-      `${origin}/api/page/matches?v=21`
-    )
-  ];
-
-
-  for (
-    const team of
-      slugs.results || []
-  ) {
-
-    cacheKeys.push(
+    caches.default.delete(
       new Request(
-        `${origin}/api/page/team-profile?slug=${
-          encodeURIComponent(
-            team.slug
-          )
-        }&v=25`
+        `${origin}/api/page/matches?v=23`
       )
-    );
-
-    cacheKeys.push(
-      new Request(
-        `${origin}/api/page/team-profile?slug=${
-          encodeURIComponent(
-            team.slug
-          )
-        }&v=26`
-      )
-    );
-  }
-
-
-  await Promise.allSettled(
-    cacheKeys.map(
-      key =>
-        caches.default.delete(
-          key
-        )
     )
-  );
+  ]);
 
 
   return json({
