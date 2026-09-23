@@ -1,9 +1,27 @@
 export async function browserCollectStandings(_saved, clubNo, seasonStartYear) {
   const targets=new Map();
 
+  /*
+   * Ne jamais dépendre de location.origin ici.
+   * Certaines sessions navigateur ZenRows utilisent
+   * un contexte dont l'origin peut être opaque ("null").
+   *
+   * Les pages que nous lisons appartiennent toutes
+   * à epreuves.fff.fr : on utilise donc explicitement
+   * cette origine comme base.
+   */
+  const fffOrigin='https://epreuves.fff.fr';
+
   const addTarget=raw=>{
     try{
-      const url=new URL(raw,location.origin);
+      const url=new URL(
+        raw,
+        fffOrigin
+      );
+
+      if(url.hostname!=='epreuves.fff.fr'){
+        return;
+      }
 
       const match=url.pathname.match(
         /\/competition\/engagement\/([^/]+)\/phase\/(\d+)\/(\d+)(?:\/[^?#]*)?/
@@ -23,8 +41,11 @@ export async function browserCollectStandings(_saved, clubNo, seasonStartYear) {
         engagement.replace(/^\d+-?/,'');
 
       const classementUrl=
-        `${location.origin}/competition/engagement/`+
-        `${engagement}/phase/${phase}/${pool}/classement`;
+        new URL(
+          `/competition/engagement/`+
+          `${engagement}/phase/${phase}/${pool}/classement`,
+          fffOrigin
+        ).href;
 
       targets.set(
         `${engagement}:${phase}:${pool}`,
@@ -56,7 +77,8 @@ export async function browserCollectStandings(_saved, clubNo, seasonStartYear) {
       .querySelectorAll('a[href]')
       .forEach(
         link=>addTarget(
-          link.getAttribute('href')
+          link.href
+          ||link.getAttribute('href')
         )
       );
   };
