@@ -1058,3 +1058,168 @@
     border-radius:12px;
   }
 }
+
+/* FCE standings mobile polish v7 */
+
+/* FCE : mise en avant plus sobre */
+.standings-table tbody tr.is-club td{
+  background:#fff;
+}
+
+.standings-table tbody tr.is-club:hover td{
+  background:#faf6f3;
+}
+
+.standings-table tbody tr.is-club td:first-child{
+  box-shadow:inset 5px 0 0 var(--wine);
+}
+
+
+/* Titres longs */
+.standings-card .standings-card__header h3{
+  white-space:normal;
+  overflow:visible;
+  text-overflow:clip;
+  overflow-wrap:break-word;
+}
+
+
+/* Smartphone */
+@media(max-width:720px){
+
+  /*
+   * Le bouton +/- reste toujours en haut à droite,
+   * quelle que soit la hauteur du titre.
+   */
+  .standings-card .standings-card__header{
+    position:relative;
+    display:block;
+
+    min-height:0;
+
+    padding:
+      16px
+      58px
+      16px
+      16px;
+
+    overflow:visible;
+  }
+
+  .standings-card__header>div:first-child{
+    width:100%;
+    min-width:0;
+  }
+
+  .standings-card .standings-card__header h3{
+    width:100%;
+    max-width:none;
+
+    margin-top:4px;
+
+    font-size:17px;
+    line-height:1.24;
+
+    overflow-wrap:normal;
+    word-break:normal;
+    hyphens:auto;
+  }
+
+  .standings-toggle{
+    position:absolute;
+    top:14px;
+    right:14px;
+
+    display:grid;
+    place-items:center;
+
+    width:36px;
+    height:36px;
+
+    margin:0;
+  }
+
+  .standings-card .standings-card__header>a{
+    display:inline-flex;
+
+    width:max-content;
+    max-width:100%;
+
+    margin-top:11px;
+  }
+
+  /* Une carte repliée reste très compacte */
+  .standings-card.is-collapsed
+  .standings-card__header>a{
+    display:none;
+  }
+
+
+  /*
+   * Ligne classement mobile :
+   * rang à gauche, puis toute la largeur
+   * disponible pour l'équipe et ses statistiques.
+   */
+  .standings-table tbody tr{
+    position:relative;
+
+    grid-template-columns:
+      42px
+      minmax(0,1fr);
+
+    gap:8px;
+
+    padding:
+      12px
+      12px
+      12px
+      10px;
+  }
+
+  .standings-table tbody td:nth-child(1){
+    grid-column:1;
+  }
+
+  .standings-table tbody td:nth-child(2){
+    grid-column:2;
+
+    padding-right:48px;
+  }
+
+  /*
+   * Les points flottent en haut à droite,
+   * sans réduire la largeur des stats.
+   */
+  .standings-table tbody td:nth-child(10){
+    position:absolute;
+
+    top:12px;
+    right:10px;
+
+    display:block;
+  }
+
+  .standings-team-identity{
+    min-height:32px;
+  }
+
+  .standings-mobile-stats{
+    width:100%;
+
+    grid-template-columns:
+      repeat(4,minmax(0,1fr));
+
+    margin-top:8px;
+  }
+
+  .standings-table tbody tr.is-club{
+    background:#fff;
+    box-shadow:
+      inset 4px 0 0 var(--wine);
+  }
+
+  .standings-table tbody tr.is-club td{
+    background:transparent;
+  }
+
+}

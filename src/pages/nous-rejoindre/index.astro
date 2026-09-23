@@ -1,0 +1,93 @@
+---
+import Header from '../../components/Header.astro';
+import Footer from '../../components/Footer.astro';
+---
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width">
+  <title>Nous rejoindre - FC Escalquens</title>
+  <meta
+    name="description"
+    content="Rejoignez le FC Escalquens : joueurs, joueuses, éducateurs, bénévoles, seniors et apprentis."
+  >
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/enhancements.css?v=6">
+  <link rel="stylesheet" href="/brand-charter.css">
+  <link rel="stylesheet" href="/recruitment.css?v=1">
+</head>
+<body>
+  <Header/>
+
+  <main class="recruitment-page">
+
+    <section class="page-hero wine recruitment-hero">
+      <p class="eyebrow">Le mercato du FCE</p>
+      <h1>
+        Votre prochaine<br>
+        équipe est peut-être<br>
+        ici.
+      </h1>
+      <p>
+        Joueurs, joueuses, éducateurs, dirigeants,
+        bénévoles ou alternants : le club évolue toute
+        l’année et de nouvelles places s’ouvrent régulièrement.
+      </p>
+    </section>
+
+    <section class="content recruitment-content">
+
+      <div class="recruitment-intro">
+        <div>
+          <p class="eyebrow">Besoins du moment</p>
+          <h2>Le club recrute.</h2>
+        </div>
+
+        <p>
+          Retrouvez ici les besoins actuels du FC Escalquens.
+          Une annonce peut concerner une catégorie sportive,
+          l’encadrement d’une équipe ou la vie du club.
+        </p>
+      </div>
+
+      <div
+        id="recruitment-filters"
+        class="filter-bar recruitment-filters"
+        aria-label="Filtrer les annonces"
+      ></div>
+
+      <div
+        id="recruitment-list"
+        class="recruitment-grid"
+        aria-live="polite"
+      >
+        <p>Chargement des besoins du club…</p>
+      </div>
+
+      <section class="recruitment-spontaneous">
+        <div>
+          <p class="eyebrow">Vous ne trouvez pas votre annonce ?</p>
+          <h2>Candidature spontanée.</h2>
+          <p>
+            Le football ne se résume pas aux onze joueurs sur le terrain.
+            Si vous souhaitez jouer, entraîner, aider ou participer à la vie
+            du FCE, écrivez-nous.
+          </p>
+        </div>
+
+        <a
+          href="mailto:fcescalquens@gmail.com?subject=Je%20souhaite%20rejoindre%20le%20FC%20Escalquens"
+        >
+          Parler au club →
+        </a>
+      </section>
+
+    </section>
+
+  </main>
+
+  <Footer/>
+
+  <script is:inline src="/recruitment.js?v=1"></script>
+</body>
+</html>

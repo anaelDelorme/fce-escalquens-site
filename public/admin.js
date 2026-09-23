@@ -16,17 +16,44 @@ const schemas={
   shop_categories:['name','description','display_order','active'],
   shop_products:['shop_category_id','name','short_description','description','price_label','price_details','sizes','options','image_key','featured','highlighted','display_order','active'],
   shop_settings:['contact_email','catalogue_title','catalogue_key','order_subject'],
+  recruitment_posts:[
+    'title',
+    'audience',
+    'target',
+    'status',
+    'summary',
+    'description',
+    'profile',
+    'commitment',
+    'location',
+    'image_key',
+    'contact_name',
+    'contact_email',
+    'contact_phone',
+    'apply_url',
+    'display_order',
+    'active'
+  ],
   matches:['season_id','team_id','competition','starts_at','venue','venue_address','latitude','longitude','home_team','away_team','home_score','away_score','status'],
   standings:['source','phase_id','season_id','team_id','team_name','position','played','won','drawn','lost','goals_for','goals_against','points'],
   documents:['slug','title','kind','object_key','published'],
   admins:['email','name','active']
 };
-const collectionLabels={teams:'Groupes sportifs',team_competitions:'Équipes FFF récupérées',seasons:'Saisons',competition_levels:'Niveaux',venues:'Terrains',club_members:'Licenciés & encadrants',team_staff:'Affectations aux équipes',training_sessions:'Entraînements',contacts:'Contacts',tournaments:'Tournois',tournament_teams:'Participations aux tournois',sponsors:'Partenaires',site_media:'Photos du site',home_slides:'Diaporama accueil',shop_categories:'Boutique — catégories',shop_products:'Boutique — articles',shop_settings:'Boutique — réglages',matches:'Matchs',standings:'Classements',documents:'Documents',admins:'Administrateurs'};
-const labels={slug:'Identifiant URL',label:'Libellé de la saison',season_id:'Saison',name:'Nom',team_number:'Numéro d’équipe',full_name:'Nom et prénom',category:'Domaine',category_code:'Code catégorie FFF',group_name:'Section du club',level:'Niveau',level_id:'Niveau',short_name:'Nom court',gender:'Genre',description:'Présentation',player_count:'Nombre de licenciés',photo_key:'Photo',logo_key:'Logo',image_key:'Photo de l’article',license_number:'Numéro de licence',member_id:'Licencié / encadrant',display_order:'Ordre d’affichage',active:'Actif',team_id:'Groupe sportif',competition_team_id:'Équipe engagée',fff_team_id:'Identifiant équipe FFF',competition_name:'Nom de la compétition',division:'Division',pool:'Poule',weekday:'Jour',starts_at:'Date et heure / heure de début',ends_at:'Heure de fin',venue:'Terrain / lieu',venue_id:'Terrain',venue_address:'Adresse du lieu',address:'Adresse complète',latitude:'Latitude GPS',longitude:'Longitude GPS',maps_url:'Lien Google Maps',notes:'Notes',role:'Rôle dans l’équipe',email:'Email',phone:'Téléphone',responsibilities:'Missions / sujets traités',availability:'Disponibilités',published:'Publié',summary:'Résumé',starts_on:'Date de début',ends_on:'Date de fin',categories:'Sections concernées',registration_url:'Lien d’inscription',tournify_url:'Lien Tournify',organizer:'Organisateur',tournament_id:'Tournoi',rules_key:'Règlement PDF',status:'Statut',source:'Source',source_id:'Identifiant source',competition:'Compétition',home_team:'Équipe à domicile',away_team:'Équipe à l’extérieur',home_score:'Score domicile',away_score:'Score extérieur',phase_id:'Identifiant phase',team_name:'Nom de l’équipe',position:'Position',played:'Matchs joués',won:'Victoires',drawn:'Nuls',lost:'Défaites',goals_for:'Buts pour',goals_against:'Buts contre',points:'Points',title:'Titre',kind:'Type de document',object_key:'Photo',alt_text:'Description de l’image',website_url:'Site internet',tier:'Type de partenariat',shop_category_id:'Catégorie boutique',short_description:'Accroche courte',price_label:'Prix affiché',price_details:'Détail des prix',sizes:'Tailles proposées',options:'Options proposées',featured:'Article à la une',highlighted:'Article phare',contact_email:'E-mail de commande',catalogue_title:'Titre du catalogue',catalogue_key:'Catalogue PDF',order_subject:'Objet des e-mails'};
+const collectionLabels={teams:'Groupes sportifs',team_competitions:'Équipes FFF récupérées',seasons:'Saisons',competition_levels:'Niveaux',venues:'Terrains',club_members:'Licenciés & encadrants',team_staff:'Affectations aux équipes',training_sessions:'Entraînements',contacts:'Contacts',tournaments:'Tournois',tournament_teams:'Participations aux tournois',sponsors:'Partenaires',site_media:'Photos du site',home_slides:'Diaporama accueil',shop_categories:'Boutique — catégories',shop_products:'Boutique — articles',shop_settings:'Boutique — réglages',
+recruitment_posts:'Nous rejoindre — annonces',matches:'Matchs',standings:'Classements',documents:'Documents',admins:'Administrateurs'};
+const labels={slug:'Identifiant URL',label:'Libellé de la saison',season_id:'Saison',name:'Nom',team_number:'Numéro d’équipe',full_name:'Nom et prénom',category:'Domaine',category_code:'Code catégorie FFF',group_name:'Section du club',level:'Niveau',level_id:'Niveau',short_name:'Nom court',gender:'Genre',description:'Présentation',player_count:'Nombre de licenciés',photo_key:'Photo',logo_key:'Logo',image_key:'Photo de l’article',license_number:'Numéro de licence',member_id:'Licencié / encadrant',display_order:'Ordre d’affichage',active:'Actif',team_id:'Groupe sportif',competition_team_id:'Équipe engagée',fff_team_id:'Identifiant équipe FFF',competition_name:'Nom de la compétition',division:'Division',pool:'Poule',weekday:'Jour',starts_at:'Date et heure / heure de début',ends_at:'Heure de fin',venue:'Terrain / lieu',venue_id:'Terrain',venue_address:'Adresse du lieu',address:'Adresse complète',latitude:'Latitude GPS',longitude:'Longitude GPS',maps_url:'Lien Google Maps',notes:'Notes',role:'Rôle dans l’équipe',email:'Email',phone:'Téléphone',responsibilities:'Missions / sujets traités',availability:'Disponibilités',published:'Publié',summary:'Résumé',starts_on:'Date de début',ends_on:'Date de fin',categories:'Sections concernées',registration_url:'Lien d’inscription',tournify_url:'Lien Tournify',organizer:'Organisateur',tournament_id:'Tournoi',rules_key:'Règlement PDF',status:'Statut',source:'Source',source_id:'Identifiant source',competition:'Compétition',home_team:'Équipe à domicile',away_team:'Équipe à l’extérieur',home_score:'Score domicile',away_score:'Score extérieur',phase_id:'Identifiant phase',team_name:'Nom de l’équipe',position:'Position',played:'Matchs joués',won:'Victoires',drawn:'Nuls',lost:'Défaites',goals_for:'Buts pour',goals_against:'Buts contre',points:'Points',title:'Titre',kind:'Type de document',object_key:'Photo',alt_text:'Description de l’image',website_url:'Site internet',tier:'Type de partenariat',shop_category_id:'Catégorie boutique',short_description:'Accroche courte',price_label:'Prix affiché',price_details:'Détail des prix',sizes:'Tailles proposées',options:'Options proposées',featured:'Article à la une',highlighted:'Article phare',contact_email:'E-mail de commande',catalogue_title:'Titre du catalogue',catalogue_key:'Catalogue PDF',order_subject:'Objet des e-mails',
+audience:'Profil recherché',
+target:'Public / catégorie',
+profile:'Profil souhaité',
+commitment:'Disponibilités / engagement',
+location:'Lieu',
+contact_name:'Personne à contacter',
+contact_phone:'Téléphone de contact',
+apply_url:'Lien de candidature'};
 const booleans=new Set(['active','published','featured','highlighted']);
 const numbers=new Set(['team_id','competition_team_id','tournament_id','season_id','member_id','venue_id','level_id','shop_category_id','latitude','longitude','weekday','player_count','display_order','home_score','away_score','position','played','won','drawn','lost','goals_for','goals_against','points']);
 const files=new Set(['photo_key','logo_key','rules_key','object_key','image_key','catalogue_key']);
-const textareas=new Set(['description','short_description','price_details','sizes','options','summary','notes','responsibilities']);
+const textareas=new Set(['description','short_description','price_details','sizes','options','summary','notes','responsibilities','profile','commitment']);
 const clubCategories=['Seniors','Formation','Académie','Féminines'];
 const options={group_name:clubCategories.map(value=>[value,value]),gender:[['mixed','Mixte'],['female','Féminin'],['male','Masculin']],weekday:[[1,'Lundi'],[2,'Mardi'],[3,'Mercredi'],[4,'Jeudi'],[5,'Vendredi'],[6,'Samedi'],[7,'Dimanche']],role:[['coach_referent','Coach référent'],['coach','Coach'],['dirigeant','Dirigeant'],['arbitre','Arbitre']],status:[['scheduled','Programmé'],['finished','Terminé'],['postponed','Reporté'],['cancelled','Annulé'],['draft','Brouillon'],['published','Publié'],['open','Ouvert'],['closed','Fermé']],tier:[['majeur','Partenaire majeur'],['premium','Partenaire premium'],['partenaire','Partenaire'],['soutien','Soutien']],kind:[['photo','Photo'],['pdf','PDF'],['boutique','Boutique']]};
 const contactRoles=[['responsable_mecenat','Responsable mécénat'],['presidence','Présidence'],['community_manager','Community Manager'],['secretariat','Secrétariat'],['tresorerie','Trésorerie'],['responsable_technique','Responsable technique'],['communication','Communication'],['responsable_sportif','Responsable sportif'],['responsable_boutique','Responsable boutique'],['referent','Référent'],['autre','Autre']];
@@ -80,6 +107,7 @@ async function load(){
     shop_categories:'Créez les familles visibles dans la boutique, par exemple « Pour jouer » ou « Pour supporter ».',
     shop_products:'Ajoutez les articles, leurs tailles et plusieurs options (une par ligne). Un seul article à la une sera affiché en tête de page ; les articles phares apparaissent dans leur catégorie.',
     shop_settings:'Chargez ici le catalogue PDF et choisissez l’adresse qui recevra les demandes de commande.',
+    recruitment_posts:'Publiez ici les besoins du club : joueurs et joueuses, éducateurs, seniors, bénévoles, alternants ou autres profils. Le statut Pourvu peut rester visible avant désactivation.',
     club_members:'Ajoutez une personne ou importez une liste de coachs au format CSV.',
     admins:'Cloudflare vérifie l’adresse par code e-mail ; cette liste décide ensuite qui peut réellement administrer le site.'
   };
@@ -88,7 +116,7 @@ async function load(){
   const teamName=id=>references.teams.find(x=>x.id===id)?.name||`Groupe #${id}`;
   const assignedTeam=row=>references.teams.find(x=>String(x.id)===String(row.team_id)&&Number(x.active)!==0);
   const recordTitle=row=>current==='home_slides'?`Photo ${row.display_order??row.id}`:current==='team_staff'?`${teamName(row.team_id)} — ${references.club_members.find(x=>x.id===row.member_id)?.full_name||`Licencié #${row.member_id}`}`:current==='training_sessions'?`${teamName(row.team_id)} — ${dayName(row.weekday)}`:current==='team_competitions'?`${assignedTeam(row)?.name||'À affecter'} — ${row.category_code||row.name}${row.team_number?` n°${row.team_number}`:''}`:current==='tournament_teams'?`${references.tournaments.find(x=>x.id===row.tournament_id)?.name||`Tournoi #${row.tournament_id}`} — ${teamName(row.team_id)}`:current==='matches'?`${row.home_team} — ${row.away_team}`:current==='shop_settings'?'Réglages de la boutique':row.full_name||row.name||row.title||row.label||row.category||row.slug||`#${row.id}`;
-  const recordDetail=row=>current==='home_slides'?(row.alt_text||'Description à renseigner'):current==='training_sessions'?`${references.venues.find(x=>x.id===row.venue_id)?.name||row.venue||'Terrain non renseigné'} · ${row.starts_at||''}–${row.ends_at||''}`:current==='team_competitions'?`${row.competition_name||row.division||'Compétition à préciser'}${row.pool?` · ${row.pool}`:''} · ${row.fff_team_id}`:current==='matches'?`${new Date(row.starts_at).toLocaleString('fr-FR')} · ${row.competition||'Match amical'} · ${[row.venue,row.venue_address].filter((value,index,list)=>value&&list.indexOf(value)===index).join(' — ')||'lieu à confirmer'}`:current==='shop_products'?`${row.price_label||'Prix à confirmer'} · ${references.shop_categories.find(x=>String(x.id)===String(row.shop_category_id))?.name||'Sans catégorie'}${Number(row.featured)===1?' · À la une':''}${Number(row.highlighted)===1?' · Phare':''}`:current==='shop_settings'?`${row.contact_email} · ${row.catalogue_key?'Catalogue chargé':'Catalogue à charger'}`:current==='site_media'?(row.alt_text||'Description à renseigner'):options.role?.find(x=>x[0]===row.role)?.[1]||row.role||row.group_name||row.venue||row.starts_at||'';
+  const recordDetail=row=>current==='home_slides'?(row.alt_text||'Description à renseigner'):current==='training_sessions'?`${references.venues.find(x=>x.id===row.venue_id)?.name||row.venue||'Terrain non renseigné'} · ${row.starts_at||''}–${row.ends_at||''}`:current==='team_competitions'?`${row.competition_name||row.division||'Compétition à préciser'}${row.pool?` · ${row.pool}`:''} · ${row.fff_team_id}`:current==='matches'?`${new Date(row.starts_at).toLocaleString('fr-FR')} · ${row.competition||'Match amical'} · ${[row.venue,row.venue_address].filter((value,index,list)=>value&&list.indexOf(value)===index).join(' — ')||'lieu à confirmer'}`:current==='recruitment_posts'?`${row.target||'Tous publics'} · ${row.status||'open'}`:current==='shop_products'?`${row.price_label||'Prix à confirmer'} · ${references.shop_categories.find(x=>String(x.id)===String(row.shop_category_id))?.name||'Sans catégorie'}${Number(row.featured)===1?' · À la une':''}${Number(row.highlighted)===1?' · Phare':''}`:current==='shop_settings'?`${row.contact_email} · ${row.catalogue_key?'Catalogue chargé':'Catalogue à charger'}`:current==='site_media'?(row.alt_text||'Description à renseigner'):options.role?.find(x=>x[0]===row.role)?.[1]||row.role||row.group_name||row.venue||row.starts_at||'';
   $('#records').innerHTML=response.ok?rows.map(row=>{const automatic=current==='matches'&&row.source!=='manual';const protectedRow=current==='shop_settings';return `<article class="${automatic?'automatic':''}"><div><b>${esc(recordTitle(row))}</b><small>${esc(recordDetail(row))}</small>${automatic?'<em>Synchronisé automatiquement</em>':''}</div>${automatic?'':`<button data-edit='${JSON.stringify(row).replace(/'/g,'&#39;')}'>Modifier</button>${protectedRow?'':`<button data-delete="${row.id}">Supprimer</button>`}`}</article>`}).join(''):'';
   document.querySelectorAll('[data-edit]').forEach(button=>button.onclick=()=>open(JSON.parse(button.dataset.edit)));
   document.querySelectorAll('[data-delete]').forEach(button=>button.onclick=()=>remove(button.dataset.delete));
@@ -102,6 +130,58 @@ function field(name,value){
   if(name==='category'&&current==='contacts'){const choices=['Club',...clubCategories,'Mécénat','Bureau','Technique'];return `<label><span class="field-title">${title}</span><select name="${name}">${choices.map(choice=>`<option value="${choice}" ${choice===value?'selected':''}>${choice}</option>`).join('')}</select></label>`}
   if(name==='role'&&current==='contacts')return `<label><span class="field-title">${title}</span><select name="${name}">${contactRoles.map(([key,text])=>`<option value="${key}" ${key===value?'selected':''}>${text}</option>`).join('')}</select></label>`;
   if(name==='categories'&&current==='tournaments'){let selected=[];try{selected=Array.isArray(value)?value:JSON.parse(value||'[]')}catch{}return `<fieldset class="wide multi-field"><legend>${labels[name]} <small>${name}</small></legend>${clubCategories.map(choice=>`<label><input type="checkbox" data-category-choice value="${choice}" ${selected.includes(choice)?'checked':''}><span>${choice}</span></label>`).join('')}</fieldset>`}
+  if(
+    current==='recruitment_posts'
+    &&name==='audience'
+  ){
+    const choices=[
+      ['players','Joueurs / joueuses'],
+      ['youth','Jeunes'],
+      ['seniors','Seniors'],
+      ['coach','Coach / éducateur'],
+      ['staff','Dirigeant / bénévole'],
+      ['apprentice','Apprenti / alternant / stage'],
+      ['other','Autre']
+    ];
+
+    return `<label>
+      <span class="field-title">${title}</span>
+      <select name="${name}">
+        ${choices.map(([key,text])=>
+          `<option value="${key}"
+            ${key===value?'selected':''}>
+            ${text}
+          </option>`
+        ).join('')}
+      </select>
+    </label>`;
+  }
+
+  if(
+    current==='recruitment_posts'
+    &&name==='status'
+  ){
+    const choices=[
+      ['new','Nouveau'],
+      ['open','Recrutement ouvert'],
+      ['soon','Bientôt'],
+      ['filled','Pourvu'],
+      ['paused','En pause']
+    ];
+
+    return `<label>
+      <span class="field-title">${title}</span>
+      <select name="${name}">
+        ${choices.map(([key,text])=>
+          `<option value="${key}"
+            ${key===value?'selected':''}>
+            ${text}
+          </option>`
+        ).join('')}
+      </select>
+    </label>`;
+  }
+
   if(options[name]&&(name!=='role'||current==='team_staff'))return `<label><span class="field-title">${title}</span><select name="${name}">${options[name].map(([key,text])=>`<option value="${key}" ${String(key)===String(value)?'selected':''}>${text}</option>`).join('')}</select></label>`;
   if(textareas.has(name))return `<label class="wide"><span class="field-title">${title}</span><textarea name="${name}" rows="4">${esc(value)}</textarea></label>`;
   const type=numbers.has(name)?'number':name.includes('email')?'email':name.includes('phone')?'tel':name.endsWith('_on')?'date':name==='starts_at'&&current==='matches'?'datetime-local':name==='starts_at'||name==='ends_at'?'time':name.includes('url')?'url':'text';

@@ -4,7 +4,7 @@ const pathname=Astro.url.pathname;
 const isCurrent=(href)=>href==='/'?pathname==='/':pathname.startsWith(href);
 ---
 <a class="skip-link" href="#main-content">Aller au contenu</a>
-<header class="site-header"><a class="brand" href="/"><img class="club-logo" src="/logo-fce.webp" alt=""><span><b>FC ESCALQUENS</b><small>Un maillot. Une famille.</small></span></a><nav aria-label="Navigation principale">{nav.map(([label,href])=><a href={href} aria-current={isCurrent(href)?'page':undefined}>{label}</a>)}</nav><a class="join" href="/contacts/">Nous rejoindre</a><button class="menu-button" type="button" aria-label="Ouvrir le menu" aria-expanded="false"><i></i><i></i><i></i></button></header>
+<header class="site-header"><a class="brand" href="/"><img class="club-logo" src="/logo-fce.webp" alt=""><span><b>FC ESCALQUENS</b><small>Un maillot. Une famille.</small></span></a><nav aria-label="Navigation principale">{nav.map(([label,href])=><a href={href} aria-current={isCurrent(href)?'page':undefined}>{label}</a>)}</nav><a class="join" href="/nous-rejoindre/">Nous rejoindre</a><button class="menu-button" type="button" aria-label="Ouvrir le menu" aria-expanded="false"><i></i><i></i><i></i></button></header>
 <span id="main-content" class="skip-target" tabindex="-1"></span>
 <script is:inline>document.querySelector('.menu-button')?.addEventListener('click',event=>{const open=document.querySelector('.site-header nav')?.classList.toggle('open');event.currentTarget.setAttribute('aria-expanded',String(Boolean(open)));event.currentTarget.setAttribute('aria-label',open?'Fermer le menu':'Ouvrir le menu')})</script>
 <style is:global>

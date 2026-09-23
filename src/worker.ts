@@ -19,7 +19,7 @@ const tables = new Set([
   "tournament_teams", "matches", "match_participants", "standings", "social_posts",
   "documents", "club_members", "team_staff", "admins", "venues",
   "competition_levels", "seasons", "sponsors", "site_media", "home_slides",
-  "shop_categories", "shop_products", "shop_settings"
+  "shop_categories", "shop_products", "shop_settings", "recruitment_posts"
 ]);
 
 const editable: Record<string, string[]> = {
@@ -44,7 +44,25 @@ const editable: Record<string, string[]> = {
   home_slides: ["object_key", "alt_text", "display_order", "active"],
   shop_categories: ["slug", "name", "description", "display_order", "active"],
   shop_products: ["shop_category_id", "slug", "name", "short_description", "description", "price_label", "price_details", "sizes", "options", "image_key", "featured", "highlighted", "active", "display_order"],
-  shop_settings: ["contact_email", "catalogue_title", "catalogue_key", "order_subject"]
+  shop_settings: ["contact_email", "catalogue_title", "catalogue_key", "order_subject"],
+  recruitment_posts: [
+    "title",
+    "audience",
+    "target",
+    "summary",
+    "description",
+    "profile",
+    "commitment",
+    "location",
+    "status",
+    "contact_name",
+    "contact_email",
+    "contact_phone",
+    "apply_url",
+    "image_key",
+    "display_order",
+    "active"
+  ]
 };
 
 const defaultOrder: Record<string, string> = {
@@ -61,7 +79,8 @@ const defaultOrder: Record<string, string> = {
   home_slides: "display_order ASC, id ASC",
   shop_categories: "display_order ASC, name COLLATE NOCASE ASC",
   shop_products: "display_order ASC, name COLLATE NOCASE ASC",
-  shop_settings: "id ASC"
+  shop_settings: "id ASC",
+  recruitment_posts: "display_order ASC, id DESC"
 };
 
 function json(data: unknown, status = 200) {
@@ -180,6 +199,11 @@ async function api(request: Request, env: Env, url: URL) {
       if (table === "home_slides") {
         await caches.default.delete(new Request(`${url.origin}/api/page/home`));
       }
+      if (table === "recruitment_posts") {
+        await caches.default.delete(
+          new Request(`${url.origin}/api/page/recruitment`)
+        );
+      }
       return json({ id: result.meta.last_row_id }, 201);
     } catch (error) { return json({ error: databaseError(error) }, 409); }
   }
@@ -202,6 +226,11 @@ async function api(request: Request, env: Env, url: URL) {
       }
       if (table === "home_slides") {
         await caches.default.delete(new Request(`${url.origin}/api/page/home`));
+      }
+      if (table === "recruitment_posts") {
+        await caches.default.delete(
+          new Request(`${url.origin}/api/page/recruitment`)
+        );
       }
       return json({ ok: true });
     } catch (error) { return json({ error: databaseError(error) }, 409); }
@@ -511,6 +540,48 @@ async function pageData(env: Env, url: URL) {
         order_subject: "Commande boutique FC Escalquens"
       },
       site_media: resultRows(media)
+    });
+  }
+
+
+  if (page === "recruitment") {
+    const rows = await env.DB.prepare(`
+      SELECT
+        id,
+        title,
+        audience,
+        target,
+        summary,
+        description,
+        profile,
+        commitment,
+        location,
+        status,
+        contact_name,
+        contact_email,
+        contact_phone,
+        apply_url,
+        image_key,
+        display_order
+
+      FROM recruitment_posts
+
+      WHERE active=1
+
+      ORDER BY
+        CASE status
+          WHEN 'new' THEN 0
+          WHEN 'open' THEN 1
+          WHEN 'soon' THEN 2
+          WHEN 'filled' THEN 3
+          ELSE 4
+        END,
+        display_order,
+        id DESC
+    `).all<AnyRow>();
+
+    return publicJson({
+      posts: resultRows(rows)
     });
   }
 
