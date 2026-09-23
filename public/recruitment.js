@@ -28,16 +28,31 @@ const audienceLabels={
   other:'Autre'
 };
 
+const audienceIcons={
+  players:'⚽',
+  youth:'🧒',
+  seniors:'🏆',
+  coach:'🧢',
+  staff:'🤝',
+  apprentice:'🎓',
+  other:'📣'
+};
+
+const detailIcons={
+  profile:'👤',
+  commitment:'📅',
+  location:'📍'
+};
+
 let posts=[];
 let filter='';
 
 const safeUrl=value=>{
-  try{
-    const url=new URL(
-      String(value||''),
-      location.origin
-    );
+  const raw=String(value||'').trim();
+  if(!raw) return '';
 
+  try{
+    const url=new URL(raw);
     return ['http:','https:'].includes(url.protocol)
       ?url.href
       :'';
@@ -50,15 +65,13 @@ const contactActions=post=>{
   const actions=[];
 
   if(post.contact_email){
-    const subject=
-      `Candidature — ${post.title}`;
-
+    const subject=`Candidature — ${post.title}`;
     actions.push(`
       <a
         class="recruitment-action primary"
         href="mailto:${esc(post.contact_email)}?subject=${encodeURIComponent(subject)}"
       >
-        Écrire au club →
+        ✉️ Contacter le club
       </a>
     `);
   }
@@ -67,12 +80,9 @@ const contactActions=post=>{
     actions.push(`
       <a
         class="recruitment-action"
-        href="tel:${esc(
-          String(post.contact_phone)
-            .replace(/\s+/g,'')
-        )}"
+        href="tel:${esc(String(post.contact_phone).replace(/\s+/g,''))}"
       >
-        Appeler
+        📞 Appeler
       </a>
     `);
   }
@@ -82,18 +92,28 @@ const contactActions=post=>{
   if(apply){
     actions.push(`
       <a
-        class="recruitment-action"
+        class="recruitment-action secondary"
         href="${esc(apply)}"
         target="_blank"
         rel="noopener"
       >
-        Candidater →
+        Envoyer sa candidature →
       </a>
     `);
   }
 
   return actions.join('');
 };
+
+const detailBlock=(icon,label,value)=>`
+  <div class="recruitment-detail">
+    <div class="recruitment-detail__label">
+      <span class="recruitment-detail__icon">${icon}</span>
+      <small>${label}</small>
+    </div>
+    <p>${esc(value)}</p>
+  </div>
+`;
 
 const card=post=>{
   const image=post.image_key
@@ -108,21 +128,26 @@ const card=post=>{
     `
     :'';
 
+  const icon=audienceIcons[post.audience]||'📣';
+  const type=audienceLabels[post.audience]||post.audience||'FC Escalquens';
+
+  const actions=post.status==='filled'
+    ?`
+      <span class="recruitment-filled">
+        Besoin pourvu
+      </span>
+    `
+    :contactActions(post);
+
   return `
-    <article
-      class="recruitment-card status-${esc(post.status)}"
-    >
+    <article class="recruitment-card status-${esc(post.status)}">
 
       <header class="recruitment-card__header">
-
-        <div>
-          <span class="recruitment-type">
-            ${esc(
-              audienceLabels[post.audience]
-              ||post.audience
-              ||'FC Escalquens'
-            )}
-          </span>
+        <div class="recruitment-card__header-main">
+          <div class="recruitment-card__eyebrow">
+            <span class="recruitment-card__eyebrow-icon">${icon}</span>
+            <span>${esc(type)}</span>
+          </div>
 
           <h2>${esc(post.title)}</h2>
 
@@ -138,12 +163,8 @@ const card=post=>{
         </div>
 
         <span class="recruitment-status">
-          ${esc(
-            statusLabels[post.status]
-            ||post.status
-          )}
+          ${esc(statusLabels[post.status]||post.status)}
         </span>
-
       </header>
 
       ${image}
@@ -171,45 +192,12 @@ const card=post=>{
         }
 
         ${
-          post.profile
-          ||post.commitment
-          ||post.location
+          post.profile || post.commitment || post.location
             ?`
               <div class="recruitment-details">
-
-                ${
-                  post.profile
-                    ?`
-                      <div>
-                        <small>Profil</small>
-                        <p>${esc(post.profile)}</p>
-                      </div>
-                    `
-                    :''
-                }
-
-                ${
-                  post.commitment
-                    ?`
-                      <div>
-                        <small>Disponibilités</small>
-                        <p>${esc(post.commitment)}</p>
-                      </div>
-                    `
-                    :''
-                }
-
-                ${
-                  post.location
-                    ?`
-                      <div>
-                        <small>Lieu</small>
-                        <p>${esc(post.location)}</p>
-                      </div>
-                    `
-                    :''
-                }
-
+                ${post.profile ? detailBlock(detailIcons.profile,'Profil',post.profile) : ''}
+                ${post.commitment ? detailBlock(detailIcons.commitment,'Disponibilités',post.commitment) : ''}
+                ${post.location ? detailBlock(detailIcons.location,'Lieu',post.location) : ''}
               </div>
             `
             :''
@@ -217,29 +205,15 @@ const card=post=>{
 
       </div>
 
-      <footer>
+      <footer class="recruitment-card__footer">
 
-        ${
-          post.contact_name
-            ?`
-              <span>
-                Contact :
-                <strong>${esc(post.contact_name)}</strong>
-              </span>
-            `
-            :'<span>FC Escalquens</span>'
-        }
+        <div class="recruitment-contact">
+          <span class="recruitment-contact__label">Contact</span>
+          <strong>${esc(post.contact_name||'FC Escalquens')}</strong>
+        </div>
 
-        <div>
-          ${
-            post.status==='filled'
-              ?`
-                <span class="recruitment-filled">
-                  Besoin pourvu
-                </span>
-              `
-              :contactActions(post)
-          }
+        <div class="recruitment-card__actions">
+          ${actions}
         </div>
 
       </footer>
@@ -250,23 +224,17 @@ const card=post=>{
 
 const draw=()=>{
   const rows=posts.filter(
-    post=>
-      !filter
-      ||post.audience===filter
+    post=>!filter || post.audience===filter
   );
 
-  document
-    .querySelector('#recruitment-list')
-    .innerHTML=
-      rows.length
-        ?rows.map(card).join('')
-        :`
-          <div class="empty-state">
-            <b>
-              Aucune annonce dans cette catégorie actuellement.
-            </b>
-          </div>
-        `;
+  document.querySelector('#recruitment-list').innerHTML=
+    rows.length
+      ?rows.map(card).join('')
+      :`
+        <div class="empty-state">
+          <b>Aucune annonce dans cette catégorie actuellement.</b>
+        </div>
+      `;
 };
 
 fetch('/api/page/recruitment')
@@ -274,10 +242,7 @@ fetch('/api/page/recruitment')
     const data=await response.json();
 
     if(!response.ok){
-      throw new Error(
-        data.error
-        ||`HTTP ${response.status}`
-      );
+      throw new Error(data.error||`HTTP ${response.status}`);
     }
 
     return data;
@@ -293,10 +258,7 @@ fetch('/api/page/recruitment')
       )
     ];
 
-    const filters=
-      document.querySelector(
-        '#recruitment-filters'
-      );
+    const filters=document.querySelector('#recruitment-filters');
 
     filters.innerHTML=
       `
@@ -308,47 +270,29 @@ fetch('/api/page/recruitment')
         >
           Tous les besoins
         </button>
-      `
-      +audiences.map(value=>`
+      `+
+      audiences.map(value=>`
         <button
           type="button"
           data-recruitment-filter="${esc(value)}"
           aria-pressed="false"
         >
-          ${esc(
-            audienceLabels[value]
-            ||value
-          )}
+          ${esc(audienceIcons[value]||'📣')} ${esc(audienceLabels[value]||value)}
         </button>
       `).join('');
 
     document
-      .querySelectorAll(
-        '[data-recruitment-filter]'
-      )
+      .querySelectorAll('[data-recruitment-filter]')
       .forEach(button=>{
         button.onclick=()=>{
-          filter=
-            button.dataset
-              .recruitmentFilter;
+          filter=button.dataset.recruitmentFilter;
 
           document
-            .querySelectorAll(
-              '[data-recruitment-filter]'
-            )
+            .querySelectorAll('[data-recruitment-filter]')
             .forEach(item=>{
-              const active=
-                item===button;
-
-              item.classList.toggle(
-                'active',
-                active
-              );
-
-              item.setAttribute(
-                'aria-pressed',
-                String(active)
-              );
+              const active=item===button;
+              item.classList.toggle('active',active);
+              item.setAttribute('aria-pressed',String(active));
             });
 
           draw();
@@ -360,13 +304,9 @@ fetch('/api/page/recruitment')
   .catch(error=>{
     console.error(error);
 
-    document
-      .querySelector('#recruitment-list')
-      .innerHTML=`
-        <div class="empty-state">
-          <b>
-            Les annonces sont momentanément indisponibles.
-          </b>
-        </div>
-      `;
+    document.querySelector('#recruitment-list').innerHTML=`
+      <div class="empty-state">
+        <b>Les annonces sont momentanément indisponibles.</b>
+      </div>
+    `;
   });
