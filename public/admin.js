@@ -185,12 +185,47 @@ function field(name,value){
   if(options[name]&&(name!=='role'||current==='team_staff'))return `<label><span class="field-title">${title}</span><select name="${name}">${options[name].map(([key,text])=>`<option value="${key}" ${String(key)===String(value)?'selected':''}>${text}</option>`).join('')}</select></label>`;
   if(textareas.has(name))return `<label class="wide"><span class="field-title">${title}</span><textarea name="${name}" rows="4">${esc(value)}</textarea></label>`;
   const type=numbers.has(name)?'number':name.includes('email')?'email':name.includes('phone')?'tel':name.endsWith('_on')?'date':name==='starts_at'&&current==='matches'?'datetime-local':name==='starts_at'||name==='ends_at'?'time':name.includes('url')?'url':'text';
-  return `<label><span class="field-title">${title}</span><input type="${type}" ${['latitude','longitude'].includes(name)?'step="any"':''} name="${name}" value="${esc(value)}"></label>`;
+
+  const required=
+    current==='recruitment_posts'
+    &&name==='title'
+      ?'required'
+      :'';
+
+  return `<label>
+    <span class="field-title">${title}</span>
+    <input
+      type="${type}"
+      ${['latitude','longitude'].includes(name)?'step="any"':''}
+      name="${name}"
+      value="${esc(value)}"
+      ${required}
+    >
+  </label>`;
 }
 async function open(row={}){
   await ensureReferences();
   editing=row.id||null;editingRow=row;$('#editor h2').textContent=editing?'Modifier':'Ajouter';$('#editor-status').textContent='';
-  $('#fields').innerHTML=schemas[current].map(name=>field(name,row[name]??(booleans.has(name)?1:''))).join('');
+  const defaults=
+    current==='recruitment_posts'
+      ?{
+          audience:'players',
+          status:'open',
+          display_order:0,
+          active:1
+        }
+      :{};
+
+  $('#fields').innerHTML=schemas[current]
+    .map(name=>
+      field(
+        name,
+        row[name]
+        ??defaults[name]
+        ??(booleans.has(name)?1:'')
+      )
+    )
+    .join('');
   document.querySelectorAll('.toggle-field input[type=checkbox]').forEach(input=>input.onchange=()=>input.closest('label').querySelector('b').textContent=input.checked?'Oui':'Non');
   document.querySelectorAll('[data-upload]').forEach(input=>input.onchange=()=>upload(input));$('#editor').showModal();
 }
@@ -203,6 +238,49 @@ async function upload(input){
 async function save(event){
   event.preventDefault();const form=$('#editor form');if(form.querySelector('[data-upload]:disabled')){$('#editor-status').textContent='Attendez la fin du chargement du fichier.';return}
   const values=Object.fromEntries(new FormData(form));for(const key of numbers)if(key in values)values[key]=values[key]===''?null:Number(values[key]);for(const key of booleans)if(schemas[current].includes(key))values[key]=form.querySelector(`input[type=checkbox][name="${key}"]`)?.checked?1:0;
+  if(current==='recruitment_posts'){
+    values.title=String(values.title||'').trim();
+
+    if(!values.title){
+      $('#editor-status').textContent=
+        'Le titre de l’annonce est obligatoire.';
+      return;
+    }
+
+    values.audience=
+      String(values.audience||'').trim()
+      ||'players';
+
+    values.status=
+      String(values.status||'').trim()
+      ||'open';
+
+    values.display_order=
+      Number.isFinite(
+        Number(values.display_order)
+      )
+        ?Number(values.display_order)
+        :0;
+
+    for(const key of [
+      'target',
+      'summary',
+      'description',
+      'profile',
+      'commitment',
+      'location',
+      'image_key',
+      'contact_name',
+      'contact_email',
+      'contact_phone',
+      'apply_url'
+    ]){
+      values[key]=String(
+        values[key]??''
+      ).trim();
+    }
+  }
+
   if(current==='home_slides'){
     values.display_order=values.display_order??0;
     if(!String(values.object_key||'').trim()||!String(values.alt_text||'').trim()){

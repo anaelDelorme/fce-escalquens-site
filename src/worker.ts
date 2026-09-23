@@ -101,7 +101,16 @@ function databaseError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes("FOREIGN KEY")) return "Une valeur liée est invalide. Rechargez la page puis recommencez l’affectation.";
   if (message.includes("UNIQUE")) return "Cet enregistrement existe déjà.";
-  if (message.includes("NOT NULL")) return "Un champ obligatoire n’est pas renseigné.";
+  if (message.includes("NOT NULL")) {
+    const field =
+      message.match(
+        /NOT NULL constraint failed: [^.]+\.([^\s]+)/i
+      )?.[1];
+
+    return field
+      ?`Le champ obligatoire « ${field} » n’est pas renseigné.`
+      :"Un champ obligatoire n’est pas renseigné.";
+  }
   return "Enregistrement impossible dans la base de données.";
 }
 
@@ -176,6 +185,51 @@ async function api(request: Request, env: Env, url: URL) {
     return json({ ok: true });
   }
   const body = await request.json<Record<string, unknown>>().catch(() => ({}));
+
+  if (table === "recruitment_posts") {
+    body.title = String(body.title || "").trim();
+
+    if (!body.title) {
+      return json({
+        error: "Le titre de l’annonce est obligatoire."
+      }, 400);
+    }
+
+    body.audience =
+      String(body.audience || "").trim()
+      || "players";
+
+    body.status =
+      String(body.status || "").trim()
+      || "open";
+
+    body.display_order =
+      Number.isFinite(Number(body.display_order))
+        ? Number(body.display_order)
+        : 0;
+
+    body.active =
+      Number(body.active) === 0
+        ? 0
+        : 1;
+
+    for (const key of [
+      "target",
+      "summary",
+      "description",
+      "profile",
+      "commitment",
+      "location",
+      "image_key",
+      "contact_name",
+      "contact_email",
+      "contact_phone",
+      "apply_url"
+    ]) {
+      body[key] = String(body[key] ?? "").trim();
+    }
+  }
+
   const allowed = editable[table] || [];
   const values = Object.entries(body).filter(([key]) => allowed.includes(key));
   if (!values.length) return json({ error: "Aucun champ valide" }, 400);
