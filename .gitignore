@@ -31,3 +31,4 @@ prod-to-staging.sql
 # Python
 __pycache__/
 *.pyc
+test.sql
