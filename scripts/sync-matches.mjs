@@ -1,5 +1,5 @@
 import { browserCollectStandings } from './standings-integrated.mjs';
-const SYNC_VERSION='2026.09.23-prod-29',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+const SYNC_VERSION='2026.09.22-staging-27',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 console.log(`Collecteur FCE ${SYNC_VERSION}`);
 const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
 const endpoint=siteUrl+'/internal/sync/matches';
@@ -279,25 +279,7 @@ async function fetchZenRows(targetUrls){
 
     // Réduire drastiquement la réponse ZenRows : on ne renvoie pas la page
     // Angular complète, seulement les JSON utiles au collecteur.
-    /*
-     * Les classements sont placés en premier dans la réponse.
-     * Si ZenRows tronque une réponse HTML volumineuse, ils restent
-     * ainsi disponibles pour le collecteur Node.
-     */
-    const fcePayloads=[
-      ...document.querySelectorAll('script[id^="fce-"]')
-    ];
-
-    fcePayloads.sort((a,b)=>{
-      const priority=node=>{
-        if(node.id==='fce-standings-meta')return 0;
-        if(node.id==='fce-standings')return 1;
-        return 2;
-      };
-
-      return priority(a)-priority(b);
-    });
-
+    const fcePayloads=[...document.querySelectorAll('script[id^="fce-"]')];
     document.head.replaceChildren();
     document.body.replaceChildren(...fcePayloads);
     document.documentElement.setAttribute('data-fce-sync-done','1');
@@ -324,15 +306,6 @@ async function fetchZenRows(targetUrls){
   const cost=response.headers.get('x-request-cost');
   if(credits)console.log(`ZenRows : ${credits} crédit(s) consommé(s).`);
   if(cost)console.log(`ZenRows : coût indiqué ${cost}.`);
-  console.log(
-    `ZenRows : réponse ${Math.round(body.length/1024)} Kio ; `+
-    `classements ${
-      body.includes('fce-standings-meta')
-        ?'présents'
-        :'ABSENTS'
-    }.`
-  );
-
   const payloads=epreuvesPayloadFromZenRows(body);
   console.log(`FFF : ${payloads.matchMonths}/12 mois de matchs et ${payloads.falMonths}/12 mois de plateaux capturés.`);
   console.log(`FFF : ${payloads.detailCount} détail(s) de match reçu(s), dont ${payloads.venueDetailCount} avec un terrain.`);
