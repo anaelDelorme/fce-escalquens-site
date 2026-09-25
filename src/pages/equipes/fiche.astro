@@ -9,12 +9,14 @@ import Footer from '../../components/Footer.astro';
     <link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/enhancements.css?v=6"><link rel="stylesheet" href="/brand-charter.css"><link rel="stylesheet" href="/match-cards.css?v=8">
     <style>
       .staff article.is-referent{border-top:6px solid var(--gold);background:#fffaf0;box-shadow:0 8px 24px #55101812}.staff article.is-referent small{display:inline-flex;width:max-content;padding:5px 8px;background:var(--wine);color:#fff}.staff article h3{margin:2px 0}.staff article img{width:72px;height:72px;object-fit:cover;border-radius:50%;margin-bottom:10px}
+      .team-birthyears{display:inline-flex;align-self:flex-start;width:max-content;margin:0 0 18px;padding:8px 12px;border-radius:999px;background:var(--gold);color:var(--wine);font-size:12px;font-weight:950;line-height:1;letter-spacing:.02em}
+      .team-birthyears[hidden]{display:none}
     </style>
   </head>
   <body>
     <Header/>
     <main id="team-profile">
-      <section class="page-hero wine"><p class="eyebrow">Fiche équipe</p><h1 id="team-name" aria-live="polite">Chargement…</h1><p id="team-description"></p></section>
+      <section class="page-hero wine"><p class="eyebrow">Fiche équipe</p><h1 id="team-name" aria-live="polite">Chargement…</h1><p id="team-birthyears" class="team-birthyears" hidden></p><p id="team-description"></p></section>
       <section class="profile-layout content">
         <div class="team-visual" aria-busy="true"><img id="team-photo" alt=""></div>
         <div class="profile-stats">
@@ -47,6 +49,6 @@ import Footer from '../../components/Footer.astro';
       </section>
     </main>
     <Footer/>
-    <script is:inline src="/team-profile.js?v=29"></script>
+    <script is:inline src="/team-profile.js?v=30"></script>
   </body>
 </html>

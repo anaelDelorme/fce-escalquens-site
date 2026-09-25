@@ -1,33 +1,49 @@
-.sponsor-logos{display:grid;gap:32px;margin-top:30px}
-.sponsor-tier{display:grid;gap:14px}
-.sponsor-tier__heading{display:flex;align-items:center;gap:12px}
-.sponsor-tier__heading h3{margin:0;color:var(--wine);font-size:14px;text-transform:uppercase;letter-spacing:.08em}
-.sponsor-tier__heading span{display:grid;place-items:center;min-width:28px;height:28px;border-radius:999px;background:#eee5dc;color:var(--wine);font-size:10px;font-weight:900}
-.sponsor-tier__heading:after{content:'';height:1px;flex:1;background:var(--line)}
-.sponsor-tier__grid{display:grid;gap:14px}
-.sponsor-tier--major .sponsor-tier__grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
-.sponsor-tier--premium .sponsor-tier__grid{grid-template-columns:repeat(3,minmax(0,1fr))}
-.sponsor-tier--partner .sponsor-tier__grid{grid-template-columns:repeat(4,minmax(0,1fr))}
-.sponsor-card{min-width:0;min-height:120px;border:1px solid var(--line);border-radius:14px;display:grid;grid-template-rows:1fr auto;place-items:center;gap:12px;padding:18px;background:#fff;text-align:center}
-.sponsor-card__logo{width:100%;display:grid;place-items:center;min-height:72px}
-.sponsor-card img{width:100%;height:70px;object-fit:contain}
-.sponsor-card b{font-size:16px;color:var(--ink)}
-.sponsor-card small{color:var(--wine);font-weight:900;text-transform:uppercase;font-size:9px;letter-spacing:.06em}
-.sponsor-tier--major .sponsor-card{min-height:190px;padding:24px;border-top:6px solid var(--gold);background:linear-gradient(145deg,#fff,#fff9e7)}
-.sponsor-tier--major .sponsor-card__logo{min-height:110px}
-.sponsor-tier--major .sponsor-card img{height:105px}
-.sponsor-tier--major .sponsor-card b{font-size:21px}
-.sponsor-tier--premium .sponsor-card{min-height:145px;border-top:4px solid var(--wine)}
-.sponsor-tier--premium .sponsor-card img{height:82px}
-.sponsor-card:hover{transform:translateY(-2px);box-shadow:0 13px 28px rgba(41,25,20,.075)}
-@media(max-width:760px){
-  .sponsor-logos{gap:26px;margin-top:24px}
-  .sponsor-tier--major .sponsor-tier__grid{grid-template-columns:1fr}
-  .sponsor-tier--premium .sponsor-tier__grid,.sponsor-tier--partner .sponsor-tier__grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-  .sponsor-tier--major .sponsor-card{min-height:155px;padding:20px}
-  .sponsor-tier--major .sponsor-card__logo{min-height:88px}
-  .sponsor-tier--major .sponsor-card img{height:86px}
-  .sponsor-tier--premium .sponsor-card,.sponsor-tier--partner .sponsor-card{min-height:118px;padding:13px}
-  .sponsor-tier--premium .sponsor-card img,.sponsor-tier--partner .sponsor-card img{height:62px}
-  .sponsor-tier__heading h3{font-size:12px}
+.sponsor-logos{display:block;margin-top:34px}
+.sponsor-group{display:grid;gap:20px}
+.sponsor-group+.sponsor-group{margin-top:58px;padding-top:48px;border-top:1px solid var(--line)}
+.sponsor-group__heading{display:flex;align-items:center;gap:18px}
+.sponsor-group__heading h3{margin:0;color:var(--wine);font-size:clamp(25px,3vw,38px);line-height:1;text-transform:uppercase}
+.sponsor-group__heading:after{content:"";height:1px;flex:1;background:var(--line)}
+.sponsor-group__heading--support h3{font-size:clamp(23px,2.6vw,34px)}
+.sponsor-subgroup{display:grid;gap:14px}
+.sponsor-subgroup+.sponsor-subgroup{margin-top:24px}
+.sponsor-subgroup h4{margin:0;color:#6e625e;font-size:10px;font-weight:900;letter-spacing:.14em;text-transform:uppercase}
+.sponsor-grid{display:grid;align-items:stretch}
+.sponsor-grid--major{grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+.sponsor-grid--premium{grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.sponsor-grid--partner{grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.sponsor-card{min-width:0;display:grid;place-items:center;background:#fff;border:1px solid #e7ddd4;border-radius:18px;text-decoration:none;overflow:hidden;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
+a.sponsor-card:hover{transform:translateY(-3px);border-color:#d9c7b9;box-shadow:0 16px 36px rgba(43,28,22,.08)}
+.sponsor-logo-box{width:100%;height:100%;display:grid;place-items:center}
+.sponsor-card img{display:block;width:100%;object-fit:contain}
+.sponsor-card strong{color:var(--ink);text-align:center}
+.sponsor-logos .sponsor-card--major{min-height:220px;padding:30px 34px;border-radius:22px;box-shadow:0 10px 30px rgba(43,28,22,.055)}
+.sponsor-logos .sponsor-card--major img{height:135px}
+.sponsor-logos .sponsor-card--major strong{font-size:24px}
+.sponsor-logos .sponsor-card--premium{min-height:160px;padding:24px}
+.sponsor-logos .sponsor-card--premium img{height:92px}
+.sponsor-logos .sponsor-card--premium strong{font-size:19px}
+.sponsor-logos .sponsor-card--partner{min-height:122px;padding:18px 20px;border-radius:15px}
+.sponsor-logos .sponsor-card--partner img{height:65px}
+.sponsor-logos .sponsor-card--partner strong{font-size:15px}
+
+@media(max-width:900px){
+  .sponsor-grid--major{gap:12px}
+  .sponsor-logos .sponsor-card--major{min-height:185px;padding:24px}
+  .sponsor-logos .sponsor-card--major img{height:110px}
+  .sponsor-grid--partner{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media(max-width:700px){
+  .sponsor-logos{margin-top:26px}
+  .sponsor-group+.sponsor-group{margin-top:40px;padding-top:36px}
+  .sponsor-group__heading{align-items:flex-end}
+  .sponsor-group__heading h3,.sponsor-group__heading--support h3{font-size:26px}
+  .sponsor-grid--major{grid-template-columns:1fr}
+  .sponsor-logos .sponsor-card--major{min-height:165px;padding:22px 28px}
+  .sponsor-logos .sponsor-card--major img{height:105px}
+  .sponsor-grid--premium,.sponsor-grid--partner{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .sponsor-logos .sponsor-card--premium{min-height:125px;padding:16px}
+  .sponsor-logos .sponsor-card--premium img{height:73px}
+  .sponsor-logos .sponsor-card--partner{min-height:100px;padding:13px}
+  .sponsor-logos .sponsor-card--partner img{height:54px}
 }

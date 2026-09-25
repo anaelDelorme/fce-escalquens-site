@@ -1042,3 +1042,16 @@
     min-height:0;
   }
 }
+
+
+/* Page Équipes — années de naissance */
+.team-catalog{align-items:stretch}
+.catalog-card{display:flex;flex-direction:column;min-width:0;height:100%}
+.catalog-card h2{margin:12px 0 7px;line-height:.98;text-wrap:balance}
+.catalog-birthyears{display:inline-flex;align-items:center;align-self:flex-start;width:auto;margin:2px 0 12px;padding:7px 10px;border-radius:999px;background:#f3ebe6;color:var(--wine);font-size:11px;font-weight:900;line-height:1;white-space:nowrap}
+.catalog-level{min-height:20px;margin:0 0 14px;color:#5f5551;font-size:13px}
+.catalog-card>.catalog-card__footer{margin-top:auto;padding-top:14px;border-top:1px solid var(--line);display:flex;gap:10px;align-items:center}
+.catalog-card__footer span{min-width:0;font-size:13px}
+.catalog-card__footer i{margin-left:auto;flex:0 0 auto;font-style:normal;font-weight:900;color:var(--wine);white-space:nowrap}
+@media(max-width:900px){.team-catalog{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.team-catalog{grid-template-columns:1fr}.catalog-card h2{font-size:32px}.catalog-level{min-height:0}}

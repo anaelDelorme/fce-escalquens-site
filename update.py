@@ -1,328 +1,188 @@
 #!/usr/bin/env python3
 from pathlib import Path
-import re
 
 ROOT = Path.cwd()
+changed = []
 
 def read(path):
-    p = ROOT / path
-    if not p.exists():
-        raise SystemExit(f"Fichier introuvable : {path}. Lancez ce script depuis la racine du dépôt.")
-    return p.read_text(encoding="utf-8")
+    target = ROOT / path
+    if not target.exists():
+        raise SystemExit(f"Fichier introuvable : {path}. Lance ce script depuis la racine du dépôt.")
+    return target.read_text(encoding="utf-8")
 
 def write(path, content):
-    (ROOT / path).write_text(content, encoding="utf-8")
+    target = ROOT / path
+    target.write_text(content, encoding="utf-8")
+    changed.append(path)
 
 def replace_once(content, old, new, label):
     if new in content:
         return content, False
     if old not in content:
-        raise SystemExit(f"Motif introuvable pour {label}. Le dépôt a peut-être évolué.")
+        raise SystemExit(f"Motif introuvable pour : {label}")
     return content.replace(old, new, 1), True
 
-changed = []
 
-# 1) Lien "Nous rejoindre" visible dans le menu mobile.
-path = "src/components/Header.astro"
-content = read(path)
-if 'class="mobile-join"' not in content:
-    old = '<nav aria-label="Navigation principale">{nav.map(([label,href])=><a href={href} aria-current={isCurrent(href)?\'page\':undefined}>{label}</a>)}</nav>'
-    new = '<nav aria-label="Navigation principale">{nav.map(([label,href])=><a href={href} aria-current={isCurrent(href)?\'page\':undefined}>{label}</a>)}<a class="mobile-join" href="/nous-rejoindre/" aria-current={isCurrent(\'/nous-rejoindre/\')?\'page\':undefined}>Nous rejoindre</a></nav>'
-    content, _ = replace_once(content, old, new, "navigation mobile")
-
-    old = '.site-header nav a[aria-current="page"]{font-weight:900;text-decoration:underline;text-decoration-thickness:3px;text-underline-offset:6px}'
-    new = '''.site-header nav a[aria-current="page"]{font-weight:900;text-decoration:underline;text-decoration-thickness:3px;text-underline-offset:6px}.site-header nav .mobile-join{display:none}
-@media(max-width:1080px){.site-header nav .mobile-join{display:block;margin-top:12px;padding:14px 15px;border-bottom:0;background:var(--gold);color:#21171b;font-weight:900}.site-header nav .mobile-join:after{color:#21171b}}'''
-    content, _ = replace_once(content, old, new, "style du lien mobile")
-    write(path, content)
-    changed.append(path)
-
-# 2) Charger le style partenaires sur l'accueil.
-path = "src/pages/index.astro"
-content = read(path)
-if 'href="/sponsor-extra.css"' not in content:
-    old = '<link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/enhancements.css?v=6"><link rel="stylesheet" href="/brand-charter.css"><link rel="stylesheet" href="/home-extra.css"><link rel="stylesheet" href="/home-slideshow.css">'
-    new = old + '<link rel="stylesheet" href="/sponsor-extra.css">'
-    content, _ = replace_once(content, old, new, "stylesheet partenaires accueil")
-    write(path, content)
-    changed.append(path)
-
-# 3) Bouton rapide Afficher/Masquer dans l'admin boutique.
-path = "public/admin.js"
-content = read(path)
-if "data-shop-visibility" not in content:
-    old = "let current='teams',editing=null,editingRow={},token=sessionStorage.getItem('admin-token')||'',references={teams:[],club_members:[],venues:[],competition_levels:[],seasons:[],tournaments:[],team_competitions:[],shop_categories:[]},referencesLoaded=false;"
-    new = "let current='teams',editing=null,editingRow={},token=sessionStorage.getItem('admin-token')||'',references={teams:[],club_members:[],venues:[],competition_levels:[],seasons:[],tournaments:[],team_competitions:[],shop_categories:[]},referencesLoaded=false,loadedRows=[];"
-    content, _ = replace_once(content, old, new, "cache des lignes admin")
-
-    marker = "  const help={"
-    if "  loadedRows=response.ok&&Array.isArray(rows)?rows:[];\n" not in content:
-        if marker not in content:
-            raise SystemExit("Motif introuvable pour la liste admin.")
-        content = content.replace(marker, "  loadedRows=response.ok&&Array.isArray(rows)?rows:[];\n" + marker, 1)
-
-    render_pattern = re.compile(r"  \$\('#records'\)\.innerHTML=response\.ok\?rows\.map\(row=>\{[^\n]+\n")
-    match = render_pattern.search(content)
-    if not match:
-        raise SystemExit("Motif introuvable pour le rendu des lignes admin.")
-    render = '''  $('#records').innerHTML=response.ok?rows.map(row=>{
-    const automatic=current==='matches'&&row.source!=='manual';
-    const protectedRow=current==='shop_settings';
-    const visibilityButton=current==='shop_products'
-      ?`<button class="shop-visibility ${Number(row.active)===1?'is-visible':'is-hidden'}" data-shop-visibility="${row.id}" aria-pressed="${Number(row.active)===1?'true':'false'}">${Number(row.active)===1?'Masquer':'Afficher'}</button>`
-      :'';
-    return `<article class="${automatic?'automatic':''}"><div><b>${esc(recordTitle(row))}</b><small>${esc(recordDetail(row))}</small>${automatic?'<em>Synchronisé automatiquement</em>':''}</div>${automatic?'':`${visibilityButton}<button data-edit='${JSON.stringify(row).replace(/'/g,'&#39;')}'>Modifier</button>${protectedRow?'':`<button data-delete="${row.id}">Supprimer</button>`}`}</article>`;
-  }).join(''):'';
-'''
-    content = content[:match.start()] + render + content[match.end():]
-
-    old = "  document.querySelectorAll('[data-edit]').forEach(button=>button.onclick=()=>open(JSON.parse(button.dataset.edit)));\n  document.querySelectorAll('[data-delete]').forEach(button=>button.onclick=()=>remove(button.dataset.delete));"
-    new = old + "\n  document.querySelectorAll('[data-shop-visibility]').forEach(button=>button.onclick=()=>toggleShopVisibility(button.dataset.shopVisibility,button));"
-    content, _ = replace_once(content, old, new, "gestion du bouton visibilité")
-
-    marker = "}\nfunction field(name,value){"
-    toggle_fn = '''}
-async function toggleShopVisibility(id,button){
-  const row=loadedRows.find(item=>String(item.id)===String(id));
-  if(!row)return;
-  const next=Number(row.active)===1?0:1;
-  if(next===1&&!String(row.image_key||'').trim()){
-    $('#status').textContent='Ajoutez une photo à cet article avant de le rendre visible.';
-    return;
-  }
-  const idleLabel=button.textContent;
-  button.disabled=true;
-  button.textContent=next===1?'Affichage…':'Masquage…';
-  try{
-    const response=await fetch(`/admin-api/shop_products/${id}`,{
-      method:'PUT',
-      headers:jsonHeaders(),
-      body:JSON.stringify({...row,active:next})
-    });
-    let result={};
-    try{result=await response.json()}catch{}
-    if(!response.ok)throw new Error(
-      response.status===401
-        ?'Votre session Cloudflare a expiré. Rechargez la page.'
-        :result.error||'Modification impossible.'
-    );
-    await load();
-    $('#status').textContent=next===1
-      ?`« ${row.name||'Article'} » est maintenant visible dans la boutique.`
-      :`« ${row.name||'Article'} » est maintenant masqué de la boutique.`;
-  }catch(error){
-    $('#status').textContent=error.message||'Modification impossible.';
-    button.disabled=false;
-    button.textContent=idleLabel;
-  }
-}
-function field(name,value){'''
-    content, _ = replace_once(content, marker, toggle_fn, "fonction visibilité boutique")
-
-    write(path, content)
-    changed.append(path)
-
-# 4) Style du bouton rapide admin.
-path = "public/admin.css"
-content = read(path)
-if ".shop-visibility" not in content:
-    content += '''
-#records article .shop-visibility{font-weight:900;border:1px solid var(--wine)}
-#records article .shop-visibility.is-visible{background:#fff1a8;color:var(--wine)}
-#records article .shop-visibility.is-hidden{background:var(--wine);color:#fff}
-#records article .shop-visibility:disabled{opacity:.55;cursor:wait}
-'''
-    write(path, content)
-    changed.append(path)
-
-# 5) Hiérarchie visuelle des partenaires.
-path = "public/sponsors.js"
-content = r'''const sponsorsEsc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+# 1) PARTENAIRES
+write("public/sponsors.js", r'''const sponsorsEsc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const sponsorSafeUrl=value=>{try{const url=new URL(value,location.origin);return ['http:','https:'].includes(url.protocol)?url.href:'';}catch{return '';}};
 const sponsorsRoot=document.querySelector('#sponsors-list');
-const sponsorTierLabels={majeur:'Partenaire majeur',premium:'Partenaire premium',partenaire:'Partenaire',soutien:'Soutien'};
-const sponsorCard=sponsor=>{
-  const tier=String(sponsor.tier||'partenaire').toLowerCase();
-  const label=sponsorTierLabels[tier]||'Partenaire';
-  const logo=sponsor.logo_key
-    ?`<img src="/media/${encodeURIComponent(sponsor.logo_key).replace(/%2F/g,'/')}" alt="${sponsorsEsc(sponsor.name)}" loading="lazy">`
-    :`<b>${sponsorsEsc(sponsor.name)}</b>`;
-  const cardContent=`<span class="sponsor-card__logo">${logo}</span><small>${sponsorsEsc(label)}</small>`;
-  const url=sponsor.website_url?sponsorSafeUrl(sponsor.website_url):'';
-  return url
-    ?`<a class="sponsor-card" href="${sponsorsEsc(url)}" target="_blank" rel="noopener" title="${sponsorsEsc(sponsor.name)}">${cardContent}</a>`
-    :`<div class="sponsor-card" title="${sponsorsEsc(sponsor.name)}">${cardContent}</div>`;
+
+const sponsorTier=value=>{
+  const tier=String(value||'partenaire').toLowerCase();
+  return tier==='majeur'||tier==='premium'?tier:'partenaire';
 };
-const sponsorSection=(key,title,items)=>items.length
-  ?`<section class="sponsor-tier sponsor-tier--${key}"><div class="sponsor-tier__heading"><h3>${title}</h3><span>${items.length}</span></div><div class="sponsor-tier__grid">${items.map(sponsorCard).join('')}</div></section>`
+
+const sponsorCard=(sponsor,kind)=>{
+  const url=sponsorSafeUrl(sponsor.website_url);
+  const media=sponsor.logo_key
+    ?`<img src="/media/${encodeURIComponent(sponsor.logo_key).replace(/%2F/g,'/')}" alt="${sponsorsEsc(sponsor.name)}" loading="lazy">`
+    :`<strong>${sponsorsEsc(sponsor.name)}</strong>`;
+  const content=`<span class="sponsor-logo-box">${media}</span>`;
+  return url
+    ?`<a class="sponsor-card sponsor-card--${kind}" href="${sponsorsEsc(url)}" target="_blank" rel="noopener" title="${sponsorsEsc(sponsor.name)}">${content}</a>`
+    :`<div class="sponsor-card sponsor-card--${kind}" title="${sponsorsEsc(sponsor.name)}">${content}</div>`;
+};
+
+const sponsorGrid=(items,kind)=>items.length
+  ?`<div class="sponsor-grid sponsor-grid--${kind}">${items.map(item=>sponsorCard(item,kind)).join('')}</div>`
   :'';
-if(sponsorsRoot)Promise.resolve(window.fceHomeData||window.fceMecenatData||fetch('/api/page/mecenat').then(response=>response.json())).then(data=>{
-  const sponsors=(data.sponsors||[]).map((sponsor,index)=>({...sponsor,_index:index}));
-  const rank={majeur:0,premium:1,partenaire:2,soutien:3};
-  sponsors.sort((a,b)=>(rank[String(a.tier||'partenaire').toLowerCase()]??4)-(rank[String(b.tier||'partenaire').toLowerCase()]??4)||a._index-b._index);
-  const majors=sponsors.filter(sponsor=>String(sponsor.tier||'').toLowerCase()==='majeur');
-  const premiums=sponsors.filter(sponsor=>String(sponsor.tier||'').toLowerCase()==='premium');
-  const partners=sponsors.filter(sponsor=>!['majeur','premium'].includes(String(sponsor.tier||'').toLowerCase()));
-  sponsorsRoot.innerHTML=[
-    sponsorSection('major','Partenaires majeurs',majors),
-    sponsorSection('premium','Partenaires premium',premiums),
-    sponsorSection('partner','Partenaires',partners)
-  ].join('')||'<p>Les partenaires seront bientôt présentés ici.</p>';
-}).catch(()=>{sponsorsRoot.innerHTML='<p>Les partenaires seront bientôt présentés ici.</p>'});
-'''
-write(path, content)
-changed.append(path)
 
-path = "public/sponsor-extra.css"
-content = r'''.sponsor-logos{display:grid;gap:32px;margin-top:30px}
-.sponsor-tier{display:grid;gap:14px}
-.sponsor-tier__heading{display:flex;align-items:center;gap:12px}
-.sponsor-tier__heading h3{margin:0;color:var(--wine);font-size:14px;text-transform:uppercase;letter-spacing:.08em}
-.sponsor-tier__heading span{display:grid;place-items:center;min-width:28px;height:28px;border-radius:999px;background:#eee5dc;color:var(--wine);font-size:10px;font-weight:900}
-.sponsor-tier__heading:after{content:'';height:1px;flex:1;background:var(--line)}
-.sponsor-tier__grid{display:grid;gap:14px}
-.sponsor-tier--major .sponsor-tier__grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
-.sponsor-tier--premium .sponsor-tier__grid{grid-template-columns:repeat(3,minmax(0,1fr))}
-.sponsor-tier--partner .sponsor-tier__grid{grid-template-columns:repeat(4,minmax(0,1fr))}
-.sponsor-card{min-width:0;min-height:120px;border:1px solid var(--line);border-radius:14px;display:grid;grid-template-rows:1fr auto;place-items:center;gap:12px;padding:18px;background:#fff;text-align:center}
-.sponsor-card__logo{width:100%;display:grid;place-items:center;min-height:72px}
-.sponsor-card img{width:100%;height:70px;object-fit:contain}
-.sponsor-card b{font-size:16px;color:var(--ink)}
-.sponsor-card small{color:var(--wine);font-weight:900;text-transform:uppercase;font-size:9px;letter-spacing:.06em}
-.sponsor-tier--major .sponsor-card{min-height:190px;padding:24px;border-top:6px solid var(--gold);background:linear-gradient(145deg,#fff,#fff9e7)}
-.sponsor-tier--major .sponsor-card__logo{min-height:110px}
-.sponsor-tier--major .sponsor-card img{height:105px}
-.sponsor-tier--major .sponsor-card b{font-size:21px}
-.sponsor-tier--premium .sponsor-card{min-height:145px;border-top:4px solid var(--wine)}
-.sponsor-tier--premium .sponsor-card img{height:82px}
-.sponsor-card:hover{transform:translateY(-2px);box-shadow:0 13px 28px rgba(41,25,20,.075)}
-@media(max-width:760px){
-  .sponsor-logos{gap:26px;margin-top:24px}
-  .sponsor-tier--major .sponsor-tier__grid{grid-template-columns:1fr}
-  .sponsor-tier--premium .sponsor-tier__grid,.sponsor-tier--partner .sponsor-tier__grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-  .sponsor-tier--major .sponsor-card{min-height:155px;padding:20px}
-  .sponsor-tier--major .sponsor-card__logo{min-height:88px}
-  .sponsor-tier--major .sponsor-card img{height:86px}
-  .sponsor-tier--premium .sponsor-card,.sponsor-tier--partner .sponsor-card{min-height:118px;padding:13px}
-  .sponsor-tier--premium .sponsor-card img,.sponsor-tier--partner .sponsor-card img{height:62px}
-  .sponsor-tier__heading h3{font-size:12px}
+if(sponsorsRoot){
+  Promise.resolve(
+    window.fceHomeData
+    ||window.fceMecenatData
+    ||fetch('/api/page/mecenat').then(response=>response.json())
+  ).then(data=>{
+    const sponsors=data.sponsors||[];
+    const majors=sponsors.filter(item=>sponsorTier(item.tier)==='majeur');
+    const premiums=sponsors.filter(item=>sponsorTier(item.tier)==='premium');
+    const partners=sponsors.filter(item=>sponsorTier(item.tier)==='partenaire');
+
+    sponsorsRoot.innerHTML=sponsors.length?`
+      ${majors.length?`
+        <section class="sponsor-group sponsor-group--major">
+          <div class="sponsor-group__heading">
+            <h3>Nos partenaires majeurs</h3>
+          </div>
+          ${sponsorGrid(majors,'major')}
+        </section>
+      `:''}
+
+      ${(premiums.length||partners.length)?`
+        <section class="sponsor-group sponsor-group--support">
+          <div class="sponsor-group__heading sponsor-group__heading--support">
+            <h3>Ils nous accompagnent</h3>
+          </div>
+
+          ${premiums.length?`
+            <div class="sponsor-subgroup sponsor-subgroup--premium">
+              <h4>Partenaires premium</h4>
+              ${sponsorGrid(premiums,'premium')}
+            </div>
+          `:''}
+
+          ${partners.length?`
+            <div class="sponsor-subgroup sponsor-subgroup--partner">
+              <h4>Partenaires</h4>
+              ${sponsorGrid(partners,'partner')}
+            </div>
+          `:''}
+        </section>
+      `:''}
+    `:'<p>Les partenaires seront bientôt présentés ici.</p>';
+  }).catch(()=>{
+    sponsorsRoot.innerHTML='<p>Les partenaires seront bientôt présentés ici.</p>';
+  });
 }
-'''
-write(path, content)
-changed.append(path)
+''')
+
+write("public/sponsor-extra.css", r'''.sponsor-logos{display:block;margin-top:34px}
+.sponsor-group{display:grid;gap:20px}
+.sponsor-group+.sponsor-group{margin-top:58px;padding-top:48px;border-top:1px solid var(--line)}
+.sponsor-group__heading{display:flex;align-items:center;gap:18px}
+.sponsor-group__heading h3{margin:0;color:var(--wine);font-size:clamp(25px,3vw,38px);line-height:1;text-transform:uppercase}
+.sponsor-group__heading:after{content:"";height:1px;flex:1;background:var(--line)}
+.sponsor-group__heading--support h3{font-size:clamp(23px,2.6vw,34px)}
+.sponsor-subgroup{display:grid;gap:14px}
+.sponsor-subgroup+.sponsor-subgroup{margin-top:24px}
+.sponsor-subgroup h4{margin:0;color:#6e625e;font-size:10px;font-weight:900;letter-spacing:.14em;text-transform:uppercase}
+.sponsor-grid{display:grid;align-items:stretch}
+.sponsor-grid--major{grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+.sponsor-grid--premium{grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.sponsor-grid--partner{grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.sponsor-card{min-width:0;display:grid;place-items:center;background:#fff;border:1px solid #e7ddd4;border-radius:18px;text-decoration:none;overflow:hidden;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
+a.sponsor-card:hover{transform:translateY(-3px);border-color:#d9c7b9;box-shadow:0 16px 36px rgba(43,28,22,.08)}
+.sponsor-logo-box{width:100%;height:100%;display:grid;place-items:center}
+.sponsor-card img{display:block;width:100%;object-fit:contain}
+.sponsor-card strong{color:var(--ink);text-align:center}
+.sponsor-logos .sponsor-card--major{min-height:220px;padding:30px 34px;border-radius:22px;box-shadow:0 10px 30px rgba(43,28,22,.055)}
+.sponsor-logos .sponsor-card--major img{height:135px}
+.sponsor-logos .sponsor-card--major strong{font-size:24px}
+.sponsor-logos .sponsor-card--premium{min-height:160px;padding:24px}
+.sponsor-logos .sponsor-card--premium img{height:92px}
+.sponsor-logos .sponsor-card--premium strong{font-size:19px}
+.sponsor-logos .sponsor-card--partner{min-height:122px;padding:18px 20px;border-radius:15px}
+.sponsor-logos .sponsor-card--partner img{height:65px}
+.sponsor-logos .sponsor-card--partner strong{font-size:15px}
+
+@media(max-width:900px){
+  .sponsor-grid--major{gap:12px}
+  .sponsor-logos .sponsor-card--major{min-height:185px;padding:24px}
+  .sponsor-logos .sponsor-card--major img{height:110px}
+  .sponsor-grid--partner{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media(max-width:700px){
+  .sponsor-logos{margin-top:26px}
+  .sponsor-group+.sponsor-group{margin-top:40px;padding-top:36px}
+  .sponsor-group__heading{align-items:flex-end}
+  .sponsor-group__heading h3,.sponsor-group__heading--support h3{font-size:26px}
+  .sponsor-grid--major{grid-template-columns:1fr}
+  .sponsor-logos .sponsor-card--major{min-height:165px;padding:22px 28px}
+  .sponsor-logos .sponsor-card--major img{height:105px}
+  .sponsor-grid--premium,.sponsor-grid--partner{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .sponsor-logos .sponsor-card--premium{min-height:125px;padding:16px}
+  .sponsor-logos .sponsor-card--premium img{height:73px}
+  .sponsor-logos .sponsor-card--partner{min-height:100px;padding:13px}
+  .sponsor-logos .sponsor-card--partner img{height:54px}
+}
+''')
+
+path = "src/pages/index.astro"
+content = read(path)
+if "/sponsor-extra.css" not in content:
+    old = '<link rel="stylesheet" href="/home-extra.css"><link rel="stylesheet" href="/home-slideshow.css">'
+    new = '<link rel="stylesheet" href="/home-extra.css"><link rel="stylesheet" href="/home-slideshow.css"><link rel="stylesheet" href="/sponsor-extra.css?v=2">'
+    content, did = replace_once(content, old, new, "CSS partenaires accueil")
+    if did:
+        write(path, content)
+
+path = "src/pages/mecenat/index.astro"
+content = read(path)
+if 'href="/sponsor-extra.css?v=2"' not in content:
+    content = content.replace('href="/sponsor-extra.css"', 'href="/sponsor-extra.css?v=2"')
+    write(path, content)
 
 
-# 6) Page Équipes : millésimes calculés automatiquement depuis la saison active.
+# 2) SAISON ACTIVE DANS LES API ÉQUIPES
 path = "src/worker.ts"
 content = read(path)
-season_field = "(SELECT label FROM seasons WHERE active=1 ORDER BY id DESC LIMIT 1) AS season_label"
-if season_field not in content:
-    old = "      t.id,t.slug,t.name,t.category,t.group_name,t.level,t.gender,t.player_count,t.photo_key,\n      CASE"
-    new = "      t.id,t.slug,t.name,t.category,t.group_name,t.level,t.gender,t.player_count,t.photo_key,\n      (SELECT label FROM seasons WHERE active=1 ORDER BY id DESC LIMIT 1) AS season_label,\n      CASE"
-    content, _ = replace_once(content, old, new, "saison active dans l'API équipes")
-    write(path, content)
-    changed.append(path)
 
-path = "public/teams.js"
-content = r'''const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
-let teams=[];
-const root=document.querySelector('#all-teams');
+teams_old = "      t.id,t.slug,t.name,t.category,t.group_name,t.level,t.gender,t.player_count,t.photo_key,\n      CASE"
+teams_new = "      t.id,t.slug,t.name,t.category,t.group_name,t.level,t.gender,t.player_count,t.photo_key,\n      (SELECT label FROM seasons WHERE active=1 ORDER BY id DESC LIMIT 1) AS season_label,\n      CASE"
+if teams_new not in content:
+    content, _ = replace_once(content, teams_old, teams_new, "saison active liste équipes")
 
-const cleanTeamName=value=>String(value||'')
-  .replace(/\s*\((?=[^)]*(?:19|20)\d{2})[^)]*\)\s*$/,'')
-  .trim();
+profile_old = "      t.id,t.slug,t.name,t.category,t.group_name,t.level,t.gender,t.description,t.player_count,t.photo_key,\n      CASE"
+profile_new = "      t.id,t.slug,t.name,t.category,t.group_name,t.level,t.gender,t.description,t.player_count,t.photo_key,\n      (SELECT label FROM seasons WHERE active=1 ORDER BY id DESC LIMIT 1) AS season_label,\n      CASE"
+if profile_new not in content:
+    content, _ = replace_once(content, profile_old, profile_new, "saison active fiche équipe")
 
-const seasonEndYear=label=>{
-  const years=String(label||'').match(/\d{4}/g)||[];
-  const year=Number(years.at(-1));
-  return Number.isInteger(year)?year:null;
-};
-
-const teamBirthYears=team=>{
-  const endYear=seasonEndYear(team.season_label);
-  if(!endYear)return [];
-  const ages=[...new Set(
-    [...cleanTeamName(team.name).matchAll(/U\s*(\d{1,2})/gi)]
-      .map(match=>Number(match[1]))
-      .filter(age=>Number.isInteger(age)&&age>=5&&age<=20)
-  )];
-  return [...new Set(ages.map(age=>endYear-age))].sort((a,b)=>a-b);
-};
-
-function draw(group=''){
-  const rows=teams.filter(team=>team.active!==0&&(!group||team.group_name===group));
-  root.innerHTML=rows.map((team,index)=>{
-    const feminine=team.group_name==='Féminines'||team.gender==='female';
-    const years=teamBirthYears(team);
-    const name=cleanTeamName(team.name);
-    return `<a class="catalog-card tone-${index%4}" href="/equipes/fiche/?slug=${encodeURIComponent(team.slug)}">
-      <div class="catalog-image"><img src="${esc(team.photo_url||'/team-default.webp')}" alt="${esc(team.photo_alt||`Photo du groupe ${name}`)}" loading="lazy" decoding="async"></div>
-      <small>${esc(team.group_name)}</small>
-      <h2>${esc(name)}</h2>
-      ${years.length?`<p class="catalog-birthyears"><span>Millésimes</span><strong>${years.join(' · ')}</strong></p>`:''}
-      <p class="catalog-level">${esc(team.level)}</p>
-      <div><b>${team.player_count||'—'}</b> ${feminine?'licenciées pratiquantes':'licenciés pratiquants'} <i>Voir la fiche →</i></div>
-    </a>`;
-  }).join('')||'<p>Aucune équipe dans cette section.</p>';
-}
-
-fetch('/api/page/teams?v=2').then(response=>response.json()).then(data=>{
-  teams=(data.teams||[]).sort((a,b)=>String(a.name).localeCompare(String(b.name),'fr',{numeric:true,sensitivity:'base'}));
-  draw();
-});
-document.querySelectorAll('[data-group]').forEach(button=>button.addEventListener('click',()=>{
-  document.querySelectorAll('[data-group]').forEach(item=>{const active=item===button;item.classList.toggle('active',active);item.setAttribute('aria-pressed',String(active))});
-  draw(button.dataset.group);
-}));
-'''
 write(path, content)
-changed.append(path)
-
-path = "public/enhancements.css"
-content = read(path)
-if ".catalog-birthyears{" not in content:
-    content += r'''
-/* Page Équipes — millésimes calculés depuis la saison active */
-.catalog-birthyears{
-  display:flex;
-  align-items:center;
-  gap:9px;
-  width:max-content;
-  max-width:100%;
-  margin:9px 0 12px;
-  padding:6px 9px;
-  border-radius:999px;
-  background:#f4eee8;
-  color:#5f171f;
-}
-.catalog-birthyears span{
-  font-size:9px;
-  font-weight:900;
-  letter-spacing:.08em;
-  text-transform:uppercase;
-}
-.catalog-birthyears strong{
-  font-size:13px;
-  line-height:1;
-  white-space:nowrap;
-}
-.catalog-level{
-  margin:0 0 15px;
-  color:#746965;
-  font-size:13px;
-}
-@media(max-width:600px){
-  .catalog-birthyears{margin-top:7px}
-  .catalog-birthyears strong{font-size:12px}
-}
-'''
-    write(path, content)
-    changed.append(path)
 
 
-# 7) Finition visuelle des cartes Équipes : années hors du titre et cartes alignées.
-path = "public/teams.js"
-content = r'''const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+# 3) LISTE DES ÉQUIPES
+write("public/teams.js", r'''const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
 let teams=[];
 const root=document.querySelector('#all-teams');
 
@@ -336,7 +196,7 @@ const displayTeamName=value=>cleanTeamName(value)
 
 const seasonEndYear=label=>{
   const years=String(label||'').match(/\d{4}/g)||[];
-  const year=Number(years.at(-1));
+  const year=Number(years[years.length-1]);
   return Number.isInteger(year)?year:null;
 };
 
@@ -367,16 +227,17 @@ const birthLabel=(team,years)=>{
   const born=feminine?'Nées':'Nés';
   if(years.length===1)return `${born} en ${years[0]}`;
   if(years.length===2)return `${born} en ${years[0]} · ${years[1]}`;
-  return `${born} de ${years[0]} à ${years.at(-1)}`;
+  return `${born} de ${years[0]} à ${years[years.length-1]}`;
 };
 
 function draw(group=''){
-  const rows=teams.filter(team=>team.active!==0&&(!group||team.group_name===group));
+  const rows=teams.filter(team=>!group||team.group_name===group);
   root.innerHTML=rows.map((team,index)=>{
     const feminine=team.group_name==='Féminines'||team.gender==='female';
     const years=teamBirthYears(team);
     const name=displayTeamName(team.name);
     const yearsText=birthLabel(team,years);
+
     return `<a class="catalog-card tone-${index%4}" href="/equipes/fiche/?slug=${encodeURIComponent(team.slug)}">
       <div class="catalog-image"><img src="${esc(team.photo_url||'/team-default.webp')}" alt="${esc(team.photo_alt||`Photo du groupe ${name}`)}" loading="lazy" decoding="async"></div>
       <small>${esc(team.group_name)}</small>
@@ -388,116 +249,132 @@ function draw(group=''){
   }).join('')||'<p>Aucune équipe dans cette section.</p>';
 }
 
-fetch('/api/page/teams?v=3').then(response=>response.json()).then(data=>{
+fetch('/api/page/teams?v=4').then(response=>response.json()).then(data=>{
   teams=(data.teams||[]).sort((a,b)=>String(a.name).localeCompare(String(b.name),'fr',{numeric:true,sensitivity:'base'}));
   draw();
 });
+
 document.querySelectorAll('[data-group]').forEach(button=>button.addEventListener('click',()=>{
-  document.querySelectorAll('[data-group]').forEach(item=>{const active=item===button;item.classList.toggle('active',active);item.setAttribute('aria-pressed',String(active))});
+  document.querySelectorAll('[data-group]').forEach(item=>{
+    const active=item===button;
+    item.classList.toggle('active',active);
+    item.setAttribute('aria-pressed',String(active));
+  });
   draw(button.dataset.group);
 }));
-'''
-write(path, content)
-changed.append(path)
+''')
 
 path = "public/enhancements.css"
 content = read(path)
-if ".catalog-card__footer{" not in content:
+if "/* Page Équipes — années de naissance */" not in content:
     content += r'''
-/* Page Équipes — finition des cartes */
-.team-catalog{
-  align-items:stretch;
-}
-.catalog-card{
-  display:flex;
-  flex-direction:column;
-  min-width:0;
-  height:100%;
-  border-radius:18px;
-  overflow:hidden;
-  box-shadow:0 8px 24px rgba(57,39,31,.08);
-}
-.catalog-card .catalog-image{
-  flex:0 0 auto;
-  border-radius:10px 10px 0 0;
-}
-.catalog-card>small{
-  margin-top:14px;
-}
-.catalog-card h2{
-  margin:12px 0 7px;
-  font-size:clamp(28px,2.5vw,38px);
-  line-height:.98;
-  text-wrap:balance;
-}
-.catalog-birthyears{
-  display:inline-flex;
-  align-items:center;
-  align-self:flex-start;
-  width:auto;
-  max-width:100%;
-  margin:2px 0 12px;
-  padding:7px 10px;
-  border-radius:999px;
-  background:#f3ebe6;
-  color:var(--wine);
-  font-size:11px;
-  font-weight:900;
-  line-height:1;
-  letter-spacing:.015em;
-  white-space:nowrap;
-}
-.catalog-level{
-  min-height:20px;
-  margin:0 0 14px;
-  color:#5f5551;
-  font-size:13px;
-  line-height:1.35;
-}
-.catalog-card>.catalog-card__footer{
-  margin-top:auto;
-  padding-top:14px;
-  border-top:1px solid var(--line);
-  display:flex;
-  gap:10px;
-  align-items:center;
-}
-.catalog-card__footer span{
-  min-width:0;
-  font-size:13px;
-}
-.catalog-card__footer i{
-  margin-left:auto;
-  flex:0 0 auto;
-  font-style:normal;
-  font-weight:900;
-  color:var(--wine);
-  white-space:nowrap;
-}
-@media(max-width:900px){
-  .team-catalog{
-    grid-template-columns:repeat(2,minmax(0,1fr));
-  }
-}
-@media(max-width:600px){
-  .team-catalog{
-    grid-template-columns:1fr;
-  }
-  .catalog-card h2{
-    font-size:32px;
-  }
-  .catalog-birthyears{
-    font-size:11px;
-  }
-  .catalog-level{
-    min-height:0;
-  }
-}
+
+/* Page Équipes — années de naissance */
+.team-catalog{align-items:stretch}
+.catalog-card{display:flex;flex-direction:column;min-width:0;height:100%}
+.catalog-card h2{margin:12px 0 7px;line-height:.98;text-wrap:balance}
+.catalog-birthyears{display:inline-flex;align-items:center;align-self:flex-start;width:auto;margin:2px 0 12px;padding:7px 10px;border-radius:999px;background:#f3ebe6;color:var(--wine);font-size:11px;font-weight:900;line-height:1;white-space:nowrap}
+.catalog-level{min-height:20px;margin:0 0 14px;color:#5f5551;font-size:13px}
+.catalog-card>.catalog-card__footer{margin-top:auto;padding-top:14px;border-top:1px solid var(--line);display:flex;gap:10px;align-items:center}
+.catalog-card__footer span{min-width:0;font-size:13px}
+.catalog-card__footer i{margin-left:auto;flex:0 0 auto;font-style:normal;font-weight:900;color:var(--wine);white-space:nowrap}
+@media(max-width:900px){.team-catalog{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.team-catalog{grid-template-columns:1fr}.catalog-card h2{font-size:32px}.catalog-level{min-height:0}}
 '''
     write(path, content)
-    changed.append(path)
 
-print("Modifications appliquées :")
+
+# 4) FICHE ÉQUIPE
+path = "src/pages/equipes/fiche.astro"
+content = read(path)
+
+hero_old = '<section class="page-hero wine"><p class="eyebrow">Fiche équipe</p><h1 id="team-name" aria-live="polite">Chargement…</h1><p id="team-description"></p></section>'
+hero_new = '<section class="page-hero wine"><p class="eyebrow">Fiche équipe</p><h1 id="team-name" aria-live="polite">Chargement…</h1><p id="team-birthyears" class="team-birthyears" hidden></p><p id="team-description"></p></section>'
+if hero_new not in content:
+    content, _ = replace_once(content, hero_old, hero_new, "années sous le titre fiche équipe")
+
+style_old = '.staff article img{width:72px;height:72px;object-fit:cover;border-radius:50%;margin-bottom:10px}'
+style_new = '.staff article img{width:72px;height:72px;object-fit:cover;border-radius:50%;margin-bottom:10px}\n      .team-birthyears{display:inline-flex;align-self:flex-start;width:max-content;margin:0 0 18px;padding:8px 12px;border-radius:999px;background:var(--gold);color:var(--wine);font-size:12px;font-weight:950;line-height:1;letter-spacing:.02em}\n      .team-birthyears[hidden]{display:none}'
+if ".team-birthyears{" not in content:
+    content, _ = replace_once(content, style_old, style_new, "style années fiche équipe")
+
+content = content.replace('/team-profile.js?v=29', '/team-profile.js?v=30')
+write(path, content)
+
+path = "public/team-profile.js"
+content = read(path)
+
+helper_marker = '''const esc=value=>String(value??'').replace(/[&<>'"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
+'''
+helpers = r'''const esc=value=>String(value??'').replace(/[&<>'"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
+
+const cleanTeamName=value=>String(value||'')
+  .replace(/\s*\((?=[^)]*(?:19|20)\d{2})[^)]*\)\s*$/,'')
+  .trim();
+
+const displayTeamName=value=>cleanTeamName(value)
+  .replace(/(U\s*\d{1,2}F?)\s*(?:-|–|—|à|À)\s*(U\s*\d{1,2}F?)/gi,'$1 – $2')
+  .replace(/\s{2,}/g,' ');
+
+const seasonEndYear=label=>{
+  const years=String(label||'').match(/\d{4}/g)||[];
+  const year=Number(years[years.length-1]);
+  return Number.isInteger(year)?year:null;
+};
+
+const teamAgeBounds=name=>{
+  const ages=[...new Set(
+    [...cleanTeamName(name).matchAll(/U\s*(\d{1,2})/gi)]
+      .map(match=>Number(match[1]))
+      .filter(age=>Number.isInteger(age)&&age>=5&&age<=20)
+  )];
+  if(!ages.length)return [];
+  if(ages.length===2&&Math.abs(ages[0]-ages[1])>1){
+    const start=Math.min(...ages);
+    const end=Math.max(...ages);
+    return Array.from({length:end-start+1},(_,index)=>start+index);
+  }
+  return ages;
+};
+
+const teamBirthYears=team=>{
+  const endYear=seasonEndYear(team.season_label);
+  if(!endYear)return [];
+  return [...new Set(teamAgeBounds(team.name).map(age=>endYear-age))].sort((a,b)=>a-b);
+};
+
+const birthLabel=(team,years)=>{
+  if(!years.length)return '';
+  const feminine=team.group_name==='Féminines'||team.gender==='female';
+  const born=feminine?'Nées':'Nés';
+  if(years.length===1)return `${born} en ${years[0]}`;
+  if(years.length===2)return `${born} en ${years[0]} · ${years[1]}`;
+  return `${born} de ${years[0]} à ${years[years.length-1]}`;
+};
+'''
+if "const teamBirthYears=team=>" not in content:
+    content, _ = replace_once(content, helper_marker, helpers, "helpers années team-profile.js")
+
+load_old = "  document.title=`${team.name} - FC Escalquens`;set('#team-name',team.name);set('#team-description',team.description);set('#player-count',team.player_count||'—');"
+load_new = '''  const teamDisplayName=displayTeamName(team.name);
+  const years=teamBirthYears(team);
+  const yearsText=birthLabel(team,years);
+  document.title=`${teamDisplayName} - FC Escalquens`;
+  set('#team-name',teamDisplayName);
+  set('#team-description',team.description);
+  set('#player-count',team.player_count||'—');
+  const birthNode=document.querySelector('#team-birthyears');
+  if(birthNode){
+    birthNode.textContent=yearsText;
+    birthNode.hidden=!yearsText;
+  }'''
+if load_new not in content:
+    content, _ = replace_once(content, load_old, load_new, "affichage années fiche équipe")
+
+content = content.replace("&v=26", "&v=27")
+write(path, content)
+
+print("Correctif appliqué :")
 for item in dict.fromkeys(changed):
     print(f" - {item}")
-print("\nÀ vérifier ensuite : npm run build")
+print("\\nEnsuite : npm run build")

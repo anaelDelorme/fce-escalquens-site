@@ -1,6 +1,50 @@
 const slug=new URLSearchParams(location.search).get('slug');
 const set=(selector,value)=>{const node=document.querySelector(selector);if(node)node.textContent=value||'À renseigner'};
 const esc=value=>String(value??'').replace(/[&<>'"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
+
+const cleanTeamName=value=>String(value||'')
+  .replace(/\s*\((?=[^)]*(?:19|20)\d{2})[^)]*\)\s*$/,'')
+  .trim();
+
+const displayTeamName=value=>cleanTeamName(value)
+  .replace(/(U\s*\d{1,2}F?)\s*(?:-|–|—|à|À)\s*(U\s*\d{1,2}F?)/gi,'$1 – $2')
+  .replace(/\s{2,}/g,' ');
+
+const seasonEndYear=label=>{
+  const years=String(label||'').match(/\d{4}/g)||[];
+  const year=Number(years[years.length-1]);
+  return Number.isInteger(year)?year:null;
+};
+
+const teamAgeBounds=name=>{
+  const ages=[...new Set(
+    [...cleanTeamName(name).matchAll(/U\s*(\d{1,2})/gi)]
+      .map(match=>Number(match[1]))
+      .filter(age=>Number.isInteger(age)&&age>=5&&age<=20)
+  )];
+  if(!ages.length)return [];
+  if(ages.length===2&&Math.abs(ages[0]-ages[1])>1){
+    const start=Math.min(...ages);
+    const end=Math.max(...ages);
+    return Array.from({length:end-start+1},(_,index)=>start+index);
+  }
+  return ages;
+};
+
+const teamBirthYears=team=>{
+  const endYear=seasonEndYear(team.season_label);
+  if(!endYear)return [];
+  return [...new Set(teamAgeBounds(team.name).map(age=>endYear-age))].sort((a,b)=>a-b);
+};
+
+const birthLabel=(team,years)=>{
+  if(!years.length)return '';
+  const feminine=team.group_name==='Féminines'||team.gender==='female';
+  const born=feminine?'Nées':'Nés';
+  if(years.length===1)return `${born} en ${years[0]}`;
+  if(years.length===2)return `${born} en ${years[0]} · ${years[1]}`;
+  return `${born} de ${years[0]} à ${years[years.length-1]}`;
+};
 const logo=(url,name)=>url?`<img class="match-logo" src="${esc(url)}" alt="" loading="lazy" referrerpolicy="no-referrer">`:'<span class="match-logo fallback" aria-hidden="true">⚽</span>';
 
 const safeHttpUrl=value=>{
@@ -247,13 +291,24 @@ const wirePlateauDetails=()=>document.querySelectorAll('[data-plateau-games]').f
   detail.innerHTML='<p class="plateau-games-loading">Chargement du programme…</p>';
   try{if(!plateauGamesCache.has(id)){const response=await fetch(`/api/plateau-games?plateau_id=${encodeURIComponent(id)}`),data=await response.json();if(!response.ok)throw new Error(data.error||`HTTP ${response.status}`);plateauGamesCache.set(id,data.games||[])}detail.innerHTML=plateauGamesHtml(plateauGamesCache.get(id));detail.dataset.loaded='1'}catch(error){console.error(error);detail.innerHTML='<p class="participant-empty">Le détail est momentanément indisponible.</p>'}
 });
-fetch(`/api/page/team-profile?slug=${encodeURIComponent(slug||'')}&v=26`).then(async response=>{
+fetch(`/api/page/team-profile?slug=${encodeURIComponent(slug||'')}&v=27`).then(async response=>{
   const data=await response.json();
   if(!response.ok)throw new Error(data.error||`Fiche équipe : ${response.status}`);
   return data;
 }).then(({team,entries=[],sessions=[],staff=[],upcoming=[],results=[],participants=[],standings=[],standing_logos=[]})=>{
   savedParticipants=participants;
-  document.title=`${team.name} - FC Escalquens`;set('#team-name',team.name);set('#team-description',team.description);set('#player-count',team.player_count||'—');
+  const teamDisplayName=displayTeamName(team.name);
+  const years=teamBirthYears(team);
+  const yearsText=birthLabel(team,years);
+  document.title=`${teamDisplayName} - FC Escalquens`;
+  set('#team-name',teamDisplayName);
+  set('#team-description',team.description);
+  set('#player-count',team.player_count||'—');
+  const birthNode=document.querySelector('#team-birthyears');
+  if(birthNode){
+    birthNode.textContent=yearsText;
+    birthNode.hidden=!yearsText;
+  }
   const engagementRows=entries.map((item,index)=>({
     teamLabel:item.name||item.category_code||[team.name,item.team_number].filter(Boolean).join(' ')||`Équipe ${index+1}`,
     competition:[item.division||item.competition_name,item.pool].filter(Boolean).join(' · ')

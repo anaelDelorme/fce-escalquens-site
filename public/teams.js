@@ -12,7 +12,7 @@ const displayTeamName=value=>cleanTeamName(value)
 
 const seasonEndYear=label=>{
   const years=String(label||'').match(/\d{4}/g)||[];
-  const year=Number(years.at(-1));
+  const year=Number(years[years.length-1]);
   return Number.isInteger(year)?year:null;
 };
 
@@ -43,16 +43,17 @@ const birthLabel=(team,years)=>{
   const born=feminine?'Nées':'Nés';
   if(years.length===1)return `${born} en ${years[0]}`;
   if(years.length===2)return `${born} en ${years[0]} · ${years[1]}`;
-  return `${born} de ${years[0]} à ${years.at(-1)}`;
+  return `${born} de ${years[0]} à ${years[years.length-1]}`;
 };
 
 function draw(group=''){
-  const rows=teams.filter(team=>team.active!==0&&(!group||team.group_name===group));
+  const rows=teams.filter(team=>!group||team.group_name===group);
   root.innerHTML=rows.map((team,index)=>{
     const feminine=team.group_name==='Féminines'||team.gender==='female';
     const years=teamBirthYears(team);
     const name=displayTeamName(team.name);
     const yearsText=birthLabel(team,years);
+
     return `<a class="catalog-card tone-${index%4}" href="/equipes/fiche/?slug=${encodeURIComponent(team.slug)}">
       <div class="catalog-image"><img src="${esc(team.photo_url||'/team-default.webp')}" alt="${esc(team.photo_alt||`Photo du groupe ${name}`)}" loading="lazy" decoding="async"></div>
       <small>${esc(team.group_name)}</small>
@@ -64,11 +65,16 @@ function draw(group=''){
   }).join('')||'<p>Aucune équipe dans cette section.</p>';
 }
 
-fetch('/api/page/teams?v=3').then(response=>response.json()).then(data=>{
+fetch('/api/page/teams?v=4').then(response=>response.json()).then(data=>{
   teams=(data.teams||[]).sort((a,b)=>String(a.name).localeCompare(String(b.name),'fr',{numeric:true,sensitivity:'base'}));
   draw();
 });
+
 document.querySelectorAll('[data-group]').forEach(button=>button.addEventListener('click',()=>{
-  document.querySelectorAll('[data-group]').forEach(item=>{const active=item===button;item.classList.toggle('active',active);item.setAttribute('aria-pressed',String(active))});
+  document.querySelectorAll('[data-group]').forEach(item=>{
+    const active=item===button;
+    item.classList.toggle('active',active);
+    item.setAttribute('aria-pressed',String(active));
+  });
   draw(button.dataset.group);
 }));
