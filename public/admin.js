@@ -57,7 +57,7 @@ const textareas=new Set(['description','short_description','price_details','size
 const clubCategories=['Seniors','Formation','Académie','Féminines'];
 const options={group_name:clubCategories.map(value=>[value,value]),gender:[['mixed','Mixte'],['female','Féminin'],['male','Masculin']],weekday:[[1,'Lundi'],[2,'Mardi'],[3,'Mercredi'],[4,'Jeudi'],[5,'Vendredi'],[6,'Samedi'],[7,'Dimanche']],role:[['coach_referent','Coach référent'],['coach','Coach'],['dirigeant','Dirigeant'],['arbitre','Arbitre']],status:[['scheduled','Programmé'],['finished','Terminé'],['postponed','Reporté'],['cancelled','Annulé'],['draft','Brouillon'],['published','Publié'],['open','Ouvert'],['closed','Fermé']],tier:[['majeur','Partenaire majeur'],['premium','Partenaire premium'],['partenaire','Partenaire'],['soutien','Soutien']],kind:[['photo','Photo'],['pdf','PDF'],['boutique','Boutique']]};
 const contactRoles=[['responsable_mecenat','Responsable mécénat'],['presidence','Présidence'],['community_manager','Community Manager'],['secretariat','Secrétariat'],['tresorerie','Trésorerie'],['responsable_technique','Responsable technique'],['communication','Communication'],['responsable_sportif','Responsable sportif'],['responsable_boutique','Responsable boutique'],['referent','Référent'],['autre','Autre']];
-let current='teams',editing=null,editingRow={},token=sessionStorage.getItem('admin-token')||'',references={teams:[],club_members:[],venues:[],competition_levels:[],seasons:[],tournaments:[],team_competitions:[],shop_categories:[]},referencesLoaded=false;
+let current='teams',editing=null,editingRow={},token=sessionStorage.getItem('admin-token')||'',references={teams:[],club_members:[],venues:[],competition_levels:[],seasons:[],tournaments:[],team_competitions:[],shop_categories:[]},referencesLoaded=false,loadedRows=[];
 const $=selector=>document.querySelector(selector);
 const authHeaders=()=>({'x-requested-with':'XMLHttpRequest',...(token?{'x-admin-token':token}:{})}),jsonHeaders=()=>({'content-type':'application/json',...authHeaders()});
 const esc=value=>String(value??'').replace(/[&<>'"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
@@ -96,6 +96,7 @@ async function load(){
       {sensitivity:'base'}
     ));
   }
+  loadedRows=response.ok&&Array.isArray(rows)?rows:[];
   const help={
     teams:'Un groupe sportif réunit le même staff, les mêmes entraînements et une seule photo (par exemple U9).',
     team_competitions:'Cette liste est remplie automatiquement par la FFF. Ouvrez chaque ligne « À affecter », puis choisissez son groupe sportif. Le numéro et l’identifiant FFF restent en lecture seule.',
@@ -117,9 +118,51 @@ async function load(){
   const assignedTeam=row=>references.teams.find(x=>String(x.id)===String(row.team_id)&&Number(x.active)!==0);
   const recordTitle=row=>current==='home_slides'?`Photo ${row.display_order??row.id}`:current==='team_staff'?`${teamName(row.team_id)} — ${references.club_members.find(x=>x.id===row.member_id)?.full_name||`Licencié #${row.member_id}`}`:current==='training_sessions'?`${teamName(row.team_id)} — ${dayName(row.weekday)}`:current==='team_competitions'?`${assignedTeam(row)?.name||'À affecter'} — ${row.category_code||row.name}${row.team_number?` n°${row.team_number}`:''}`:current==='tournament_teams'?`${references.tournaments.find(x=>x.id===row.tournament_id)?.name||`Tournoi #${row.tournament_id}`} — ${teamName(row.team_id)}`:current==='matches'?`${row.home_team} — ${row.away_team}`:current==='shop_settings'?'Réglages de la boutique':row.full_name||row.name||row.title||row.label||row.category||row.slug||`#${row.id}`;
   const recordDetail=row=>current==='home_slides'?(row.alt_text||'Description à renseigner'):current==='training_sessions'?`${references.venues.find(x=>x.id===row.venue_id)?.name||row.venue||'Terrain non renseigné'} · ${row.starts_at||''}–${row.ends_at||''}`:current==='team_competitions'?`${row.competition_name||row.division||'Compétition à préciser'}${row.pool?` · ${row.pool}`:''} · ${row.fff_team_id}`:current==='matches'?`${new Date(row.starts_at).toLocaleString('fr-FR')} · ${row.competition||'Match amical'} · ${[row.venue,row.venue_address].filter((value,index,list)=>value&&list.indexOf(value)===index).join(' — ')||'lieu à confirmer'}`:current==='recruitment_posts'?`${row.target||'Tous publics'} · ${row.status||'open'}`:current==='shop_products'?`${row.price_label||'Prix à confirmer'} · ${references.shop_categories.find(x=>String(x.id)===String(row.shop_category_id))?.name||'Sans catégorie'} · ${Number(row.active)===1?'Visible':'Masqué'}${!String(row.image_key||'').trim()?' · Sans photo':''}${Number(row.featured)===1?' · À la une':''}${Number(row.highlighted)===1?' · Phare':''}`:current==='shop_settings'?`${row.contact_email} · ${row.catalogue_key?'Catalogue chargé':'Catalogue à charger'}`:current==='site_media'?(row.alt_text||'Description à renseigner'):options.role?.find(x=>x[0]===row.role)?.[1]||row.role||row.group_name||row.venue||row.starts_at||'';
-  $('#records').innerHTML=response.ok?rows.map(row=>{const automatic=current==='matches'&&row.source!=='manual';const protectedRow=current==='shop_settings';return `<article class="${automatic?'automatic':''}"><div><b>${esc(recordTitle(row))}</b><small>${esc(recordDetail(row))}</small>${automatic?'<em>Synchronisé automatiquement</em>':''}</div>${automatic?'':`<button data-edit='${JSON.stringify(row).replace(/'/g,'&#39;')}'>Modifier</button>${protectedRow?'':`<button data-delete="${row.id}">Supprimer</button>`}`}</article>`}).join(''):'';
+  $('#records').innerHTML=response.ok?rows.map(row=>{
+    const automatic=current==='matches'&&row.source!=='manual';
+    const protectedRow=current==='shop_settings';
+    const visibilityButton=current==='shop_products'
+      ?`<button class="shop-visibility ${Number(row.active)===1?'is-visible':'is-hidden'}" data-shop-visibility="${row.id}" aria-pressed="${Number(row.active)===1?'true':'false'}">${Number(row.active)===1?'Masquer':'Afficher'}</button>`
+      :'';
+    return `<article class="${automatic?'automatic':''}"><div><b>${esc(recordTitle(row))}</b><small>${esc(recordDetail(row))}</small>${automatic?'<em>Synchronisé automatiquement</em>':''}</div>${automatic?'':`${visibilityButton}<button data-edit='${JSON.stringify(row).replace(/'/g,'&#39;')}'>Modifier</button>${protectedRow?'':`<button data-delete="${row.id}">Supprimer</button>`}`}</article>`;
+  }).join(''):'';
   document.querySelectorAll('[data-edit]').forEach(button=>button.onclick=()=>open(JSON.parse(button.dataset.edit)));
   document.querySelectorAll('[data-delete]').forEach(button=>button.onclick=()=>remove(button.dataset.delete));
+  document.querySelectorAll('[data-shop-visibility]').forEach(button=>button.onclick=()=>toggleShopVisibility(button.dataset.shopVisibility,button));
+}
+async function toggleShopVisibility(id,button){
+  const row=loadedRows.find(item=>String(item.id)===String(id));
+  if(!row)return;
+  const next=Number(row.active)===1?0:1;
+  if(next===1&&!String(row.image_key||'').trim()){
+    $('#status').textContent='Ajoutez une photo à cet article avant de le rendre visible.';
+    return;
+  }
+  const idleLabel=button.textContent;
+  button.disabled=true;
+  button.textContent=next===1?'Affichage…':'Masquage…';
+  try{
+    const response=await fetch(`/admin-api/shop_products/${id}`,{
+      method:'PUT',
+      headers:jsonHeaders(),
+      body:JSON.stringify({...row,active:next})
+    });
+    let result={};
+    try{result=await response.json()}catch{}
+    if(!response.ok)throw new Error(
+      response.status===401
+        ?'Votre session Cloudflare a expiré. Rechargez la page.'
+        :result.error||'Modification impossible.'
+    );
+    await load();
+    $('#status').textContent=next===1
+      ?`« ${row.name||'Article'} » est maintenant visible dans la boutique.`
+      :`« ${row.name||'Article'} » est maintenant masqué de la boutique.`;
+  }catch(error){
+    $('#status').textContent=error.message||'Modification impossible.';
+    button.disabled=false;
+    button.textContent=idleLabel;
+  }
 }
 function field(name,value){
   const title=`<span>${labels[name]||name}</span><small>${name}</small>`;

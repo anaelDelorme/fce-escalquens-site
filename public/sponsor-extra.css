@@ -1,2 +1,33 @@
-.sponsor-logos{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:26px}.sponsor-logos a{min-height:130px;border:1px solid var(--line);display:grid;place-items:center;padding:18px;background:#fff}.sponsor-logos img{width:100%;height:70px;object-fit:contain}.sponsor-logos small{color:var(--wine);font-weight:900;text-transform:uppercase;font-size:9px}
-@media(max-width:760px){.sponsor-logos{grid-template-columns:repeat(2,1fr)}}
+.sponsor-logos{display:grid;gap:32px;margin-top:30px}
+.sponsor-tier{display:grid;gap:14px}
+.sponsor-tier__heading{display:flex;align-items:center;gap:12px}
+.sponsor-tier__heading h3{margin:0;color:var(--wine);font-size:14px;text-transform:uppercase;letter-spacing:.08em}
+.sponsor-tier__heading span{display:grid;place-items:center;min-width:28px;height:28px;border-radius:999px;background:#eee5dc;color:var(--wine);font-size:10px;font-weight:900}
+.sponsor-tier__heading:after{content:'';height:1px;flex:1;background:var(--line)}
+.sponsor-tier__grid{display:grid;gap:14px}
+.sponsor-tier--major .sponsor-tier__grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+.sponsor-tier--premium .sponsor-tier__grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+.sponsor-tier--partner .sponsor-tier__grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+.sponsor-card{min-width:0;min-height:120px;border:1px solid var(--line);border-radius:14px;display:grid;grid-template-rows:1fr auto;place-items:center;gap:12px;padding:18px;background:#fff;text-align:center}
+.sponsor-card__logo{width:100%;display:grid;place-items:center;min-height:72px}
+.sponsor-card img{width:100%;height:70px;object-fit:contain}
+.sponsor-card b{font-size:16px;color:var(--ink)}
+.sponsor-card small{color:var(--wine);font-weight:900;text-transform:uppercase;font-size:9px;letter-spacing:.06em}
+.sponsor-tier--major .sponsor-card{min-height:190px;padding:24px;border-top:6px solid var(--gold);background:linear-gradient(145deg,#fff,#fff9e7)}
+.sponsor-tier--major .sponsor-card__logo{min-height:110px}
+.sponsor-tier--major .sponsor-card img{height:105px}
+.sponsor-tier--major .sponsor-card b{font-size:21px}
+.sponsor-tier--premium .sponsor-card{min-height:145px;border-top:4px solid var(--wine)}
+.sponsor-tier--premium .sponsor-card img{height:82px}
+.sponsor-card:hover{transform:translateY(-2px);box-shadow:0 13px 28px rgba(41,25,20,.075)}
+@media(max-width:760px){
+  .sponsor-logos{gap:26px;margin-top:24px}
+  .sponsor-tier--major .sponsor-tier__grid{grid-template-columns:1fr}
+  .sponsor-tier--premium .sponsor-tier__grid,.sponsor-tier--partner .sponsor-tier__grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .sponsor-tier--major .sponsor-card{min-height:155px;padding:20px}
+  .sponsor-tier--major .sponsor-card__logo{min-height:88px}
+  .sponsor-tier--major .sponsor-card img{height:86px}
+  .sponsor-tier--premium .sponsor-card,.sponsor-tier--partner .sponsor-card{min-height:118px;padding:13px}
+  .sponsor-tier--premium .sponsor-card img,.sponsor-tier--partner .sponsor-card img{height:62px}
+  .sponsor-tier__heading h3{font-size:12px}
+}
