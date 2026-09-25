@@ -317,6 +317,7 @@ async function pageData(env: Env, url: URL) {
   if (page === "teams") {
     const rows = await env.DB.prepare(`SELECT
       t.id,t.slug,t.name,t.category,t.group_name,t.level,t.gender,t.player_count,t.photo_key,
+      (SELECT label FROM seasons WHERE active=1 ORDER BY id DESC LIMIT 1) AS season_label,
       CASE
         WHEN TRIM(COALESCE(t.photo_key,''))<>'' THEN '/media/' || t.photo_key
         WHEN TRIM(COALESCE(sm.object_key,''))<>'' THEN '/media/' || sm.object_key

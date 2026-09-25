@@ -211,6 +211,292 @@ content = r'''.sponsor-logos{display:grid;gap:32px;margin-top:30px}
 write(path, content)
 changed.append(path)
 
+
+# 6) Page Équipes : millésimes calculés automatiquement depuis la saison active.
+path = "src/worker.ts"
+content = read(path)
+season_field = "(SELECT label FROM seasons WHERE active=1 ORDER BY id DESC LIMIT 1) AS season_label"
+if season_field not in content:
+    old = "      t.id,t.slug,t.name,t.category,t.group_name,t.level,t.gender,t.player_count,t.photo_key,\n      CASE"
+    new = "      t.id,t.slug,t.name,t.category,t.group_name,t.level,t.gender,t.player_count,t.photo_key,\n      (SELECT label FROM seasons WHERE active=1 ORDER BY id DESC LIMIT 1) AS season_label,\n      CASE"
+    content, _ = replace_once(content, old, new, "saison active dans l'API équipes")
+    write(path, content)
+    changed.append(path)
+
+path = "public/teams.js"
+content = r'''const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+let teams=[];
+const root=document.querySelector('#all-teams');
+
+const cleanTeamName=value=>String(value||'')
+  .replace(/\s*\((?=[^)]*(?:19|20)\d{2})[^)]*\)\s*$/,'')
+  .trim();
+
+const seasonEndYear=label=>{
+  const years=String(label||'').match(/\d{4}/g)||[];
+  const year=Number(years.at(-1));
+  return Number.isInteger(year)?year:null;
+};
+
+const teamBirthYears=team=>{
+  const endYear=seasonEndYear(team.season_label);
+  if(!endYear)return [];
+  const ages=[...new Set(
+    [...cleanTeamName(team.name).matchAll(/U\s*(\d{1,2})/gi)]
+      .map(match=>Number(match[1]))
+      .filter(age=>Number.isInteger(age)&&age>=5&&age<=20)
+  )];
+  return [...new Set(ages.map(age=>endYear-age))].sort((a,b)=>a-b);
+};
+
+function draw(group=''){
+  const rows=teams.filter(team=>team.active!==0&&(!group||team.group_name===group));
+  root.innerHTML=rows.map((team,index)=>{
+    const feminine=team.group_name==='Féminines'||team.gender==='female';
+    const years=teamBirthYears(team);
+    const name=cleanTeamName(team.name);
+    return `<a class="catalog-card tone-${index%4}" href="/equipes/fiche/?slug=${encodeURIComponent(team.slug)}">
+      <div class="catalog-image"><img src="${esc(team.photo_url||'/team-default.webp')}" alt="${esc(team.photo_alt||`Photo du groupe ${name}`)}" loading="lazy" decoding="async"></div>
+      <small>${esc(team.group_name)}</small>
+      <h2>${esc(name)}</h2>
+      ${years.length?`<p class="catalog-birthyears"><span>Millésimes</span><strong>${years.join(' · ')}</strong></p>`:''}
+      <p class="catalog-level">${esc(team.level)}</p>
+      <div><b>${team.player_count||'—'}</b> ${feminine?'licenciées pratiquantes':'licenciés pratiquants'} <i>Voir la fiche →</i></div>
+    </a>`;
+  }).join('')||'<p>Aucune équipe dans cette section.</p>';
+}
+
+fetch('/api/page/teams?v=2').then(response=>response.json()).then(data=>{
+  teams=(data.teams||[]).sort((a,b)=>String(a.name).localeCompare(String(b.name),'fr',{numeric:true,sensitivity:'base'}));
+  draw();
+});
+document.querySelectorAll('[data-group]').forEach(button=>button.addEventListener('click',()=>{
+  document.querySelectorAll('[data-group]').forEach(item=>{const active=item===button;item.classList.toggle('active',active);item.setAttribute('aria-pressed',String(active))});
+  draw(button.dataset.group);
+}));
+'''
+write(path, content)
+changed.append(path)
+
+path = "public/enhancements.css"
+content = read(path)
+if ".catalog-birthyears{" not in content:
+    content += r'''
+/* Page Équipes — millésimes calculés depuis la saison active */
+.catalog-birthyears{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  width:max-content;
+  max-width:100%;
+  margin:9px 0 12px;
+  padding:6px 9px;
+  border-radius:999px;
+  background:#f4eee8;
+  color:#5f171f;
+}
+.catalog-birthyears span{
+  font-size:9px;
+  font-weight:900;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.catalog-birthyears strong{
+  font-size:13px;
+  line-height:1;
+  white-space:nowrap;
+}
+.catalog-level{
+  margin:0 0 15px;
+  color:#746965;
+  font-size:13px;
+}
+@media(max-width:600px){
+  .catalog-birthyears{margin-top:7px}
+  .catalog-birthyears strong{font-size:12px}
+}
+'''
+    write(path, content)
+    changed.append(path)
+
+
+# 7) Finition visuelle des cartes Équipes : années hors du titre et cartes alignées.
+path = "public/teams.js"
+content = r'''const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+let teams=[];
+const root=document.querySelector('#all-teams');
+
+const cleanTeamName=value=>String(value||'')
+  .replace(/\s*\((?=[^)]*(?:19|20)\d{2})[^)]*\)\s*$/,'')
+  .trim();
+
+const displayTeamName=value=>cleanTeamName(value)
+  .replace(/(U\s*\d{1,2}F?)\s*(?:-|–|—|à|À)\s*(U\s*\d{1,2}F?)/gi,'$1 – $2')
+  .replace(/\s{2,}/g,' ');
+
+const seasonEndYear=label=>{
+  const years=String(label||'').match(/\d{4}/g)||[];
+  const year=Number(years.at(-1));
+  return Number.isInteger(year)?year:null;
+};
+
+const teamAgeBounds=name=>{
+  const ages=[...new Set(
+    [...cleanTeamName(name).matchAll(/U\s*(\d{1,2})/gi)]
+      .map(match=>Number(match[1]))
+      .filter(age=>Number.isInteger(age)&&age>=5&&age<=20)
+  )];
+  if(!ages.length)return [];
+  if(ages.length===2&&Math.abs(ages[0]-ages[1])>1){
+    const start=Math.min(...ages);
+    const end=Math.max(...ages);
+    return Array.from({length:end-start+1},(_,index)=>start+index);
+  }
+  return ages;
+};
+
+const teamBirthYears=team=>{
+  const endYear=seasonEndYear(team.season_label);
+  if(!endYear)return [];
+  return [...new Set(teamAgeBounds(team.name).map(age=>endYear-age))].sort((a,b)=>a-b);
+};
+
+const birthLabel=(team,years)=>{
+  if(!years.length)return '';
+  const feminine=team.group_name==='Féminines'||team.gender==='female';
+  const born=feminine?'Nées':'Nés';
+  if(years.length===1)return `${born} en ${years[0]}`;
+  if(years.length===2)return `${born} en ${years[0]} · ${years[1]}`;
+  return `${born} de ${years[0]} à ${years.at(-1)}`;
+};
+
+function draw(group=''){
+  const rows=teams.filter(team=>team.active!==0&&(!group||team.group_name===group));
+  root.innerHTML=rows.map((team,index)=>{
+    const feminine=team.group_name==='Féminines'||team.gender==='female';
+    const years=teamBirthYears(team);
+    const name=displayTeamName(team.name);
+    const yearsText=birthLabel(team,years);
+    return `<a class="catalog-card tone-${index%4}" href="/equipes/fiche/?slug=${encodeURIComponent(team.slug)}">
+      <div class="catalog-image"><img src="${esc(team.photo_url||'/team-default.webp')}" alt="${esc(team.photo_alt||`Photo du groupe ${name}`)}" loading="lazy" decoding="async"></div>
+      <small>${esc(team.group_name)}</small>
+      <h2>${esc(name)}</h2>
+      ${yearsText?`<p class="catalog-birthyears">${esc(yearsText)}</p>`:''}
+      <p class="catalog-level">${esc(team.level||'')}</p>
+      <div class="catalog-card__footer"><span><b>${team.player_count||'—'}</b> ${feminine?'licenciées pratiquantes':'licenciés pratiquants'}</span><i>Voir la fiche →</i></div>
+    </a>`;
+  }).join('')||'<p>Aucune équipe dans cette section.</p>';
+}
+
+fetch('/api/page/teams?v=3').then(response=>response.json()).then(data=>{
+  teams=(data.teams||[]).sort((a,b)=>String(a.name).localeCompare(String(b.name),'fr',{numeric:true,sensitivity:'base'}));
+  draw();
+});
+document.querySelectorAll('[data-group]').forEach(button=>button.addEventListener('click',()=>{
+  document.querySelectorAll('[data-group]').forEach(item=>{const active=item===button;item.classList.toggle('active',active);item.setAttribute('aria-pressed',String(active))});
+  draw(button.dataset.group);
+}));
+'''
+write(path, content)
+changed.append(path)
+
+path = "public/enhancements.css"
+content = read(path)
+if ".catalog-card__footer{" not in content:
+    content += r'''
+/* Page Équipes — finition des cartes */
+.team-catalog{
+  align-items:stretch;
+}
+.catalog-card{
+  display:flex;
+  flex-direction:column;
+  min-width:0;
+  height:100%;
+  border-radius:18px;
+  overflow:hidden;
+  box-shadow:0 8px 24px rgba(57,39,31,.08);
+}
+.catalog-card .catalog-image{
+  flex:0 0 auto;
+  border-radius:10px 10px 0 0;
+}
+.catalog-card>small{
+  margin-top:14px;
+}
+.catalog-card h2{
+  margin:12px 0 7px;
+  font-size:clamp(28px,2.5vw,38px);
+  line-height:.98;
+  text-wrap:balance;
+}
+.catalog-birthyears{
+  display:inline-flex;
+  align-items:center;
+  align-self:flex-start;
+  width:auto;
+  max-width:100%;
+  margin:2px 0 12px;
+  padding:7px 10px;
+  border-radius:999px;
+  background:#f3ebe6;
+  color:var(--wine);
+  font-size:11px;
+  font-weight:900;
+  line-height:1;
+  letter-spacing:.015em;
+  white-space:nowrap;
+}
+.catalog-level{
+  min-height:20px;
+  margin:0 0 14px;
+  color:#5f5551;
+  font-size:13px;
+  line-height:1.35;
+}
+.catalog-card>.catalog-card__footer{
+  margin-top:auto;
+  padding-top:14px;
+  border-top:1px solid var(--line);
+  display:flex;
+  gap:10px;
+  align-items:center;
+}
+.catalog-card__footer span{
+  min-width:0;
+  font-size:13px;
+}
+.catalog-card__footer i{
+  margin-left:auto;
+  flex:0 0 auto;
+  font-style:normal;
+  font-weight:900;
+  color:var(--wine);
+  white-space:nowrap;
+}
+@media(max-width:900px){
+  .team-catalog{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+}
+@media(max-width:600px){
+  .team-catalog{
+    grid-template-columns:1fr;
+  }
+  .catalog-card h2{
+    font-size:32px;
+  }
+  .catalog-birthyears{
+    font-size:11px;
+  }
+  .catalog-level{
+    min-height:0;
+  }
+}
+'''
+    write(path, content)
+    changed.append(path)
+
 print("Modifications appliquées :")
 for item in dict.fromkeys(changed):
     print(f" - {item}")

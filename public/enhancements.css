@@ -918,3 +918,127 @@
   }
 
 }
+
+/* Page Équipes — millésimes calculés depuis la saison active */
+.catalog-birthyears{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  width:max-content;
+  max-width:100%;
+  margin:9px 0 12px;
+  padding:6px 9px;
+  border-radius:999px;
+  background:#f4eee8;
+  color:#5f171f;
+}
+.catalog-birthyears span{
+  font-size:9px;
+  font-weight:900;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.catalog-birthyears strong{
+  font-size:13px;
+  line-height:1;
+  white-space:nowrap;
+}
+.catalog-level{
+  margin:0 0 15px;
+  color:#746965;
+  font-size:13px;
+}
+@media(max-width:600px){
+  .catalog-birthyears{margin-top:7px}
+  .catalog-birthyears strong{font-size:12px}
+}
+
+/* Page Équipes — finition des cartes */
+.team-catalog{
+  align-items:stretch;
+}
+.catalog-card{
+  display:flex;
+  flex-direction:column;
+  min-width:0;
+  height:100%;
+  border-radius:18px;
+  overflow:hidden;
+  box-shadow:0 8px 24px rgba(57,39,31,.08);
+}
+.catalog-card .catalog-image{
+  flex:0 0 auto;
+  border-radius:10px 10px 0 0;
+}
+.catalog-card>small{
+  margin-top:14px;
+}
+.catalog-card h2{
+  margin:12px 0 7px;
+  font-size:clamp(28px,2.5vw,38px);
+  line-height:.98;
+  text-wrap:balance;
+}
+.catalog-birthyears{
+  display:inline-flex;
+  align-items:center;
+  align-self:flex-start;
+  width:auto;
+  max-width:100%;
+  margin:2px 0 12px;
+  padding:7px 10px;
+  border-radius:999px;
+  background:#f3ebe6;
+  color:var(--wine);
+  font-size:11px;
+  font-weight:900;
+  line-height:1;
+  letter-spacing:.015em;
+  white-space:nowrap;
+}
+.catalog-level{
+  min-height:20px;
+  margin:0 0 14px;
+  color:#5f5551;
+  font-size:13px;
+  line-height:1.35;
+}
+.catalog-card>.catalog-card__footer{
+  margin-top:auto;
+  padding-top:14px;
+  border-top:1px solid var(--line);
+  display:flex;
+  gap:10px;
+  align-items:center;
+}
+.catalog-card__footer span{
+  min-width:0;
+  font-size:13px;
+}
+.catalog-card__footer i{
+  margin-left:auto;
+  flex:0 0 auto;
+  font-style:normal;
+  font-weight:900;
+  color:var(--wine);
+  white-space:nowrap;
+}
+@media(max-width:900px){
+  .team-catalog{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+}
+@media(max-width:600px){
+  .team-catalog{
+    grid-template-columns:1fr;
+  }
+  .catalog-card h2{
+    font-size:32px;
+  }
+  .catalog-birthyears{
+    font-size:11px;
+  }
+  .catalog-level{
+    min-height:0;
+  }
+}
