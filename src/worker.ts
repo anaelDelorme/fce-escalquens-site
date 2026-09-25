@@ -485,7 +485,10 @@ async function pageData(env: Env, url: URL) {
 
   if (page === "home") {
     const [teams, matches, results, sponsors, media, slides] = await env.DB.batch<AnyRow>([
-      env.DB.prepare(`SELECT id,slug,name,group_name,level,category FROM teams
+      env.DB.prepare(`SELECT
+        id,slug,name,group_name,level,category,gender,
+        (SELECT label FROM seasons WHERE active=1 ORDER BY id DESC LIMIT 1) AS season_label
+        FROM teams
         WHERE active=1 ORDER BY name COLLATE NOCASE ASC`),
       env.DB.prepare(`SELECT id,starts_at,category,competition,venue,venue_address,latitude,longitude,home_team,away_team,home_score,away_score,status FROM matches
         WHERE (season_id IS NULL OR season_id=${activeSeason}) AND starts_at>=?

@@ -1055,3 +1055,36 @@
 .catalog-card__footer i{margin-left:auto;flex:0 0 auto;font-style:normal;font-weight:900;color:var(--wine);white-space:nowrap}
 @media(max-width:900px){.team-catalog{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.team-catalog{grid-template-columns:1fr}.catalog-card h2{font-size:32px}.catalog-level{min-height:0}}
+
+
+/* Accueil — années de naissance dans le carrousel équipes */
+.team-card b{
+  line-height:.96;
+  text-wrap:balance;
+}
+.team-card-birthyears{
+  width:max-content;
+  max-width:100%;
+  margin:9px 0 0;
+  padding:6px 9px;
+  border-radius:999px;
+  background:#fff2;
+  color:var(--gold);
+  font:900 11px/1 Arial,sans-serif;
+  letter-spacing:.02em;
+  text-transform:none;
+}
+.team-card-level{
+  margin-top:10px;
+  font-size:10px;
+  line-height:1.2;
+  opacity:.92;
+}
+@media(max-width:600px){
+  .team-card b{
+    font-size:42px;
+  }
+  .team-card-birthyears{
+    font-size:10px;
+  }
+}

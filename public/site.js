@@ -1,4 +1,74 @@
 const esc=value=>String(value??'').replace(/[<>"'&]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+
+const cleanHomeTeamName=value=>String(value||'')
+  .replace(/\s*\((?=[^)]*(?:19|20)\d{2})[^)]*\)\s*$/,'')
+  .trim();
+
+const displayHomeTeamName=value=>cleanHomeTeamName(value)
+  .replace(/(U\s*\d{1,2}F?)\s*(?:-|–|—|à|À)\s*(U\s*\d{1,2}F?)/gi,'$1 – $2')
+  .replace(/\s{2,}/g,' ');
+
+const homeSeasonEndYear=label=>{
+  const years=String(label||'').match(/\d{4}/g)||[];
+  const year=Number(years[years.length-1]);
+  return Number.isInteger(year)?year:null;
+};
+
+const homeTeamAges=name=>{
+  const ages=[...new Set(
+    [...cleanHomeTeamName(name).matchAll(/U\s*(\d{1,2})/gi)]
+      .map(match=>Number(match[1]))
+      .filter(age=>Number.isInteger(age)&&age>=5&&age<=20)
+  )];
+
+  if(!ages.length)return [];
+
+  if(ages.length===2&&Math.abs(ages[0]-ages[1])>1){
+    const start=Math.min(...ages);
+    const end=Math.max(...ages);
+    return Array.from({length:end-start+1},(_,index)=>start+index);
+  }
+
+  return ages;
+};
+
+const homeTeamBirthYears=team=>{
+  const endYear=homeSeasonEndYear(team.season_label);
+  if(!endYear)return [];
+
+  return [...new Set(
+    homeTeamAges(team.name).map(age=>endYear-age)
+  )].sort((a,b)=>a-b);
+};
+
+const homeTeamBirthLabel=(team,years)=>{
+  if(!years.length)return '';
+
+  const feminine=
+    team.group_name==='Féminines'
+    ||team.gender==='female';
+
+  const born=feminine?'Nées':'Nés';
+
+  if(years.length===1)return `${born} en ${years[0]}`;
+  if(years.length===2)return `${born} en ${years[0]} · ${years[1]}`;
+
+  return `${born} de ${years[0]} à ${years[years.length-1]}`;
+};
+
+const homeTeamCard=(team,index)=>{
+  const name=displayHomeTeamName(team.name);
+  const years=homeTeamBirthYears(team);
+  const yearsText=homeTeamBirthLabel(team,years);
+
+  return `<a class="team-card tone-${index%4}" href="/equipes/fiche/?slug=${encodeURIComponent(team.slug)}">
+    <span>${esc(team.group_name)}</span>
+    <b>${esc(name)}</b>
+    ${yearsText?`<p class="team-card-birthyears">${esc(yearsText)}</p>`:''}
+    <small class="team-card-level">${esc(team.level||team.category||'')}</small>
+    <i>→</i>
+  </a>`;
+};
 const homeDate=value=>new Date(value).toLocaleDateString('fr-FR',{timeZone:'Europe/Paris',day:'numeric',month:'short'});
 const relativeKickoff=value=>{
   const days=Math.max(0,Math.round((new Date(value).getTime()-Date.now())/86400000));
@@ -29,7 +99,7 @@ window.fceHomeData.then(data=>{
   const teams=(data.teams||[]).slice().sort((a,b)=>String(a.name).localeCompare(String(b.name),'fr',{numeric:true,sensitivity:'base'}));
   const matches=data.matches||[],results=data.results||[];
   const rail=document.querySelector('#teams-list');
-  if(rail)rail.innerHTML=teams.map((team,index)=>`<a class="team-card tone-${index%4}" href="/equipes/fiche/?slug=${encodeURIComponent(team.slug)}"><span>${esc(team.group_name)}</span><b>${esc(team.name)}</b><small>${esc(team.level||team.category)}</small><i>→</i></a>`).join('');
+  if(rail)rail.innerHTML=teams.map(homeTeamCard).join('');
   const kicker=document.querySelector('#home-match-kicker');
   if(kicker&&matches[0])kicker.textContent=relativeKickoff(matches[0].starts_at);
   const root=document.querySelector('#matches-list');
