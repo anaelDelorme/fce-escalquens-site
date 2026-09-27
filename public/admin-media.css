@@ -1,0 +1,19 @@
+.image-cropper-dialog{width:min(960px,calc(100vw - 28px));max-width:960px;border:0;border-top:8px solid #a91920;padding:0;background:#fff;box-shadow:0 30px 90px rgba(0,0,0,.28)}
+.image-cropper-dialog::backdrop{background:rgba(25,15,16,.72)}
+.image-cropper-dialog form{padding:24px}
+.cropper-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px}
+.cropper-head small{color:#a91920;font-size:10px;font-weight:900;text-transform:uppercase}
+.cropper-head h2{margin:5px 0 0}
+.cropper-close{border:0;background:transparent;font-size:28px;cursor:pointer}
+.cropper-help{color:#675955;line-height:1.5}
+.cropper-canvas-wrap{display:grid;place-items:center;max-height:58vh;overflow:hidden;background:#f4f0ed;border:1px solid #d8ccc0}
+#cropper-canvas{display:block;max-width:100%;max-height:58vh;width:auto;height:auto;cursor:grab;touch-action:none}
+#cropper-canvas:active{cursor:grabbing}
+.cropper-zoom{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:14px;margin-top:16px}
+.cropper-zoom span{color:#7d1117;font-size:11px;font-weight:900;text-transform:uppercase}
+.cropper-zoom input{width:100%}
+#cropper-status{min-height:20px;color:#7d1117;font-weight:800}
+.image-cropper-dialog menu{display:flex;justify-content:flex-end;gap:10px;margin:14px 0 0;padding:0}
+.image-cropper-dialog menu button{padding:11px 16px}
+#cropper-confirm{border:0;background:#7d1117;color:#fff;font-weight:900}
+@media(max-width:620px){.image-cropper-dialog form{padding:16px}.cropper-canvas-wrap,#cropper-canvas{max-height:48vh}}

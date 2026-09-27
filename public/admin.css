@@ -4,3 +4,8 @@
 #records article .shop-visibility.is-visible{background:#fff1a8;color:var(--wine)}
 #records article .shop-visibility.is-hidden{background:var(--wine);color:#fff}
 #records article .shop-visibility:disabled{opacity:.55;cursor:wait}
+
+/* Rich text boutique */
+.rich-toolbar{display:flex;flex-wrap:wrap;gap:7px;margin:3px 0 8px}
+.rich-toolbar button{border:1px solid #bea9a3;background:#fff;padding:7px 9px;font-weight:800}
+.rich-help{font-size:10px;color:#776b67}

@@ -19,7 +19,7 @@ const tables = new Set([
   "tournament_teams", "matches", "match_participants", "standings", "social_posts",
   "documents", "club_members", "team_staff", "admins", "venues",
   "competition_levels", "seasons", "sponsors", "site_media", "home_slides",
-  "shop_categories", "shop_products", "shop_settings", "recruitment_posts"
+  "shop_categories", "shop_products", "shop_settings", "sponsor_packages", "recruitment_posts"
 ]);
 
 const editable: Record<string, string[]> = {
@@ -40,10 +40,11 @@ const editable: Record<string, string[]> = {
   competition_levels: ["name", "short_name", "description", "active", "display_order"],
   seasons: ["label", "starts_on", "ends_on", "active"],
   sponsors: ["name", "logo_key", "website_url", "tier", "description", "active", "display_order"],
+  sponsor_packages: ["name", "price_label", "benefits", "featured", "active", "display_order"],
   site_media: ["object_key", "alt_text"],
   home_slides: ["object_key", "alt_text", "display_order", "active"],
   shop_categories: ["slug", "name", "description", "display_order", "active"],
-  shop_products: ["shop_category_id", "slug", "name", "short_description", "description", "price_label", "price_details", "sizes", "options", "image_key", "featured", "highlighted", "active", "display_order"],
+  shop_products: ["shop_category_id", "slug", "name", "short_description", "description", "price_label", "price_details", "sizes", "options", "delivery_delay", "image_key", "featured", "highlighted", "active", "display_order"],
   shop_settings: ["contact_email", "catalogue_title", "catalogue_key", "order_subject"],
   recruitment_posts: [
     "title",
@@ -72,6 +73,7 @@ const defaultOrder: Record<string, string> = {
   match_participants: "match_id ASC, display_order ASC",
   social_posts: "published_at DESC",
   sponsors: "display_order ASC, name ASC",
+  sponsor_packages: "display_order ASC, id ASC",
   team_competitions: "display_order ASC, name ASC",
   tournaments: "starts_on ASC",
   training_sessions: "weekday ASC, starts_at ASC",
@@ -583,12 +585,13 @@ async function pageData(env: Env, url: URL) {
   }
 
   if (page === "mecenat") {
-    const [contacts, sponsors, media] = await env.DB.batch<AnyRow>([
+    const [contacts, sponsors, media, packages] = await env.DB.batch<AnyRow>([
       env.DB.prepare("SELECT name,role,email,phone,display_order FROM contacts WHERE published=1 ORDER BY display_order,name COLLATE NOCASE"),
       env.DB.prepare("SELECT name,logo_key,website_url,tier FROM sponsors WHERE active=1 ORDER BY display_order,name COLLATE NOCASE"),
-      env.DB.prepare("SELECT slot,object_key,alt_text FROM site_media WHERE slot IN ('sponsor_hero','sponsor_project')")
+      env.DB.prepare("SELECT slot,object_key,alt_text FROM site_media WHERE slot IN ('sponsor_hero','sponsor_project')"),
+      env.DB.prepare("SELECT id,name,price_label,benefits,featured,display_order FROM sponsor_packages WHERE active=1 ORDER BY display_order,id")
     ]);
-    return publicJson({ contacts: resultRows(contacts), sponsors: resultRows(sponsors), site_media: resultRows(media) });
+    return publicJson({ contacts: resultRows(contacts), sponsors: resultRows(sponsors), site_media: resultRows(media), packages: resultRows(packages) });
   }
 
   if (page === "shop") {
@@ -597,7 +600,7 @@ async function pageData(env: Env, url: URL) {
         FROM shop_categories WHERE active=1
         ORDER BY display_order,name COLLATE NOCASE`),
       env.DB.prepare(`SELECT id,shop_category_id,slug,name,short_description,description,
-        price_label,price_details,sizes,options,image_key,featured,highlighted,display_order
+        price_label,price_details,sizes,options,delivery_delay,image_key,featured,highlighted,display_order
         FROM shop_products
         WHERE
           active=1
