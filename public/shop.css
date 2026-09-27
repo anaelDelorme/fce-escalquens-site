@@ -233,3 +233,15 @@
 /* Ne révèle la couverture boutique qu'une fois la bonne image chargée. */
 .shop-hero-visual>img{opacity:0;transition:opacity .2s ease}
 .shop-hero-visual>img.is-ready{opacity:1}
+
+/* Boutique rich text v2 */
+.product-descriptions{display:grid;gap:8px;margin:8px 0 2px}
+.product-descriptions p{margin:0;line-height:1.5}
+.product-lead{color:#4d403d;font-weight:700}
+.product-description{color:#665a57;font-size:13px}
+.shop-rich strong{color:var(--ink);font-weight:900}
+.shop-rich em{font-style:italic}
+.shop-text-wine{color:var(--wine);font-weight:800}
+.shop-text-gold{color:#9a7000;font-weight:800}
+.product-delay span{color:var(--wine);font-weight:800}
+.order-status{grid-column:1/-1;min-height:18px;margin:0;color:var(--wine);font-size:12px;font-weight:800;line-height:1.45}

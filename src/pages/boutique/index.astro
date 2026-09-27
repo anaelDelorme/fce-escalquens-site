@@ -11,7 +11,7 @@ import Footer from '../../components/Footer.astro';
     <link rel="stylesheet" href="/styles.css">
     <link rel="stylesheet" href="/enhancements.css?v=6">
     <link rel="stylesheet" href="/brand-charter.css">
-    <link rel="stylesheet" href="/shop.css">
+    <link rel="stylesheet" href="/shop.css?v=2">
   </head>
   <body>
     <Header/>
@@ -65,19 +65,21 @@ import Footer from '../../components/Footer.astro';
         <div>
           <p class="eyebrow">Préparer ma demande</p>
           <h2 id="request-title">On s’occupe<br>de la suite.</h2>
-          <p>Ce formulaire ouvre votre application e-mail avec un message déjà préparé. Aucun paiement n’est demandé sur le site.</p>
+          <p>Ce formulaire prépare votre commande puis ouvre votre application e-mail. Pensez à vérifier le message et à cliquer sur « Envoyer » dans votre messagerie. Aucun paiement n’est demandé sur le site.</p>
         </div>
         <form id="shop-order-form">
           <label><span>Votre adresse e-mail *</span><input name="contact_email" type="email" autocomplete="email" required></label>
+          <label><span>Votre téléphone *</span><input name="contact_phone" type="tel" autocomplete="tel" required></label>
           <label><span>Nom du licencié <small>(facultatif)</small></span><input name="licensed_name" autocomplete="name"></label>
           <label><span>Équipe ou catégorie <small>(facultatif)</small></span><input name="team" placeholder="Ex. U11, Seniors…"></label>
           <label class="wide"><span>Articles, quantités, tailles et options</span><textarea name="request" rows="8" required placeholder="Ex. 2 tee-shirts Castolo, taille M, avec initiales AD…"></textarea></label>
           <p class="price-note">Les tarifs affichés sont indicatifs. Le club confirme le montant exact avant tout paiement.</p>
-          <button type="submit">Envoyer ma demande par e-mail →</button>
+          <p id="shop-order-status" class="order-status" aria-live="polite"></p>
+          <button type="submit">Préparer l’e-mail de commande →</button>
         </form>
       </section>
     </main>
     <Footer/>
-    <script is:inline src="/shop.js"></script>
+    <script is:inline src="/shop.js?v=2"></script>
   </body>
 </html>
