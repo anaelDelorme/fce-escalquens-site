@@ -4,19 +4,22 @@ on:
   workflow_dispatch:
 
   schedule:
-    - cron: "7 21 * * 3"
+    - cron: "7 20 * * 1" # lundi 20h07
       timezone: "Europe/Paris"
-
-    - cron: "7 16 * * 5"
+  
+    - cron: "7 21 * * 3" # mercredi 21h07
       timezone: "Europe/Paris"
-
-    - cron: "7 9,20 * * 6"
+  
+    - cron: "7 21 * * 4" # jeudi 21h07
       timezone: "Europe/Paris"
-
-    - cron: "7 20 * * 0"
+  
+    - cron: "7 16 * * 5" # vendredi 16h07
       timezone: "Europe/Paris"
-
-    - cron: "7 20 * * 1"
+  
+    - cron: "7 9,14,16,18,20 * * 6" # samedi
+      timezone: "Europe/Paris"
+  
+    - cron: "7 9,14,16,18,20 * * 0" # dimanche
       timezone: "Europe/Paris"
 
 concurrency:
