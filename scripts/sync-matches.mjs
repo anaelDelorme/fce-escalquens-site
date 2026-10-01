@@ -1,5 +1,5 @@
 import { browserCollectStandings } from './standings-integrated.mjs';
-const SYNC_VERSION='2026.09.30-standings-28',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+const SYNC_VERSION='2026.10.01-standings-29',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 console.log(`Collecteur FCE ${SYNC_VERSION}`);
 const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
 const endpoint=siteUrl+'/internal/sync/matches';
@@ -223,6 +223,14 @@ async function fetchZenRows(targetUrls){
       });
 
       document.body.appendChild(output);
+
+      // Le détail contient notamment l'identifiant FFF exact de l'équipe.
+      // Le collecteur de classements le réutilise dans la même session.
+      saved.push({
+        id:'fce-detail-'+id,
+        status:200,
+        body:bestBody
+      });
     };
 
     await Promise.all(
@@ -552,7 +560,9 @@ async function collectEpreuvesFFF(){
       `FFF : découverte classements — DOM=${Number(discovery.dom||0)}, `+
       `HTML=${Number(discovery.fetched||0)}, `+
       `fallback=${Number(discovery.fallback||0)}, `+
-      `équipes=${Number(discovery.teams||0)}.`
+      `équipes=${Number(discovery.teams||0)}, `+
+      `détails=${Number(discovery.details||0)}, `+
+      `saison=${Number(discovery.season||0)}.`
     );
 
     console.log(

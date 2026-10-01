@@ -16,16 +16,47 @@ export async function browserCollectStandings(_saved, clubNo, clubCode, seasonSt
   };
 
   const discoverTeamsFromSavedMatches=()=>{
-    for(const saved of _saved||[]){
-      if(
-        !String(saved?.id||'').startsWith('fce-matches-')
-        ||Number(saved?.status)!==200
-      )continue;
+    const season=Number(seasonStartYear)||0;
+    const pattern=
+      season
+        ?new RegExp(
+            `\\b${season}_${clubNo}_[A-Z0-9]+(?:_[A-Z0-9]+)*\\b`,
+            'gi'
+          )
+        :new RegExp(
+            `\\b\\d{4}_${clubNo}_[A-Z0-9]+(?:_[A-Z0-9]+)*\\b`,
+            'gi'
+          );
 
-      let payload=saved.body;
+    for(const saved of _saved||[]){
+      const id=String(saved?.id||'');
+
+      if(
+        Number(saved?.status)!==200
+        ||!(
+          id.startsWith('fce-matches-')
+          ||id.startsWith('fce-detail-')
+        )
+      ){
+        continue;
+      }
+
+      const raw=
+        typeof saved.body==='string'
+          ?saved.body
+          :JSON.stringify(saved.body||{});
+
+      for(const match of raw.matchAll(pattern)){
+        addDirectTeamTarget(match[0]);
+      }
+
+      let payload;
 
       try{
-        if(typeof payload==='string')payload=JSON.parse(payload);
+        payload=
+          typeof saved.body==='string'
+            ?JSON.parse(saved.body)
+            :saved.body;
       }catch{
         continue;
       }
@@ -36,10 +67,13 @@ export async function browserCollectStandings(_saved, clubNo, clubCode, seasonSt
           :payload?.['hydra:member']
             ||payload?.items
             ||payload?.data
-            ||[];
+            ||[payload];
 
       for(const wrapper of members){
-        const item=wrapper?.donneesFormatees||wrapper||{};
+        const item=
+          wrapper?.donneesFormatees
+          ||wrapper
+          ||{};
 
         for(const side of [item.recevant,item.visiteur]){
           if(String(side?.club?.clNo||'')===String(clubNo)){
@@ -143,7 +177,17 @@ export async function browserCollectStandings(_saved, clubNo, clubCode, seasonSt
     dom:0,
     fetched:0,
     fallback:0,
-    teams:directTeamTargets.size
+    teams:directTeamTargets.size,
+    details:
+      (_saved||[])
+        .filter(
+          item=>
+            Number(item?.status)===200
+            &&String(item?.id||'')
+              .startsWith('fce-detail-')
+        )
+        .length,
+    season:Number(seasonStartYear)||0
   };
 
 
