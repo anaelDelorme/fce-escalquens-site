@@ -1,5 +1,5 @@
 import { browserCollectStandings } from './standings-integrated.mjs';
-const SYNC_VERSION='2026.10.01-standings-30',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+const SYNC_VERSION='2026.10.01-standings-31',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 console.log(`Collecteur FCE ${SYNC_VERSION}`);
 const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
 const endpoint=siteUrl+'/internal/sync/matches';
@@ -51,8 +51,13 @@ const embeddedPayloadFromHtml=(html,id)=>{
   const match=String(html||'').match(new RegExp(`<script[^>]+id=["']${id}["'][^>]*>([\\s\\S]*?)<\\/script>`,'i'));
   if(!match)return null;
   const envelope=parseJson(match[1],id);
-  if(envelope.status!==200)throw new Error(`${id} HTTP ${envelope.status||'inconnu'}`);
+  if(Number(envelope.status)!==200)return null;
   return parseJson(envelope.body,id);
+};
+const embeddedStatusFromHtml=(html,id)=>{
+  const match=String(html||'').match(new RegExp(`<script[^>]+id=["']${id}["'][^>]*>([\\s\\S]*?)<\\/script>`,'i'));
+  if(!match)return 0;
+  try{return Number(parseJson(match[1],id).status||0)}catch{return 0}
 };
 const embeddedPayloadsByPrefix=(html,prefix)=>{
   const results=[],pattern=new RegExp(`<script[^>]+id=["']${prefix}[^"']*["'][^>]*>([\\s\\S]*?)<\\/script>`,'gi');
@@ -109,6 +114,16 @@ const epreuvesPayloadFromZenRows=body=>{
   const html=result?.html||'';
   const matchPayloads=Array.from({length:12},(_,index)=>embeddedPayloadFromHtml(html,`fce-matches-${index}`)).filter(Boolean);
   const falPayloads=Array.from({length:12},(_,index)=>embeddedPayloadFromHtml(html,`fce-fal-${index}`)).filter(Boolean);
+  const failedMonthly=[
+    ...Array.from({length:12},(_,index)=>{
+      const status=embeddedStatusFromHtml(html,`fce-matches-${index}`);
+      return status===200?null:{id:`fce-matches-${index}`,status};
+    }),
+    ...Array.from({length:12},(_,index)=>{
+      const status=embeddedStatusFromHtml(html,`fce-fal-${index}`);
+      return status===200?null:{id:`fce-fal-${index}`,status};
+    })
+  ].filter(Boolean);
   const detailPayloads=embeddedPayloadsByPrefix(html,'fce-detail-');
   const falGamePayloads=embeddedEntriesByPrefix(html,'fce-fal-games-');
   const standings=embeddedPayloadFromHtml(html,'fce-standings')||[];
@@ -125,7 +140,8 @@ const epreuvesPayloadFromZenRows=body=>{
     falGamePayloads,
     standings,
     standingsMeta,
-    standingsMetaPresent:Boolean(standingsMetaPayload)
+    standingsMetaPresent:Boolean(standingsMetaPayload),
+    failedMonthly
   };
 };
 async function fetchZenRows(targetUrls){
@@ -148,30 +164,114 @@ async function fetchZenRows(targetUrls){
     const securityToken=entries.find(([key])=>key==='VLJAXE')?.[1]||entries.find(([key,value])=>key.includes('/api/app-security-token/')&&value?.body?.token)?.[1]?.body?.token;
     if(!securityToken){document.documentElement.setAttribute('data-fce-sync-error','token-X-Competition-introuvable');return}
     const saved=[];
+    const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+    const retryable=status=>[429,500,502,503,504].includes(Number(status));
+
     const fetchOne=async(id,src)=>{
-      let status=0,body='';
-      try{
-        const response=await fetch(src,{credentials:'include',headers:{Accept:'application/json, text/plain, */*','X-Competition':String(securityToken)}});
-        status=response.status;body=await response.text();
-      }catch(error){body=JSON.stringify({fce_error:String(error)})}
+      let status=0,body='',attempt=0;
+
+      while(attempt<3){
+        attempt++;
+
+        try{
+          const response=await fetch(
+            src,
+            {
+              credentials:'include',
+              headers:{
+                Accept:'application/json, text/plain, */*',
+                'X-Competition':String(securityToken)
+              }
+            }
+          );
+
+          status=response.status;
+          body=await response.text();
+
+          if(response.ok||!retryable(status))break;
+        }catch(error){
+          status=0;
+          body=JSON.stringify({fce_error:String(error)});
+        }
+
+        if(attempt<3){
+          await sleep(600*attempt);
+        }
+      }
+
       const output=document.createElement('script');
-      output.type='application/json';output.id=id;
+      output.type='application/json';
+      output.id=id;
+
       let envelopeBody=body;
       try{envelopeBody=JSON.parse(body)}catch{}
-      output.textContent=JSON.stringify({status,body:envelopeBody});
-      document.body.appendChild(output);saved.push({id,status,body});
+
+      output.textContent=JSON.stringify({
+        status,
+        body:envelopeBody,
+        attempts:attempt
+      });
+
+      document.body.appendChild(output);
+      saved.push({id,status,body,attempts:attempt});
     };
-    await Promise.all(targets.map(([id,src])=>fetchOne(id,src)));
+
+    const runLimited=async(items,limit=4)=>{
+      let cursor=0;
+
+      const worker=async()=>{
+        while(cursor<items.length){
+          const index=cursor++;
+          const [id,src]=items[index];
+          await fetchOne(id,src);
+        }
+      };
+
+      await Promise.all(
+        Array.from(
+          {length:Math.min(limit,items.length)},
+          ()=>worker()
+        )
+      );
+    };
+
+    await runLimited(targets,4);
 
     // Les classements passent AVANT les nombreux détails de matchs/plateaux.
     // Ils sont ainsi disponibles même si la suite de la session navigateur
     // approche la limite de temps ZenRows.
-    await (${browserCollectStandings.toString()})(
-      saved,
-      '${CLUB_NO}',
-      '${CLUB_CODE}',
-      ${Number(targetUrls.seasonYear)}
-    );
+    try{
+      await (${browserCollectStandings.toString()})(
+        saved,
+        '${CLUB_NO}',
+        '${CLUB_CODE}',
+        ${Number(targetUrls.seasonYear)}
+      );
+    }catch(error){
+      const appendFailure=(id,data)=>{
+        const output=document.createElement('script');
+        output.type='application/json';
+        output.id=id;
+        output.textContent=JSON.stringify({status:200,body:data});
+        document.body.appendChild(output);
+      };
+
+      appendFailure('fce-standings',[]);
+      appendFailure('fce-standings-meta',{
+        detected:0,
+        parsed:0,
+        rows:0,
+        error:String(error?.stack||error?.message||error),
+        discovery:{
+          dom:0,
+          fetched:0,
+          fallback:0,
+          teams:0,
+          details:0,
+          season:${Number(targetUrls.seasonYear)}
+        }
+      });
+    }
 
     const min=Date.now()-7*86400000,max=Date.now()+45*86400000,details=new Map();
     for(const result of saved.filter(item=>item.id.startsWith('fce-matches-')&&item.status===200)){
@@ -328,7 +428,12 @@ async function fetchZenRows(targetUrls){
     console.log('Warning: le collecteur classements n’a pas produit ses métadonnées dans la session ZenRows.');
   }
   if(payloads.falGamePayloads.length)console.log(`FFF : rattachement des mini-matchs — ${payloads.falGamePayloads.map(entry=>`${entry.payload?.site_key||'clé inconnue'}=${normalizeFalGames(entry.payload).length}`).join(', ')}.`);
-  if(payloads.matchMonths!==12||payloads.falMonths!==12)throw new Error(`calendrier incomplet : matchs ${payloads.matchMonths}/12, plateaux ${payloads.falMonths}/12`);
+  if(payloads.failedMonthly?.length){
+    console.log(
+      `::warning title=FFF partiel::Sous-requêtes mensuelles encore en échec après retry : `+
+      payloads.failedMonthly.map(item=>`${item.id} HTTP ${item.status||'réseau'}`).join(', ')
+    );
+  }
   return payloads;
 }
 
@@ -562,6 +667,12 @@ async function collectEpreuvesFFF(){
     const discovery=
       latestStandingsInfo.discovery
       ||{};
+
+    if(latestStandingsInfo.error){
+      console.log(
+        `::warning title=Collecteur classements::${String(latestStandingsInfo.error).replace(/\r?\n/g,' ').slice(0,800)}`
+      );
+    }
 
     console.log(
       `FFF : découverte classements — DOM=${Number(discovery.dom||0)}, `+
