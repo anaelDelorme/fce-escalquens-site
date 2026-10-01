@@ -1,5 +1,5 @@
 import { browserCollectStandings } from './standings-integrated.mjs';
-const SYNC_VERSION='2026.10.01-standings-32',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+const SYNC_VERSION='2026.10.01-standings-32-fix1',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 console.log(`Collecteur FCE ${SYNC_VERSION}`);
 const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
 const endpoint=siteUrl+'/internal/sync/matches';
@@ -431,7 +431,7 @@ async function fetchZenRows(targetUrls){
 
           body=JSON.stringify({
             site_key:key,
-            fce_error:`HTTP ${status}`
+            fce_error:'HTTP '+status
           });
 
         }catch(error){
