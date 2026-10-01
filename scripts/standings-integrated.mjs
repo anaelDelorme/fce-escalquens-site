@@ -1,5 +1,88 @@
-export async function browserCollectStandings(_saved, clubNo, seasonStartYear) {
+export async function browserCollectStandings(_saved, clubNo, clubCode, seasonStartYear) {
   const targets=new Map();
+  const directTeamTargets=new Map();
+
+  const addDirectTeamTarget=rawId=>{
+    const teamId=String(rawId||'').trim();
+    if(!teamId||!teamId.includes(`_${clubNo}_`))return;
+
+    directTeamTargets.set(teamId,{
+      team_fff_id:teamId,
+      url:
+        `${location.origin}/competition/club/`
+        +`${clubCode}-f-c-escalquens/equipe/`
+        +`${encodeURIComponent(teamId)}/classement`
+    });
+  };
+
+  const discoverTeamsFromSavedMatches=()=>{
+    const season=Number(seasonStartYear)||0;
+    const pattern=
+      season
+        ?new RegExp(
+            `\\b${season}_${clubNo}_[A-Z0-9]+(?:_[A-Z0-9]+)*\\b`,
+            'gi'
+          )
+        :new RegExp(
+            `\\b\\d{4}_${clubNo}_[A-Z0-9]+(?:_[A-Z0-9]+)*\\b`,
+            'gi'
+          );
+
+    for(const saved of _saved||[]){
+      const id=String(saved?.id||'');
+
+      if(
+        Number(saved?.status)!==200
+        ||!(
+          id.startsWith('fce-matches-')
+          ||id.startsWith('fce-detail-')
+        )
+      ){
+        continue;
+      }
+
+      const raw=
+        typeof saved.body==='string'
+          ?saved.body
+          :JSON.stringify(saved.body||{});
+
+      for(const match of raw.matchAll(pattern)){
+        addDirectTeamTarget(match[0]);
+      }
+
+      let payload;
+
+      try{
+        payload=
+          typeof saved.body==='string'
+            ?JSON.parse(saved.body)
+            :saved.body;
+      }catch{
+        continue;
+      }
+
+      const members=
+        Array.isArray(payload)
+          ?payload
+          :payload?.['hydra:member']
+            ||payload?.items
+            ||payload?.data
+            ||[payload];
+
+      for(const wrapper of members){
+        const item=
+          wrapper?.donneesFormatees
+          ||wrapper
+          ||{};
+
+        for(const side of [item.recevant,item.visiteur]){
+          if(String(side?.club?.clNo||'')===String(clubNo)){
+            addDirectTeamTarget(side?.equipe?.id);
+          }
+        }
+      }
+    }
+  };
 
   const addTarget=raw=>{
     try{
@@ -88,21 +171,34 @@ export async function browserCollectStandings(_saved, clubNo, seasonStartYear) {
   };
 
 
+  discoverTeamsFromSavedMatches();
+
   const discovery={
     dom:0,
     fetched:0,
-    fallback:0
+    fallback:0,
+    teams:directTeamTargets.size,
+    details:
+      (_saved||[])
+        .filter(
+          item=>
+            Number(item?.status)===200
+            &&String(item?.id||'')
+              .startsWith('fce-detail-')
+        )
+        .length,
+    season:Number(seasonStartYear)||0
   };
 
 
   /*
    * Angular peut encore terminer le rendu de la page club.
-   * On attend au maximum 2,5 secondes, sans faire échouer
+   * On attend au maximum 1 seconde, sans faire échouer
    * la collecte si aucun lien n'apparaît.
    */
   for(
     let attempt=0;
-    attempt<10
+    attempt<4
     && !document.querySelector(
       'a[href*="/competition/engagement/"]'
     );
@@ -590,6 +686,142 @@ export async function browserCollectStandings(_saved, clubNo, seasonStartYear) {
     diagnostics.push(
       diagnostic
     );
+  }
+
+
+
+  const parsedTeamIds=
+    new Set(
+      diagnostics
+        .filter(item=>item.rows>0&&item.team_fff_id)
+        .map(item=>String(item.team_fff_id))
+    );
+
+  for(const target of directTeamTargets.values()){
+    if(parsedTeamIds.has(target.team_fff_id))continue;
+
+    const diagnostic={
+      url:target.url,
+      status:0,
+      rows:0,
+      error:'',
+      team_fff_id:target.team_fff_id,
+      discovery:'team-direct'
+    };
+
+    try{
+      const response=await fetch(
+        target.url,
+        {
+          credentials:'include',
+          headers:{Accept:'text/html,application/xhtml+xml'}
+        }
+      );
+
+      diagnostic.status=response.status;
+      const html=await response.text();
+
+      if(!response.ok)throw new Error(`HTTP ${response.status}`);
+
+      const doc=new DOMParser().parseFromString(html,'text/html');
+
+      const candidates=[...doc.querySelectorAll('table')]
+        .map(table=>({
+          table,
+          headers:[...table.querySelectorAll('thead th')]
+            .map(th=>normalizeHeader(th.textContent))
+        }))
+        .filter(candidate=>
+          candidate.headers.includes('equipe')
+          &&candidate.headers.includes('pts')
+        )
+        .sort((a,b)=>b.headers.length-a.headers.length);
+
+      const selected=candidates[0];
+
+      if(!selected){
+        diagnostic.error='Pas de tableau de classement';
+        diagnostics.push(diagnostic);
+        continue;
+      }
+
+      const headers=selected.headers;
+      const teamIndex=headers.indexOf('equipe');
+      const pointsIndex=headers.indexOf('pts');
+      const playedIndex=headers.indexOf('j');
+      const wonIndex=headers.indexOf('g');
+      const drawnIndex=headers.indexOf('n');
+      const lostIndex=headers.indexOf('p');
+      const goalsForIndex=headers.indexOf('bp');
+      const goalsAgainstIndex=headers.indexOf('bc');
+
+      const headings=[...doc.querySelectorAll('h1,h2,h3,h4,strong')]
+        .map(node=>String(node.textContent||'').replace(/\s+/g,' ').trim())
+        .filter(Boolean);
+
+      const classementHeading=
+        headings.find(value=>/^classement\s+/i.test(value))
+        ||'';
+
+      const competitionName=
+        classementHeading.replace(/^classement\s*/i,'').trim()
+        ||`Équipe ${target.team_fff_id}`;
+
+      const poolHeading=
+        headings.find(value=>/\bpoule\s+[a-z0-9]+/i.test(value))
+        ||'';
+
+      const poolLabel=
+        poolHeading.match(/\bpoule\s+[a-z0-9]+/i)?.[0]
+        ||'';
+
+      const phaseId=
+        `team:${target.team_fff_id}:`
+        +(normalizeHeader(competitionName)||'classement');
+
+      const tableRows=[...selected.table.querySelectorAll('tbody tr')]
+        .map((tr,index)=>{
+          const cells=[...tr.querySelectorAll('td')]
+            .map(td=>String(td.textContent||'').replace(/\s+/g,' ').trim());
+
+          const teamName=cells[teamIndex]||'';
+          if(!teamName)return null;
+
+          return {
+            source:'fff',
+            phase_id:phaseId,
+            team_fff_id:target.team_fff_id,
+            category_code:'',
+            team_number:'',
+            competition_name:competitionName,
+            pool_label:poolLabel,
+            source_url:target.url,
+            team_name:teamName,
+            position:asNumber(cells[0])||index+1,
+            played:playedIndex>=0?asNumber(cells[playedIndex]):0,
+            won:wonIndex>=0?asNumber(cells[wonIndex]):0,
+            drawn:drawnIndex>=0?asNumber(cells[drawnIndex]):0,
+            lost:lostIndex>=0?asNumber(cells[lostIndex]):0,
+            goals_for:goalsForIndex>=0?asNumber(cells[goalsForIndex]):0,
+            goals_against:goalsAgainstIndex>=0?asNumber(cells[goalsAgainstIndex]):0,
+            points:pointsIndex>=0?asNumber(cells[pointsIndex]):0,
+            raw_json:{headers,cells,discovery:'team-direct'}
+          };
+        })
+        .filter(Boolean);
+
+      if(!tableRows.some(row=>/escalquens/i.test(row.team_name))){
+        diagnostic.error='FC Escalquens absent';
+      }else{
+        diagnostic.rows=tableRows.length;
+        rows.push(...tableRows);
+        parsedTeamIds.add(target.team_fff_id);
+      }
+    }catch(error){
+      diagnostic.error=String(error?.message||error);
+    }
+
+    diagnostics.push(diagnostic);
   }
 
 

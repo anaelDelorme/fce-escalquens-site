@@ -8,7 +8,7 @@ import Footer from '../../components/Footer.astro';
     <title>Fiche équipe - FC Escalquens</title>
     <link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/enhancements.css?v=6"><link rel="stylesheet" href="/brand-charter.css"><link rel="stylesheet" href="/match-cards.css?v=8">
     <style>
-      .staff article.is-referent{border-top:6px solid var(--gold);background:#fffaf0;box-shadow:0 8px 24px #55101812}.staff article.is-referent small{display:inline-flex;width:max-content;padding:5px 8px;background:var(--wine);color:#fff}.staff article h3{margin:2px 0}.staff article img{width:72px;height:72px;object-fit:cover;border-radius:50%;margin-bottom:10px}
+      .staff{align-items:start}.staff article{align-self:start}.staff article.is-referent{border-top:6px solid var(--gold);background:#fffaf0;box-shadow:0 8px 24px #55101812}.staff article.is-referent small{display:inline-flex;width:max-content;padding:5px 8px;background:var(--wine);color:#fff}.staff article h3{margin:2px 0}.staff article img,.staff-avatar{width:72px;height:72px;border-radius:50%;margin-bottom:10px}.staff article img{object-fit:cover}.staff-avatar{display:grid;place-items:center;background:#f2e8e2;color:var(--wine);font-size:20px;font-weight:950}.staff-copy{display:grid;gap:8px}.staff article.is-compact{grid-template-columns:52px 1fr;align-items:center;gap:14px;padding:20px 24px}.staff article.is-compact .staff-avatar{width:52px;height:52px;margin:0;font-size:16px}.staff article.is-compact .staff-copy{gap:4px}.staff article.is-compact h3{margin:0}@media(max-width:600px){.staff article.is-compact{grid-template-columns:46px 1fr;padding:18px}.staff article.is-compact .staff-avatar{width:46px;height:46px}}
       .team-birthyears{display:inline-flex;align-self:flex-start;width:max-content;margin:0 0 18px;padding:8px 12px;border-radius:999px;background:var(--gold);color:var(--wine);font-size:12px;font-weight:950;line-height:1;letter-spacing:.02em}
       .team-birthyears[hidden]{display:none}
     </style>
@@ -49,6 +49,6 @@ import Footer from '../../components/Footer.astro';
       </section>
     </main>
     <Footer/>
-    <script is:inline src="/team-profile.js?v=30"></script>
+    <script is:inline src="/team-profile.js?v=31"></script>
   </body>
 </html>
