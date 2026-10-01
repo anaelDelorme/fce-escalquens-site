@@ -1,5 +1,5 @@
 import { browserCollectStandings } from './standings-integrated.mjs';
-const SYNC_VERSION='2026.09.22-staging-27',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+const SYNC_VERSION='2026.09.30-standings-28',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 console.log(`Collecteur FCE ${SYNC_VERSION}`);
 const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
 const endpoint=siteUrl+'/internal/sync/matches';
@@ -274,6 +274,7 @@ async function fetchZenRows(targetUrls){
     await (${browserCollectStandings.toString()})(
       saved,
       '${CLUB_NO}',
+      '${CLUB_CODE}',
       ${Number(targetUrls.seasonYear)}
     );
 
@@ -550,7 +551,8 @@ async function collectEpreuvesFFF(){
     console.log(
       `FFF : découverte classements — DOM=${Number(discovery.dom||0)}, `+
       `HTML=${Number(discovery.fetched||0)}, `+
-      `fallback=${Number(discovery.fallback||0)}.`
+      `fallback=${Number(discovery.fallback||0)}, `+
+      `équipes=${Number(discovery.teams||0)}.`
     );
 
     console.log(
