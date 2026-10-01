@@ -1,5 +1,5 @@
 import { browserCollectStandings } from './standings-integrated.mjs';
-const SYNC_VERSION='2026.10.01-standings-31',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+const SYNC_VERSION='2026.10.01-standings-32',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 console.log(`Collecteur FCE ${SYNC_VERSION}`);
 const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
 const endpoint=siteUrl+'/internal/sync/matches';
@@ -126,6 +126,7 @@ const epreuvesPayloadFromZenRows=body=>{
   ].filter(Boolean);
   const detailPayloads=embeddedPayloadsByPrefix(html,'fce-detail-');
   const falGamePayloads=embeddedEntriesByPrefix(html,'fce-fal-games-');
+  const falGameMeta=embeddedPayloadFromHtml(html,'fce-plateau-detail-meta')||{};
   const standings=embeddedPayloadFromHtml(html,'fce-standings')||[];
   const standingsMetaPayload=embeddedPayloadFromHtml(html,'fce-standings-meta');
   const standingsMeta=standingsMetaPayload||{};
@@ -138,6 +139,7 @@ const epreuvesPayloadFromZenRows=body=>{
     matchMonths:matchPayloads.length,falMonths:falPayloads.length,
     detailCount:detailPayloads.length,venueDetailCount:venueDetails,
     falGamePayloads,
+    falGameMeta,
     standings,
     standingsMeta,
     standingsMetaPresent:Boolean(standingsMetaPayload),
@@ -165,7 +167,7 @@ async function fetchZenRows(targetUrls){
     if(!securityToken){document.documentElement.setAttribute('data-fce-sync-error','token-X-Competition-introuvable');return}
     const saved=[];
     const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-    const retryable=status=>[429,500,502,503,504].includes(Number(status));
+    const retryable=status=>[0,429,500,502,503,504].includes(Number(status));
 
     const fetchOne=async(id,src)=>{
       let status=0,body='',attempt=0;
@@ -368,27 +370,137 @@ async function fetchZenRows(targetUrls){
         }
       }catch{}
     }
+    const plateauResults=[];
+
     const fetchPlateau=async({key,url})=>{
-      let status=0,body='';
-      try{
-        const response=await fetch(url,{credentials:'include',headers:{Accept:'text/html,application/xhtml+xml'}});
-        status=response.status;
-        const html=await response.text();
-        const stateText=html.match(/<script[^>]+id=["']ng-state["'][^>]*>([\\s\\S]*?)<\\/script>/i)?.[1]||'';
-        const state=stateText?JSON.parse(stateText):[];
-        const entries=(Array.isArray(state)?state:[state]).flatMap(item=>Object.entries(item||{}));
-        const apiPayloads=entries
-          .filter(([name,value])=>name.includes('/api/fal/')&&value?.status===200&&value?.body)
-          .map(([name,value])=>({name,body:value.body}));
-        body=JSON.stringify({site_key:key,api_payloads:apiPayloads});
-      }catch(error){body=JSON.stringify({site_key:key,fce_error:String(error)})}
+      let status=0,body='',attempt=0;
+
+      while(attempt<2){
+        attempt++;
+
+        try{
+          const response=await fetch(
+            url,
+            {
+              credentials:'include',
+              headers:{Accept:'text/html,application/xhtml+xml'}
+            }
+          );
+
+          status=response.status;
+          const html=await response.text();
+
+          if(response.ok){
+            const stateText=
+              html.match(
+                /<script[^>]+id=["']ng-state["'][^>]*>([\\s\\S]*?)<\\/script>/i
+              )?.[1]
+              ||'';
+
+            const state=
+              stateText
+                ?JSON.parse(stateText)
+                :[];
+
+            const entries=
+              (Array.isArray(state)?state:[state])
+                .flatMap(item=>Object.entries(item||{}));
+
+            const apiPayloads=
+              entries
+                .filter(
+                  ([name,value])=>
+                    name.includes('/api/fal/')
+                    &&value?.status===200
+                    &&value?.body
+                )
+                .map(
+                  ([name,value])=>({
+                    name,
+                    body:value.body
+                  })
+                );
+
+            body=JSON.stringify({
+              site_key:key,
+              api_payloads:apiPayloads
+            });
+
+            break;
+          }
+
+          body=JSON.stringify({
+            site_key:key,
+            fce_error:`HTTP ${status}`
+          });
+
+        }catch(error){
+          status=0;
+          body=JSON.stringify({
+            site_key:key,
+            fce_error:String(error)
+          });
+        }
+
+        if(attempt<2&&retryable(status)){
+          await sleep(500*attempt);
+          continue;
+        }
+
+        break;
+      }
+
       const output=document.createElement('script');
-      output.type='application/json';output.id=\`fce-fal-games-\${key.replaceAll(':','-')}\`;
+      output.type='application/json';
+      output.id=\`fce-fal-games-\${key.replaceAll(':','-')}\`;
+
       let envelopeBody=body;
       try{envelopeBody=JSON.parse(body)}catch{}
-      output.textContent=JSON.stringify({status,body:envelopeBody});document.body.appendChild(output);
+
+      output.textContent=JSON.stringify({
+        status,
+        body:envelopeBody,
+        attempts:attempt
+      });
+
+      document.body.appendChild(output);
+
+      plateauResults.push({
+        key,
+        status,
+        attempts:attempt
+      });
     };
-    await Promise.all([...plateauSites.values()].map(fetchPlateau));
+
+    const plateauItems=[...plateauSites.values()];
+    let plateauCursor=0;
+
+    const plateauWorker=async()=>{
+      while(plateauCursor<plateauItems.length){
+        const index=plateauCursor++;
+        await fetchPlateau(plateauItems[index]);
+      }
+    };
+
+    await Promise.all(
+      Array.from(
+        {length:Math.min(4,plateauItems.length)},
+        ()=>plateauWorker()
+      )
+    );
+
+    const plateauMetaOutput=document.createElement('script');
+    plateauMetaOutput.type='application/json';
+    plateauMetaOutput.id='fce-plateau-detail-meta';
+    plateauMetaOutput.textContent=JSON.stringify({
+      status:200,
+      body:{
+        targeted:plateauItems.length,
+        succeeded:plateauResults.filter(item=>item.status===200).length,
+        failed:plateauResults.filter(item=>item.status!==200)
+      }
+    });
+    document.body.appendChild(plateauMetaOutput);
 
     // Réduire drastiquement la réponse ZenRows : on ne renvoie pas la page
     // Angular complète, seulement les JSON utiles au collecteur.
@@ -423,7 +535,21 @@ async function fetchZenRows(targetUrls){
   console.log(`FFF : ${payloads.matchMonths}/12 mois de matchs et ${payloads.falMonths}/12 mois de plateaux capturés.`);
   console.log(`FFF : ${payloads.detailCount} détail(s) de match reçu(s), dont ${payloads.venueDetailCount} avec un terrain.`);
   const plateauGameCount=payloads.falGamePayloads.reduce((total,entry)=>total+normalizeFalGames(entry.payload).length,0);
-  console.log(`FFF : ${payloads.falGamePayloads.length} page(s) de détail de plateau ciblée(s), ${plateauGameCount} mini-match(s) trouvé(s), sans crédit ZenRows supplémentaire.`);
+  const plateauDetailTargeted=Number(payloads.falGameMeta?.targeted||payloads.falGamePayloads.length);
+  const plateauDetailSucceeded=Number(payloads.falGameMeta?.succeeded||payloads.falGamePayloads.length);
+  console.log(
+    `FFF : détails de plateau — ${plateauDetailTargeted} ciblé(s), `+
+    `${plateauDetailSucceeded} réussi(s), ${plateauGameCount} mini-match(s) trouvé(s), `+
+    `sans crédit ZenRows supplémentaire.`
+  );
+  if(Array.isArray(payloads.falGameMeta?.failed)&&payloads.falGameMeta.failed.length){
+    console.log(
+      `::warning title=Détails plateaux FFF::`+
+      payloads.falGameMeta.failed
+        .map(item=>`${item.key} HTTP ${item.status||'réseau'} (${item.attempts||1} essai(s))`)
+        .join(', ')
+    );
+  }
   if(!payloads.standingsMetaPresent){
     console.log('Warning: le collecteur classements n’a pas produit ses métadonnées dans la session ZenRows.');
   }
@@ -623,7 +749,10 @@ function normalizeEpreuvesFal(payload,falGamePayloads=[]){
       participants,
       // Toujours transmettre le tableau, même vide, afin qu'une collecte
       // puisse supprimer d'anciens mini-matchs qui ne concernent pas le FCE.
-      plateau_games:plateauGames,
+      plateau_games:
+        gameDetails.has(gameDetailKey)
+          ?plateauGames
+          :undefined,
       raw_json:site
     };
     if(sourceId)rows.set(sourceId,row);
