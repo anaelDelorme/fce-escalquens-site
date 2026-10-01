@@ -64,7 +64,14 @@ const safeHttpUrl=value=>{
     return '';
   }
 };
-const roleLabels={coach_referent:'Coach référent',coach:'Coach',dirigeant:'Dirigeant',arbitre:'Arbitre'};
+const roleLabels={coach_referent:'Coach référent',coach:'Coach',dirigeant:'Dirigeant',arbitre:'Parents aidants'};
+const staffInitials=value=>String(value||'')
+  .trim()
+  .split(/\s+/)
+  .filter(Boolean)
+  .slice(0,2)
+  .map(part=>part[0]?.toUpperCase()||'')
+  .join('');
 const staffCollator=new Intl.Collator('fr',{sensitivity:'base'});
 const dateFormat=new Intl.DateTimeFormat('fr-FR',{timeZone:'Europe/Paris',weekday:'long',day:'numeric',month:'long'});
 const timeFormat=new Intl.DateTimeFormat('fr-FR',{timeZone:'Europe/Paris',hour:'2-digit',minute:'2-digit'});
@@ -322,7 +329,28 @@ fetch(`/api/page/team-profile?slug=${encodeURIComponent(slug||'')}&v=27`).then(a
   revealPhoto(teamPhoto,defaultPhoto);
   const sortedStaff=[...staff].sort((a,b)=>((a.role==='coach_referent'?0:1)-(b.role==='coach_referent'?0:1))||staffCollator.compare(a.member?.full_name||'',b.member?.full_name||''));
   const staffNode=document.querySelector('#team-staff');
-  staffNode.innerHTML=sortedStaff.map(item=>`<article class="${item.role==='coach_referent'?'is-referent':''}">${item.member.photo_key?`<img src="/media/${esc(item.member.photo_key)}" alt="">`:''}<small>${roleLabels[item.role]||esc(item.role)}</small><h3>${esc(item.member.full_name)}</h3>${item.member.email?`<a href="mailto:${esc(item.member.email)}">${esc(item.member.email)}</a>`:''}${item.member.phone?`<a href="tel:${esc(item.member.phone)}">${esc(item.member.phone)}</a>`:''}</article>`).join('')||'<p>Encadrement à venir.</p>';
+  staffNode.innerHTML=sortedStaff.map(item=>{
+    const member=item.member||{};
+    const hasPhoto=Boolean(member.photo_key);
+    const hasContact=Boolean(member.email||member.phone);
+    const compact=!hasPhoto&&!hasContact;
+    const classes=[
+      item.role==='coach_referent'?'is-referent':'',
+      compact?'is-compact':''
+    ].filter(Boolean).join(' ');
+    const avatar=hasPhoto
+      ?`<img src="/media/${esc(member.photo_key)}" alt="">`
+      :`<span class="staff-avatar" aria-hidden="true">${esc(staffInitials(member.full_name)||'FCE')}</span>`;
+    return `<article class="${classes}">
+      ${avatar}
+      <div class="staff-copy">
+        <small>${roleLabels[item.role]||esc(item.role)}</small>
+        <h3>${esc(member.full_name)}</h3>
+        ${member.email?`<a href="mailto:${esc(member.email)}">${esc(member.email)}</a>`:''}
+        ${member.phone?`<a href="tel:${esc(member.phone)}">${esc(member.phone)}</a>`:''}
+      </div>
+    </article>`;
+  }).join('')||'<p>Encadrement à venir.</p>';
   staffNode.setAttribute('aria-busy','false');
   const days=['','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
   document.querySelector('#team-training').innerHTML=sessions.map(row=>{const query=row.venue_latitude!=null&&row.venue_longitude!=null?`${row.venue_latitude},${row.venue_longitude}`:row.venue_full_address||row.address||row.venue_name||row.venue,link=row.venue_maps_url||`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;return `<article><b>${days[row.weekday]}</b><span>${row.starts_at} - ${row.ends_at}</span><small>${esc(row.venue_name||row.venue)}</small><a href="${link}" target="_blank" rel="noopener">Itinéraire →</a></article>`}).join('')||'<p>Horaires à venir.</p>';

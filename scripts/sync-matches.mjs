@@ -1,5 +1,5 @@
 import { browserCollectStandings } from './standings-integrated.mjs';
-const SYNC_VERSION='2026.10.01-standings-29',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+const SYNC_VERSION='2026.10.01-standings-30',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 console.log(`Collecteur FCE ${SYNC_VERSION}`);
 const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
 const endpoint=siteUrl+'/internal/sync/matches';
@@ -112,7 +112,8 @@ const epreuvesPayloadFromZenRows=body=>{
   const detailPayloads=embeddedPayloadsByPrefix(html,'fce-detail-');
   const falGamePayloads=embeddedEntriesByPrefix(html,'fce-fal-games-');
   const standings=embeddedPayloadFromHtml(html,'fce-standings')||[];
-  const standingsMeta=embeddedPayloadFromHtml(html,'fce-standings-meta')||{};
+  const standingsMetaPayload=embeddedPayloadFromHtml(html,'fce-standings-meta');
+  const standingsMeta=standingsMetaPayload||{};
   const venueDetails=detailPayloads.filter(payload=>{
     const item=payload?.donneesFormatees||payload||{};
     return /"(?:terrain|installation|stade)"\s*:/.test(JSON.stringify(item));
@@ -123,7 +124,8 @@ const epreuvesPayloadFromZenRows=body=>{
     detailCount:detailPayloads.length,venueDetailCount:venueDetails,
     falGamePayloads,
     standings,
-    standingsMeta
+    standingsMeta,
+    standingsMetaPresent:Boolean(standingsMetaPayload)
   };
 };
 async function fetchZenRows(targetUrls){
@@ -160,6 +162,17 @@ async function fetchZenRows(targetUrls){
       document.body.appendChild(output);saved.push({id,status,body});
     };
     await Promise.all(targets.map(([id,src])=>fetchOne(id,src)));
+
+    // Les classements passent AVANT les nombreux détails de matchs/plateaux.
+    // Ils sont ainsi disponibles même si la suite de la session navigateur
+    // approche la limite de temps ZenRows.
+    await (${browserCollectStandings.toString()})(
+      saved,
+      '${CLUB_NO}',
+      '${CLUB_CODE}',
+      ${Number(targetUrls.seasonYear)}
+    );
+
     const min=Date.now()-7*86400000,max=Date.now()+45*86400000,details=new Map();
     for(const result of saved.filter(item=>item.id.startsWith('fce-matches-')&&item.status===200)){
       try{
@@ -277,15 +290,6 @@ async function fetchZenRows(targetUrls){
     };
     await Promise.all([...plateauSites.values()].map(fetchPlateau));
 
-    // Les classements sont lus dans cette même session navigateur :
-    // aucun second appel ZenRows n'est nécessaire.
-    await (${browserCollectStandings.toString()})(
-      saved,
-      '${CLUB_NO}',
-      '${CLUB_CODE}',
-      ${Number(targetUrls.seasonYear)}
-    );
-
     // Réduire drastiquement la réponse ZenRows : on ne renvoie pas la page
     // Angular complète, seulement les JSON utiles au collecteur.
     const fcePayloads=[...document.querySelectorAll('script[id^="fce-"]')];
@@ -320,6 +324,9 @@ async function fetchZenRows(targetUrls){
   console.log(`FFF : ${payloads.detailCount} détail(s) de match reçu(s), dont ${payloads.venueDetailCount} avec un terrain.`);
   const plateauGameCount=payloads.falGamePayloads.reduce((total,entry)=>total+normalizeFalGames(entry.payload).length,0);
   console.log(`FFF : ${payloads.falGamePayloads.length} page(s) de détail de plateau ciblée(s), ${plateauGameCount} mini-match(s) trouvé(s), sans crédit ZenRows supplémentaire.`);
+  if(!payloads.standingsMetaPresent){
+    console.log('Warning: le collecteur classements n’a pas produit ses métadonnées dans la session ZenRows.');
+  }
   if(payloads.falGamePayloads.length)console.log(`FFF : rattachement des mini-matchs — ${payloads.falGamePayloads.map(entry=>`${entry.payload?.site_key||'clé inconnue'}=${normalizeFalGames(entry.payload).length}`).join(', ')}.`);
   if(payloads.matchMonths!==12||payloads.falMonths!==12)throw new Error(`calendrier incomplet : matchs ${payloads.matchMonths}/12, plateaux ${payloads.falMonths}/12`);
   return payloads;

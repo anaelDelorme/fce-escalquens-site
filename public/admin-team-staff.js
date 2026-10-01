@@ -1,6 +1,6 @@
 (()=>{
   const collator=new Intl.Collator('fr',{numeric:true,sensitivity:'base'});
-  const roleLabels={coach_referent:'Coach référent',coach:'Coach',dirigeant:'Dirigeant',arbitre:'Arbitre'};
+  const roleLabels={coach_referent:'Coach référent',coach:'Coach',dirigeant:'Dirigeant',arbitre:'Parents aidants'};
   const filters={group:'',team:'',member:'',role:'',search:''};
   let staffRows=[];
   const text=value=>String(value??'');

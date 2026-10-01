@@ -193,12 +193,12 @@ export async function browserCollectStandings(_saved, clubNo, clubCode, seasonSt
 
   /*
    * Angular peut encore terminer le rendu de la page club.
-   * On attend au maximum 2,5 secondes, sans faire échouer
+   * On attend au maximum 1 seconde, sans faire échouer
    * la collecte si aucun lien n'apparaît.
    */
   for(
     let attempt=0;
-    attempt<10
+    attempt<4
     && !document.querySelector(
       'a[href*="/competition/engagement/"]'
     );
