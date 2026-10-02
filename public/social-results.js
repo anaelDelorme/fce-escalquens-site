@@ -21,7 +21,7 @@
   const EDO='"Edo SZ",Impact,"Arial Narrow",Arial,sans-serif';
   const TEXT='Arial,sans-serif';
   const FCE_ASSET={id:'fce',name:'FC Escalquens',url:'/logo-fce.png',kind:'team_logo'};
-  const BUILTIN_BACKGROUND={id:'',name:'Fond FCE intégré',url:'/fond-insta-fce-v2.png',kind:'background'};
+  const BUILTIN_BACKGROUND={id:'',name:'Fond résultats FCE',url:'',kind:'background'};
 
   let publicAssets=[];
   let adminAssets=[];
@@ -108,7 +108,7 @@
   }
 
   function backgroundOptions(value=''){
-    return `<option value="" ${!value?'selected':''}>Fond FCE intégré</option>`+
+    return `<option value="" ${!value?'selected':''}>Fond résultats FCE</option>`+
       backgroundAssets().map(asset=>`<option value="${asset.id}" ${String(asset.id)===String(value)?'selected':''}>${esc(asset.name)}</option>`).join('');
   }
 
@@ -266,10 +266,87 @@
 
   async function paintBackground(ctx,item){
     const image=await loadImage(assetUrl(backgroundFor(item)));
-    const gradient=ctx.createLinearGradient(0,0,1080,1350);gradient.addColorStop(0,'#160d10');gradient.addColorStop(.58,'#090708');gradient.addColorStop(1,'#5d0c25');ctx.fillStyle=gradient;ctx.fillRect(0,0,1080,1350);
-    if(image){ctx.save();ctx.globalAlpha=.7;drawCover(ctx,image,0,0,1080,1350);ctx.restore();ctx.fillStyle='rgba(10,5,8,.47)';ctx.fillRect(0,0,1080,1350);}
-    ctx.save();ctx.fillStyle='rgba(139,16,71,.72)';ctx.transform(1,0,-.26,1,0,0);ctx.fillRect(790,-50,190,1500);ctx.restore();
-    ctx.save();ctx.fillStyle='rgba(255,208,0,.11)';ctx.beginPath();ctx.arc(90,1160,260,0,Math.PI*2);ctx.fill();ctx.restore();
+
+    /*
+     * Fond propre au mode résultats.
+     *
+     * IMPORTANT :
+     * - le fond intégré n'embarque aucun texte,
+     *   aucun logo et aucun réseau social ;
+     * - un fond R2 est traité comme une simple photo de fond.
+     */
+    const gradient=ctx.createLinearGradient(0,0,1080,1350);
+    gradient.addColorStop(0,'#160c10');
+    gradient.addColorStop(.48,'#2a0c18');
+    gradient.addColorStop(1,'#760f37');
+    ctx.fillStyle=gradient;
+    ctx.fillRect(0,0,1080,1350);
+
+    if(image){
+      ctx.save();
+      ctx.globalAlpha=.62;
+      drawCover(ctx,image,0,0,1080,1350);
+      ctx.restore();
+
+      const veil=ctx.createLinearGradient(0,0,0,1350);
+      veil.addColorStop(0,'rgba(16,7,10,.68)');
+      veil.addColorStop(.48,'rgba(16,7,10,.42)');
+      veil.addColorStop(1,'rgba(16,7,10,.76)');
+      ctx.fillStyle=veil;
+      ctx.fillRect(0,0,1080,1350);
+    }
+
+    /*
+     * Décor discret FCE.
+     * Il reste en dehors de la zone utile.
+     */
+    ctx.save();
+    ctx.translate(895,-60);
+    ctx.rotate(.19);
+    ctx.fillStyle='rgba(255,208,0,.12)';
+    ctx.fillRect(0,0,125,1550);
+    ctx.fillStyle='rgba(139,16,71,.66)';
+    ctx.fillRect(135,0,180,1550);
+    ctx.restore();
+
+    ctx.save();
+    ctx.fillStyle='rgba(255,208,0,.08)';
+    ctx.beginPath();
+    ctx.arc(-25,1215,260,0,Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawResultHeader(ctx,item,title='RÉSULTATS'){
+    ctx.textAlign='center';
+
+    ctx.fillStyle='#ffd000';
+    ctx.font=`400 86px ${EDO}`;
+    ctx.fillText(title,540,125);
+
+    ctx.fillStyle='#fff';
+    ctx.font=`400 42px ${EDO}`;
+    ctx.fillText(item.category||'ÉQUIPE',540,186);
+
+    ctx.fillStyle='#e9dde1';
+    ctx.font=`900 18px ${TEXT}`;
+    ctx.fillText(displayDate(item.starts_at),540,226);
+
+    ctx.fillStyle='#ffd000';
+    ctx.fillRect(455,248,170,5);
+  }
+
+  async function drawResultFooter(ctx){
+    const crest=await loadImage('/logo-fce.png');
+
+    if(crest){
+      drawContain(ctx,crest,465,1160,150,120);
+    }
+
+    ctx.textAlign='center';
+    ctx.fillStyle='#ffd000';
+    ctx.font=`900 19px ${TEXT}`;
+    ctx.fillText('@FCEscalquens',540,1310);
   }
 
   async function ensureFont(){try{await document.fonts?.load?.('80px "Edo SZ"');}catch(_){}}
@@ -277,32 +354,238 @@
   const displayDate=value=>new Intl.DateTimeFormat('fr-FR',{timeZone:PARIS,weekday:'long',day:'numeric',month:'long'}).format(new Date(value)).toUpperCase();
 
   async function drawMatchResult(canvas,item){
-    canvas.width=1080;canvas.height=1350;const ctx=canvas.getContext('2d');await Promise.all([ensureFont(),paintBackground(ctx,item)]);
-    ctx.textAlign='center';ctx.fillStyle='#ffd000';ctx.font=`400 92px ${EDO}`;ctx.fillText('RÉSULTATS',540,145);
-    ctx.fillStyle='#fff';ctx.font=`400 47px ${EDO}`;ctx.fillText(item.category||'ÉQUIPE',540,220);
-    ctx.fillStyle='#f2e8eb';ctx.font=`900 20px ${TEXT}`;ctx.fillText(displayDate(item.starts_at),540,262);
-    await Promise.all([drawTeamLogo(ctx,item.home_team,105,335,255),drawTeamLogo(ctx,item.away_team,720,335,255)]);
-    ctx.fillStyle='#fff';fitText(ctx,item.home_team.toUpperCase(),390,41,23,EDO,400);ctx.fillText(item.home_team.toUpperCase(),235,645);fitText(ctx,item.away_team.toUpperCase(),390,41,23,EDO,400);ctx.fillText(item.away_team.toUpperCase(),845,645);
-    ctx.fillStyle='#ffd000';ctx.font=`400 156px ${EDO}`;ctx.fillText(`${item.home_score} - ${item.away_score}`,540,870);
-    ctx.fillStyle='#fff';ctx.font=`400 44px ${EDO}`;ctx.fillText(resultLabel(item),540,965);
-    if(item.competition){fitText(ctx,item.competition.toUpperCase(),800,23,15,TEXT,900);ctx.fillStyle='#eadde1';ctx.fillText(item.competition.toUpperCase(),540,1020);}
-    const crest=await loadImage('/logo-fce.png');if(crest)drawContain(ctx,crest,455,1080,170,160);
-    ctx.fillStyle='#ffd000';ctx.font=`900 22px ${TEXT}`;ctx.fillText('@FCEscalquens',540,1300);
+    canvas.width=1080;
+    canvas.height=1350;
+
+    const ctx=canvas.getContext('2d');
+
+    await Promise.all([
+      ensureFont(),
+      paintBackground(ctx,item)
+    ]);
+
+    drawResultHeader(ctx,item);
+
+    /*
+     * Grande carte claire :
+     * tous les éléments importants sont contenus dedans,
+     * donc aucun conflit possible avec un fond photo.
+     */
+    ctx.save();
+    ctx.fillStyle='rgba(255,252,247,.96)';
+    roundedRect(ctx,62,290,956,790,34);
+    ctx.fill();
+
+    ctx.strokeStyle='rgba(255,208,0,.75)';
+    ctx.lineWidth=5;
+    ctx.beginPath();
+    ctx.moveTo(100,300);
+    ctx.lineTo(980,300);
+    ctx.stroke();
+    ctx.restore();
+
+    await Promise.all([
+      drawTeamLogo(ctx,item.home_team,125,360,215),
+      drawTeamLogo(ctx,item.away_team,740,360,215)
+    ]);
+
+    ctx.fillStyle='#24181b';
+    ctx.textAlign='center';
+
+    fitText(
+      ctx,
+      String(item.home_team||'').toUpperCase(),
+      390,
+      36,
+      21,
+      EDO,
+      400
+    );
+    ctx.fillText(
+      String(item.home_team||'').toUpperCase(),
+      232,
+      632
+    );
+
+    fitText(
+      ctx,
+      String(item.away_team||'').toUpperCase(),
+      390,
+      36,
+      21,
+      EDO,
+      400
+    );
+    ctx.fillText(
+      String(item.away_team||'').toUpperCase(),
+      848,
+      632
+    );
+
+    /*
+     * Score : bloc central séparé.
+     */
+    ctx.save();
+    ctx.fillStyle='#8b1047';
+    roundedRect(ctx,278,690,524,190,28);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.fillStyle='#ffd000';
+    ctx.font=`400 132px ${EDO}`;
+    ctx.fillText(
+      `${item.home_score} - ${item.away_score}`,
+      540,
+      828
+    );
+
+    ctx.fillStyle='#8b1047';
+    ctx.font=`400 40px ${EDO}`;
+    ctx.fillText(
+      resultLabel(item),
+      540,
+      942
+    );
+
+    if(item.competition){
+      fitText(
+        ctx,
+        String(item.competition).toUpperCase(),
+        760,
+        21,
+        14,
+        TEXT,
+        900
+      );
+
+      ctx.fillStyle='#66565a';
+      ctx.fillText(
+        String(item.competition).toUpperCase(),
+        540,
+        992
+      );
+    }
+
+    await drawResultFooter(ctx);
   }
 
   function roundedRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
 
   async function drawPlateauResult(canvas,item,games,page,pageCount){
-    canvas.width=1080;canvas.height=1350;const ctx=canvas.getContext('2d');await Promise.all([ensureFont(),paintBackground(ctx,item)]);
-    ctx.textAlign='center';ctx.fillStyle='#ffd000';ctx.font=`400 82px ${EDO}`;ctx.fillText('RÉSULTATS',540,128);ctx.fillStyle='#fff';ctx.font=`400 46px ${EDO}`;ctx.fillText(item.category||'PLATEAU',540,198);ctx.fillStyle='#eadde1';ctx.font=`900 19px ${TEXT}`;ctx.fillText(displayDate(item.starts_at),540,238);
+    canvas.width=1080;
+    canvas.height=1350;
+
+    const ctx=canvas.getContext('2d');
+
+    await Promise.all([
+      ensureFont(),
+      paintBackground(ctx,item)
+    ]);
+
+    drawResultHeader(
+      ctx,
+      item,
+      'RÉSULTATS'
+    );
+
     let y=300;
+
     for(const game of games){
-      ctx.save();ctx.fillStyle='rgba(255,255,255,.95)';roundedRect(ctx,55,y,970,160,20);ctx.fill();ctx.restore();
-      await Promise.all([drawTeamLogo(ctx,game.home_team,75,y+30,98),drawTeamLogo(ctx,game.away_team,907,y+30,98)]);
-      ctx.fillStyle='#211719';ctx.textAlign='left';fitText(ctx,game.home_team,300,25,15,TEXT,900);ctx.fillText(game.home_team,190,y+86);ctx.textAlign='right';fitText(ctx,game.away_team,300,25,15,TEXT,900);ctx.fillText(game.away_team,890,y+86);ctx.textAlign='center';ctx.fillStyle='#8b1047';ctx.font=`400 54px ${EDO}`;ctx.fillText(`${game.home_score} - ${game.away_score}`,540,y+96);y+=174;
+      ctx.save();
+      ctx.fillStyle='rgba(255,252,247,.97)';
+      roundedRect(ctx,58,y,964,150,24);
+      ctx.fill();
+      ctx.restore();
+
+      await Promise.all([
+        drawTeamLogo(
+          ctx,
+          game.home_team,
+          78,
+          y+24,
+          102
+        ),
+        drawTeamLogo(
+          ctx,
+          game.away_team,
+          900,
+          y+24,
+          102
+        )
+      ]);
+
+      ctx.fillStyle='#2a1c1f';
+
+      ctx.textAlign='left';
+      fitText(
+        ctx,
+        game.home_team,
+        285,
+        23,
+        14,
+        TEXT,
+        900
+      );
+      ctx.fillText(
+        game.home_team,
+        196,
+        y+84
+      );
+
+      ctx.textAlign='right';
+      fitText(
+        ctx,
+        game.away_team,
+        285,
+        23,
+        14,
+        TEXT,
+        900
+      );
+      ctx.fillText(
+        game.away_team,
+        884,
+        y+84
+      );
+
+      ctx.textAlign='center';
+
+      ctx.save();
+      ctx.fillStyle='#8b1047';
+      roundedRect(
+        ctx,
+        430,
+        y+36,
+        220,
+        78,
+        18
+      );
+      ctx.fill();
+      ctx.restore();
+
+      ctx.fillStyle='#ffd000';
+      ctx.font=`400 48px ${EDO}`;
+      ctx.fillText(
+        `${game.home_score} - ${game.away_score}`,
+        540,
+        y+93
+      );
+
+      y+=164;
     }
-    if(pageCount>1){ctx.fillStyle='#eadde1';ctx.font=`900 17px ${TEXT}`;ctx.fillText(`${page+1}/${pageCount}`,540,1195);}
-    const crest=await loadImage('/logo-fce.png');if(crest)drawContain(ctx,crest,470,1180,140,115);ctx.fillStyle='#ffd000';ctx.font=`900 20px ${TEXT}`;ctx.fillText('@FCEscalquens',540,1310);
+
+    if(pageCount>1){
+      ctx.fillStyle='#e9dde1';
+      ctx.font=`900 16px ${TEXT}`;
+      ctx.textAlign='center';
+      ctx.fillText(
+        `PAGE ${page+1}/${pageCount}`,
+        540,
+        1138
+      );
+    }
+
+    await drawResultFooter(ctx);
   }
 
   function downloadCanvas(canvas,filename){canvas.toBlob(blob=>{if(!blob)return;const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download=filename;link.click();setTimeout(()=>URL.revokeObjectURL(url),1500);},'image/png');}
