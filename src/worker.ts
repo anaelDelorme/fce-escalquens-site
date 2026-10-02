@@ -405,7 +405,15 @@ async function pageData(env: Env, url: URL) {
         WHERE team_id=? AND active=1 AND (season_id IS NULL OR season_id=${activeSeason})
         ORDER BY display_order,name`).bind(team.id),
       env.DB.prepare(`SELECT ts.role,ts.display_order,
-        cm.id AS member_id,cm.full_name,cm.email,cm.phone,cm.photo_key
+        cm.id AS member_id,cm.full_name,cm.email,cm.phone,cm.photo_key,
+        CASE
+          WHEN TRIM(COALESCE(cm.photo_key,''))='' THEN ''
+          WHEN LOWER(cm.photo_key) LIKE 'http://%' THEN cm.photo_key
+          WHEN LOWER(cm.photo_key) LIKE 'https://%' THEN cm.photo_key
+          WHEN cm.photo_key LIKE '/media/%' THEN cm.photo_key
+          WHEN cm.photo_key LIKE 'media/%' THEN '/' || cm.photo_key
+          ELSE '/media/' || LTRIM(cm.photo_key,'/')
+        END AS member_photo_url
         FROM team_staff ts JOIN club_members cm ON cm.id=ts.member_id
         WHERE ts.team_id=? AND ts.active=1 AND cm.active=1
         ORDER BY ts.display_order,cm.full_name COLLATE NOCASE`).bind(team.id),
@@ -531,7 +539,8 @@ async function pageData(env: Env, url: URL) {
           full_name: row.full_name,
           email: row.role === "coach_referent" ? row.email : "",
           phone: row.role === "coach_referent" ? row.phone : "",
-          photo_key: row.photo_key
+          photo_key: row.photo_key,
+          photo_url: row.member_photo_url
         }
       })),
       sessions: resultRows(sessions),
@@ -732,6 +741,18 @@ async function pageData(env: Env, url: URL) {
 }
 
 async function cachedPageData(request: Request, env: Env, url: URL, ctx: ExecutionContext) {
+  if (url.pathname === "/api/page/team-profile") {
+    const response = await pageData(env, url);
+    const headers = new Headers(response.headers);
+    headers.set("cache-control", "no-store");
+
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers
+    });
+  }
+
   const cache = caches.default;
   const key = new Request(url.toString(), { method: "GET" });
   const cached = await cache.match(key);

@@ -293,7 +293,7 @@ const wirePlateauDetails=()=>document.querySelectorAll('[data-plateau-games]').f
   detail.innerHTML='<p class="plateau-games-loading">Chargement du programme…</p>';
   try{if(!plateauGamesCache.has(id)){const response=await fetch(`/api/plateau-games?plateau_id=${encodeURIComponent(id)}`),data=await response.json();if(!response.ok)throw new Error(data.error||`HTTP ${response.status}`);plateauGamesCache.set(id,data.games||[])}detail.innerHTML=plateauGamesHtml(plateauGamesCache.get(id));detail.dataset.loaded='1'}catch(error){console.error(error);detail.innerHTML='<p class="participant-empty">Le détail est momentanément indisponible.</p>'}
 });
-fetch(`/api/page/team-profile?slug=${encodeURIComponent(slug||'')}&v=28`).then(async response=>{
+fetch(`/api/page/team-profile?slug=${encodeURIComponent(slug||'')}&v=29`).then(async response=>{
   const data=await response.json();
   if(!response.ok)throw new Error(data.error||`Fiche équipe : ${response.status}`);
   return data;
@@ -324,37 +324,275 @@ fetch(`/api/page/team-profile?slug=${encodeURIComponent(slug||'')}&v=28`).then(a
   revealPhoto(teamPhoto,defaultPhoto);
 
 
-  const roleRank=role=>{
-    const index=staffRoleOrder.indexOf(role);
-    return index>=0?index:staffRoleOrder.length;
+
+  const staffPhotoUrl=member=>{
+    const raw=
+      String(
+        member?.photo_url
+        ||member?.photo_key
+        ||''
+      ).trim();
+
+    if(!raw){
+      return '';
+    }
+
+    if(/^https?:\/\//i.test(raw)){
+      return raw;
+    }
+
+    if(raw.startsWith('/media/')){
+      return raw;
+    }
+
+    if(raw.startsWith('media/')){
+      return `/${raw}`;
+    }
+
+    return `/media/${raw.replace(/^\/+/,'')}`;
   };
 
-  const sortedStaff=[...staff].sort((a,b)=>
-    roleRank(a.role)-roleRank(b.role)
-    ||staffCollator.compare(a.member?.full_name||'',b.member?.full_name||'')
-  );
+  const roleRank=role=>{
+    const index=
+      staffRoleOrder.indexOf(role);
 
-  const staffNode=document.querySelector('#team-staff');
-  const staffGroups=new Map();
+    return index>=0
+      ?index
+      :staffRoleOrder.length;
+  };
+
+  const sortedStaff=
+    [...staff].sort((a,b)=>
+      roleRank(a.role)
+      -roleRank(b.role)
+      ||staffCollator.compare(
+        a.member?.full_name||'',
+        b.member?.full_name||''
+      )
+    );
+
+  const staffNode=
+    document.querySelector(
+      '#team-staff'
+    );
+
+  const staffGroups=
+    new Map();
 
   sortedStaff.forEach(item=>{
-    const role=item.role||'autre';
-    if(!staffGroups.has(role))staffGroups.set(role,[]);
-    staffGroups.get(role).push(item);
+    const role=
+      item.role
+      ||'autre';
+
+    if(!staffGroups.has(role)){
+      staffGroups.set(
+        role,
+        []
+      );
+    }
+
+    staffGroups
+      .get(role)
+      .push(item);
   });
 
-  const referents=staffGroups.get('coach_referent')||[];
+  const referents=
+    staffGroups.get(
+      'coach_referent'
+    )
+    ||[];
+
   const secondaryRoles=[
-    ...staffRoleOrder.filter(role=>role!=='coach_referent'&&staffGroups.has(role)),
-    ...[...staffGroups.keys()].filter(role=>role!=='coach_referent'&&!staffRoleOrder.includes(role)).sort(staffCollator.compare)
+    ...staffRoleOrder.filter(role=>
+      role!=='coach_referent'
+      &&staffGroups.has(role)
+    ),
+
+    ...[...staffGroups.keys()]
+      .filter(role=>
+        role!=='coach_referent'
+        &&!staffRoleOrder.includes(role)
+      )
+      .sort(staffCollator.compare)
   ];
 
-  const referentHtml=referents.length?`<section class="staff-referents"><div class="staff-role-heading"><div><span>${referents.length>1?'Coachs référents':'Coach référent'}</span><small>${referents.length>1?'Vos contacts principaux pour cette équipe':'Votre contact principal pour cette équipe'}</small></div></div><div class="staff-referent-grid ${referents.length===1?'single':''}">${referents.map(item=>{ const member=item.member||{}; const photo=member.photo_key?`<img class="staff-referent-photo" src="/media/${esc(member.photo_key)}" alt="" loading="lazy" onerror="this.remove()">`:''; const contacts=[member.email?`<a href="mailto:${esc(member.email)}">${esc(member.email)}</a>`:'',member.phone?`<a href="tel:${esc(member.phone)}">${esc(member.phone)}</a>`:''].filter(Boolean).join(''); return `<article class="staff-referent ${photo?'has-photo':'no-photo'}">${photo}<div class="staff-referent-copy"><h3>${esc(member.full_name)}</h3>${contacts?`<div class="staff-contacts">${contacts}</div>`:''}</div></article>`;}).join('')}</div></section>`:'';
+  const referentHtml=
+    referents.length
+      ?`
+        <section class="staff-referents">
+          <div class="staff-role-heading">
+            <div>
+              <span>
+                ${
+                  referents.length>1
+                    ?'Coachs référents'
+                    :'Coach référent'
+                }
+              </span>
 
-  const secondaryHtml=secondaryRoles.map(role=>{ const items=staffGroups.get(role)||[]; const label=staffGroupLabels[role]||roleLabels[role]||role; return `<section class="staff-group"><h3>${esc(label)}</h3><div class="staff-people">${items.map(item=>{ const member=item.member||{}; const photo=member.photo_key?`<img src="/media/${esc(member.photo_key)}" alt="" loading="lazy" onerror="this.remove()">`:''; return `<span class="staff-person ${photo?'has-photo':'no-photo'}">${photo}<b>${esc(member.full_name)}</b></span>`;}).join('')}</div></section>`; }).join('');
+              <small>
+                ${
+                  referents.length>1
+                    ?'Vos contacts principaux pour cette équipe'
+                    :'Votre contact principal pour cette équipe'
+                }
+              </small>
+            </div>
+          </div>
 
-  staffNode.innerHTML=sortedStaff.length?`<div class="staff-compact">${referentHtml}${secondaryHtml}</div>`:'<p>Encadrement à venir.</p>';
-  staffNode.setAttribute('aria-busy','false');
+          <div
+            class="staff-referent-grid ${
+              referents.length===1
+                ?'single'
+                :''
+            }"
+          >
+            ${
+              referents.map(item=>{
+                const member=
+                  item.member
+                  ||{};
+
+                const photoUrl=
+                  staffPhotoUrl(member);
+
+                const photo=
+                  photoUrl
+                    ?`
+                      <img
+                        class="staff-referent-photo"
+                        src="${esc(photoUrl)}"
+                        alt=""
+                        loading="lazy"
+                        onerror="this.remove()"
+                      >
+                    `
+                    :'';
+
+                const contacts=[
+                  member.email
+                    ?`
+                      <a href="mailto:${esc(member.email)}">
+                        ${esc(member.email)}
+                      </a>
+                    `
+                    :'',
+
+                  member.phone
+                    ?`
+                      <a href="tel:${esc(member.phone)}">
+                        ${esc(member.phone)}
+                      </a>
+                    `
+                    :''
+                ]
+                  .filter(Boolean)
+                  .join('');
+
+                return `
+                  <article
+                    class="staff-referent ${
+                      photo
+                        ?'has-photo'
+                        :'no-photo'
+                    }"
+                  >
+                    ${photo}
+
+                    <div class="staff-referent-copy">
+                      <h3>${esc(member.full_name)}</h3>
+
+                      ${
+                        contacts
+                          ?`
+                            <div class="staff-contacts">
+                              ${contacts}
+                            </div>
+                          `
+                          :''
+                      }
+                    </div>
+                  </article>
+                `;
+              }).join('')
+            }
+          </div>
+        </section>
+      `
+      :'';
+
+  const secondaryHtml=
+    secondaryRoles.map(role=>{
+      const items=
+        staffGroups.get(role)
+        ||[];
+
+      const label=
+        staffGroupLabels[role]
+        ||roleLabels[role]
+        ||role;
+
+      return `
+        <section class="staff-group">
+          <h3>${esc(label)}</h3>
+
+          <div class="staff-people">
+            ${
+              items.map(item=>{
+                const member=
+                  item.member
+                  ||{};
+
+                const photoUrl=
+                  staffPhotoUrl(member);
+
+                const photo=
+                  photoUrl
+                    ?`
+                      <img
+                        src="${esc(photoUrl)}"
+                        alt=""
+                        loading="lazy"
+                        onerror="this.remove()"
+                      >
+                    `
+                    :'';
+
+                return `
+                  <span
+                    class="staff-person ${
+                      photo
+                        ?'has-photo'
+                        :'no-photo'
+                    }"
+                  >
+                    ${photo}
+
+                    <b>${esc(member.full_name)}</b>
+                  </span>
+                `;
+              }).join('')
+            }
+          </div>
+        </section>
+      `;
+    }).join('');
+
+  staffNode.innerHTML=
+    sortedStaff.length
+      ?`
+        <div class="staff-compact">
+          ${referentHtml}
+          ${secondaryHtml}
+        </div>
+      `
+      :'<p>Encadrement à venir.</p>';
+
+  staffNode.setAttribute(
+    'aria-busy',
+    'false'
+  );
+
 
 
 
