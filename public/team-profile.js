@@ -298,7 +298,7 @@ const wirePlateauDetails=()=>document.querySelectorAll('[data-plateau-games]').f
   detail.innerHTML='<p class="plateau-games-loading">Chargement du programme…</p>';
   try{if(!plateauGamesCache.has(id)){const response=await fetch(`/api/plateau-games?plateau_id=${encodeURIComponent(id)}`),data=await response.json();if(!response.ok)throw new Error(data.error||`HTTP ${response.status}`);plateauGamesCache.set(id,data.games||[])}detail.innerHTML=plateauGamesHtml(plateauGamesCache.get(id));detail.dataset.loaded='1'}catch(error){console.error(error);detail.innerHTML='<p class="participant-empty">Le détail est momentanément indisponible.</p>'}
 });
-fetch(`/api/page/team-profile?slug=${encodeURIComponent(slug||'')}&v=27`).then(async response=>{
+fetch(`/api/page/team-profile?slug=${encodeURIComponent(slug||'')}&v=28`).then(async response=>{
   const data=await response.json();
   if(!response.ok)throw new Error(data.error||`Fiche équipe : ${response.status}`);
   return data;

@@ -1547,23 +1547,76 @@ async function ingestStandings(
     new URL(request.url).origin;
 
   /*
-   * Purge volontairement limitée :
-   * ne jamais multiplier les sous-requêtes
-   * de cache après une synchronisation.
+   * Les classements sont présents à la fois sur la page Matchs
+   * et sur chaque fiche équipe. Il faut donc invalider les deux
+   * familles de caches après chaque import réussi.
    */
-  await Promise.allSettled([
-    caches.default.delete(
-      new Request(
-        `${origin}/api/page/matches`
-      )
+  const activeTeamSlugs=
+    await env.DB
+      .prepare(`
+        SELECT slug
+        FROM teams
+        WHERE
+          active=1
+          AND TRIM(COALESCE(slug,''))<>''
+      `)
+      .all<{ slug: string }>();
+
+
+  const cacheKeys=[
+    new Request(
+      `${origin}/api/page/matches`
     ),
 
-    caches.default.delete(
-      new Request(
-        `${origin}/api/page/matches?v=23`
-      )
+    new Request(
+      `${origin}/api/page/matches?v=23`
     )
-  ]);
+  ];
+
+
+  for (
+    const row
+    of activeTeamSlugs.results || []
+  ) {
+
+    const slug=
+      encodeURIComponent(
+        String(
+          row.slug
+          || ""
+        )
+      );
+
+
+    if (!slug) {
+      continue;
+    }
+
+
+    cacheKeys.push(
+      new Request(
+        `${origin}/api/page/team-profile?slug=${slug}`
+      ),
+
+      new Request(
+        `${origin}/api/page/team-profile?slug=${slug}&v=27`
+      ),
+
+      new Request(
+        `${origin}/api/page/team-profile?slug=${slug}&v=28`
+      )
+    );
+  }
+
+
+  await Promise.allSettled(
+    cacheKeys.map(
+      key=>
+        caches.default.delete(
+          key
+        )
+    )
+  );
 
 
   return json({
