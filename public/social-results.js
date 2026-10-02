@@ -253,33 +253,35 @@
     </section>`;
   }
 
-  function loadImage(url){return new Promise(resolve=>{if(!url){resolve(null);return;}const image=new Image();image.onload=()=>resolve(image);image.onerror=()=>resolve(null);image.src=url;});}
-  async function firstAvailableImage(urls){
-    for(const url of urls){
-      const image=await loadImage(url);
-      if(image)return image;
-    }
-    return null;
-  }
+  function loadImage(url,timeoutMs=3500){
+    return new Promise(resolve=>{
+      if(!url){
+        resolve(null);
+        return;
+      }
 
-  async function loadSocialIcons(){
-    const [facebook,instagram]=await Promise.all([
-      firstAvailableImage([
-        '/social-facebook.png',
-        '/icon-facebook.png',
-        '/facebook.png',
-        '/images/facebook.png'
-      ]),
-      firstAvailableImage([
-        '/social-instagram.png',
-        '/icon-instagram.png',
-        '/instagram.png',
-        '/images/instagram.png'
-      ])
-    ]);
-    return {facebook,instagram};
-  }
+      const image=new Image();
+      let settled=false;
 
+      const finish=value=>{
+        if(settled)return;
+        settled=true;
+        clearTimeout(timer);
+        image.onload=null;
+        image.onerror=null;
+        resolve(value);
+      };
+
+      const timer=setTimeout(
+        ()=>finish(null),
+        timeoutMs
+      );
+
+      image.onload=()=>finish(image);
+      image.onerror=()=>finish(null);
+      image.src=url;
+    });
+  }
   function drawCover(ctx,image,x,y,w,h){const scale=Math.max(w/image.naturalWidth,h/image.naturalHeight);const drawW=image.naturalWidth*scale,drawH=image.naturalHeight*scale;ctx.drawImage(image,x+(w-drawW)/2,y+(h-drawH)/2,drawW,drawH);}
   function drawContain(ctx,image,x,y,w,h){const scale=Math.min(w/image.naturalWidth,h/image.naturalHeight);const drawW=image.naturalWidth*scale,drawH=image.naturalHeight*scale;ctx.drawImage(image,x+(w-drawW)/2,y+(h-drawH)/2,drawW,drawH);}
   function initials(value){const words=String(value||'').trim().split(/\s+/).filter(Boolean);return words.length?words.slice(0,2).map(word=>word[0]?.toUpperCase()||'').join(''):'?';}
@@ -428,67 +430,71 @@
   }
 
   async function drawResultFooter(ctx){
-    const [crest,{facebook,instagram}] = await Promise.all([
-      loadImage('/logo-fce.png'),
-      loadSocialIcons()
-    ]);
+    const crest=await loadImage('/logo-fce.png',2500);
 
-    // Bande basse sombre.
     ctx.save();
-    ctx.fillStyle='rgba(9,9,11,.88)';
+    ctx.fillStyle='rgba(9,9,11,.90)';
     ctx.fillRect(0,1170,1080,180);
     ctx.restore();
 
-    // Pseudo à gauche.
+    // Compte Instagram à gauche.
     ctx.textAlign='left';
+    ctx.textBaseline='alphabetic';
     ctx.fillStyle='#f4cc14';
     ctx.font=`900 26px ${TEXT}`;
     ctx.fillText('@FCEscalquens',68,1288);
 
-    // Logo FCE au centre.
+    // Blason FCE au centre.
     if(crest){
       drawContain(ctx,crest,390,1138,300,175);
     }
 
-    // Réseaux à droite.
-    if(facebook){
-      drawContain(ctx,facebook,790,1215,76,76);
-    }else{
-      ctx.save();
-      ctx.fillStyle='#2f58d6';
-      roundedRect(ctx,796,1218,70,70,16);
-      ctx.fill();
-      ctx.fillStyle='#fff';
-      ctx.textAlign='center';
-      ctx.font=`900 52px ${TEXT}`;
-      ctx.fillText('f',831,1270);
-      ctx.restore();
-    }
+    // Facebook — dessiné en vectoriel, aucune requête réseau.
+    ctx.save();
+    ctx.fillStyle='#3159d5';
+    roundedRect(ctx,796,1218,72,72,17);
+    ctx.fill();
 
-    if(instagram){
-      drawContain(ctx,instagram,900,1215,76,76);
-    }else{
-      ctx.save();
-      const g=ctx.createLinearGradient(900,1215,976,1291);
-      g.addColorStop(0,'#5b51d8');
-      g.addColorStop(.5,'#d62976');
-      g.addColorStop(1,'#feda75');
-      ctx.fillStyle=g;
-      roundedRect(ctx,906,1218,70,70,18);
-      ctx.fill();
-      ctx.strokeStyle='#fff';
-      ctx.lineWidth=4;
-      roundedRect(ctx,922,1234,38,38,10);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.arc(941,1253,10,0,Math.PI*2);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.arc(955,1237,3,0,Math.PI*2);
-      ctx.fillStyle='#fff';
-      ctx.fill();
-      ctx.restore();
-    }
+    ctx.fillStyle='#fff';
+    ctx.textAlign='center';
+    ctx.textBaseline='middle';
+    ctx.font=`900 54px Arial,sans-serif`;
+    ctx.fillText('f',832,1256);
+    ctx.restore();
+
+    // Instagram — dessiné en vectoriel, aucune requête réseau.
+    ctx.save();
+    const instagramGradient=
+      ctx.createLinearGradient(
+        900,
+        1215,
+        980,
+        1295
+      );
+
+    instagramGradient.addColorStop(0,'#5b51d8');
+    instagramGradient.addColorStop(.46,'#c13584');
+    instagramGradient.addColorStop(.73,'#e1306c');
+    instagramGradient.addColorStop(1,'#feda75');
+
+    ctx.fillStyle=instagramGradient;
+    roundedRect(ctx,904,1218,72,72,18);
+    ctx.fill();
+
+    ctx.strokeStyle='#fff';
+    ctx.lineWidth=5;
+    roundedRect(ctx,921,1235,38,38,10);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(940,1254,10,0,Math.PI*2);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(956,1238,3.5,0,Math.PI*2);
+    ctx.fillStyle='#fff';
+    ctx.fill();
+    ctx.restore();
   }
 
   async function drawMatchResult(canvas,item){
@@ -641,14 +647,194 @@
   function downloadCanvas(canvas,filename){canvas.toBlob(blob=>{if(!blob)return;const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download=filename;link.click();setTimeout(()=>URL.revokeObjectURL(url),1500);},'image/png');}
 
   async function generate(){
-    if(!state)return;previews.replaceChildren();status.removeAttribute('data-state');status.textContent='Génération des visuels résultats…';const selected=state.items.filter(item=>item.included!==false);let produced=0;
-    for(const [itemIndex,item] of selected.entries()){
-      const pageGroups=item.type==='plateau'?Array.from({length:Math.ceil(item.games.length/5)},(_,index)=>item.games.slice(index*5,index*5+5)):[null];
-      for(let page=0;page<pageGroups.length;page++){
-        const figure=document.createElement('figure');figure.className='visual-preview';const canvas=document.createElement('canvas');canvas.width=1080;canvas.height=1350;const caption=document.createElement('figcaption');const label=document.createElement('span');label.textContent=item.type==='plateau'?`${item.category} · plateau${pageGroups.length>1?` · ${page+1}/${pageGroups.length}`:''}`:`${item.category} · ${item.home_team} - ${item.away_team}`;const button=document.createElement('button');button.type='button';button.className='visual-download';button.textContent='Télécharger le PNG';const safeCategory=String(item.category||'resultat').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'').toLowerCase();const filename=`${state.weekend}-resultat-${safeCategory}-${itemIndex+1}${pageGroups.length>1?`-${page+1}`:''}.png`;button.addEventListener('click',()=>downloadCanvas(canvas,filename));caption.append(label,button);figure.append(canvas,caption);previews.append(figure);if(item.type==='plateau')await drawPlateauResult(canvas,item,pageGroups[page],page,pageGroups.length);else await drawMatchResult(canvas,item);produced++;
-      }
+    if(!state)return;
+
+    previews.replaceChildren();
+    status.removeAttribute('data-state');
+
+    const selected=
+      state.items.filter(
+        item=>item.included!==false
+      );
+
+    if(!selected.length){
+      status.dataset.state='error';
+      status.textContent='Aucun résultat sélectionné.';
+      return;
     }
-    status.textContent=`${produced} visuel${produced>1?'s':''} généré${produced>1?'s':''} en 1080 × 1350 px.`;previews.scrollIntoView({behavior:'smooth',block:'start'});
+
+    status.textContent=
+      `Génération de ${selected.length} résultat${selected.length>1?'s':''}…`;
+
+    let produced=0;
+
+    try{
+      for(const [itemIndex,item] of selected.entries()){
+        const pageGroups=
+          item.type==='plateau'
+            ?Array.from(
+                {
+                  length:
+                    Math.ceil(
+                      item.games.length/5
+                    )
+                },
+                (_,index)=>
+                  item.games.slice(
+                    index*5,
+                    index*5+5
+                  )
+              )
+            :[null];
+
+        for(
+          let page=0;
+          page<pageGroups.length;
+          page++
+        ){
+          status.textContent=
+            `Génération ${produced+1}…`;
+
+          const figure=
+            document.createElement(
+              'figure'
+            );
+
+          figure.className=
+            'visual-preview';
+
+          const canvas=
+            document.createElement(
+              'canvas'
+            );
+
+          canvas.width=1080;
+          canvas.height=1350;
+
+          const caption=
+            document.createElement(
+              'figcaption'
+            );
+
+          const label=
+            document.createElement(
+              'span'
+            );
+
+          label.textContent=
+            item.type==='plateau'
+              ?`${item.category} · plateau${
+                  pageGroups.length>1
+                    ?` · ${page+1}/${pageGroups.length}`
+                    :''
+                }`
+              :`${item.category} · ${item.home_team} - ${item.away_team}`;
+
+          const button=
+            document.createElement(
+              'button'
+            );
+
+          button.type='button';
+          button.className=
+            'visual-download';
+          button.textContent=
+            'Télécharger le PNG';
+
+          const safeCategory=
+            String(
+              item.category
+              ||'resultat'
+            )
+              .normalize('NFD')
+              .replace(
+                /[\u0300-\u036f]/g,
+                ''
+              )
+              .replace(
+                /[^a-z0-9]+/gi,
+                '-'
+              )
+              .replace(
+                /^-|-$/g,
+                ''
+              )
+              .toLowerCase();
+
+          const filename=
+            `${state.weekend}-resultat-${safeCategory}-${itemIndex+1}${
+              pageGroups.length>1
+                ?`-${page+1}`
+                :''
+            }.png`;
+
+          button.addEventListener(
+            'click',
+            ()=>
+              downloadCanvas(
+                canvas,
+                filename
+              )
+          );
+
+          caption.append(
+            label,
+            button
+          );
+
+          figure.append(
+            canvas,
+            caption
+          );
+
+          previews.append(
+            figure
+          );
+
+          if(item.type==='plateau'){
+            await drawPlateauResult(
+              canvas,
+              item,
+              pageGroups[page],
+              page,
+              pageGroups.length
+            );
+          }else{
+            await drawMatchResult(
+              canvas,
+              item
+            );
+          }
+
+          produced++;
+        }
+      }
+
+      status.removeAttribute(
+        'data-state'
+      );
+
+      status.textContent=
+        `${produced} visuel${produced>1?'s':''} généré${produced>1?'s':''} en 1080 × 1350 px.`;
+
+      previews.scrollIntoView({
+        behavior:'smooth',
+        block:'start'
+      });
+    }catch(error){
+      console.error(
+        'Génération résultats',
+        error
+      );
+
+      status.dataset.state='error';
+
+      status.textContent=
+        `Erreur pendant la génération : ${
+          error?.message
+          ||'erreur inconnue'
+        }`;
+    }
   }
 
   async function uploadFile(file){const data=new FormData();data.append('file',file);const response=await fetch('/admin-api/upload',{method:'POST',headers:{'x-requested-with':'XMLHttpRequest'},body:data});const result=await response.json().catch(()=>({}));if(!response.ok)throw new Error(result.error||`Upload impossible (${response.status}).`);return result;}
