@@ -11,7 +11,7 @@ import Footer from '../../components/Footer.astro';
     <link rel="stylesheet" href="/styles.css">
     <link rel="stylesheet" href="/enhancements.css?v=6">
     <link rel="stylesheet" href="/brand-charter.css">
-    <style>
+    <style is:global>
       .about-root{background:#f8f3eb;color:#201719}
       .about-shell{width:min(1180px,calc(100% - 48px));margin:0 auto}
       .about-hero{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(360px,.95fr);gap:54px;align-items:stretch;padding:72px 0 64px}
@@ -20,10 +20,10 @@ import Footer from '../../components/Footer.astro';
       .about-hero h1{max-width:780px;margin:0 0 28px;font:clamp(58px,7.2vw,104px)/.84 Impact,Arial Narrow,sans-serif;text-transform:uppercase;color:var(--wine)}
       .about-hero-copy .about-body{max-width:720px;font-size:18px;line-height:1.7}
       .about-media{min-height:420px;overflow:hidden;border-radius:28px 110px 28px 28px;background:var(--wine);box-shadow:0 25px 70px #55101828}
-      .about-media img{width:100%;height:100%;min-height:420px;object-fit:cover}
-      .about-visual-fallback{height:100%;min-height:420px;display:grid;place-content:center;gap:22px;padding:42px;text-align:center;background:radial-gradient(circle at 85% 10%,#d2a928 0 11%,transparent 12%),linear-gradient(145deg,#a71920,#550b22)}
-      .about-visual-fallback img{width:120px;height:120px;min-height:0;margin:auto;object-fit:contain;filter:drop-shadow(0 12px 24px #0005)}
-      .about-visual-fallback strong{color:#fff;font:38px/1 Impact,sans-serif;text-transform:uppercase}
+      .about-media>img{width:100%;height:100%;min-height:420px;object-fit:cover}
+      .about-visual-fallback{height:100%;min-height:420px;display:grid;place-content:center;gap:18px;padding:42px;text-align:center;background:radial-gradient(circle at 84% 14%,#e1a70d 0 10%,transparent 10.5%),linear-gradient(145deg,#86102d,#3c0718)}
+      .about-visual-fallback>img{display:block!important;width:108px!important;height:108px!important;min-height:0!important;margin:0 auto!important;object-fit:contain!important;filter:drop-shadow(0 12px 24px #0005)}
+      .about-visual-fallback strong{color:#fff;font:38px/1 Impact,'Arial Narrow',sans-serif;text-transform:uppercase}
       .about-visual-fallback span{color:var(--gold);font-size:11px;font-weight:900;letter-spacing:.16em;text-transform:uppercase}
       .about-chapter{padding:74px 0 26px}
       .about-chapter-inner{display:grid;grid-template-columns:.55fr 1.45fr;gap:50px;padding-bottom:34px;border-bottom:1px solid #d9cdc5}
@@ -40,16 +40,16 @@ import Footer from '../../components/Footer.astro';
       .about-timeline-copy{padding:28px 30px}
       .about-timeline-card h3,.about-feature h3,.about-people h3{margin:5px 0 16px;font-size:clamp(27px,3vw,40px);line-height:1;color:#201719}
       .about-timeline-card .about-card-media{min-height:260px;background:#f1e9e3}
-      .about-card-media img{width:100%;height:100%;min-height:260px;object-fit:cover}
+      .about-card-media>img{width:100%;height:100%;min-height:260px;object-fit:cover}
       .about-feature-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;padding:18px 0 76px}
       .about-feature{display:grid;grid-template-rows:auto 1fr;overflow:hidden;background:#fff;border:1px solid #e5d8d0;border-radius:24px;box-shadow:0 12px 34px #5510180b}
       .about-feature-media{height:270px;background:linear-gradient(145deg,#8e1620,#4d0d1d)}
-      .about-feature-media img{width:100%;height:100%;object-fit:cover}
+      .about-feature-media>img{width:100%;height:100%;object-fit:cover}
       .about-feature-copy{padding:28px}
       .about-feature:nth-child(even){border-top:5px solid var(--gold)}
       .about-people{margin:4px auto 82px;display:grid;grid-template-columns:minmax(280px,.65fr) minmax(0,1.35fr);overflow:hidden;border-radius:28px;background:var(--wine);color:#fff;box-shadow:0 24px 60px #55101826}
       .about-people-media{min-height:390px;background:#6f1022}
-      .about-people-media img{width:100%;height:100%;min-height:390px;object-fit:cover}
+      .about-people-media>img{width:100%;height:100%;min-height:390px;object-fit:cover}
       .about-people-copy{padding:46px}
       .about-people .about-kicker{color:var(--gold)}
       .about-people h3{color:#fff;font-size:clamp(38px,5vw,64px);text-transform:uppercase}
@@ -59,7 +59,7 @@ import Footer from '../../components/Footer.astro';
         .about-shell{width:min(100% - 32px,1180px)}
         .about-hero{grid-template-columns:1fr;padding-top:44px;gap:26px}
         .about-media{min-height:330px;border-radius:22px 70px 22px 22px}
-        .about-media img,.about-visual-fallback{min-height:330px}
+        .about-media>img,.about-visual-fallback{min-height:330px}
         .about-chapter-inner{grid-template-columns:1fr;gap:18px}
         .about-timeline-card{grid-template-columns:1fr}
         .about-timeline-card .about-card-media{min-height:220px}
@@ -82,6 +82,6 @@ import Footer from '../../components/Footer.astro';
       <div class="about-empty">Chargement de l’histoire du club…</div>
     </main>
     <Footer/>
-    <script is:inline src="/about.js?v=1"></script>
+    <script is:inline src="/about.js?v=2"></script>
   </body>
 </html>

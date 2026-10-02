@@ -7,8 +7,27 @@ import Footer from '../../components/Footer.astro';
     <meta charset="utf-8"><meta name="viewport" content="width=device-width">
     <title>Fiche équipe - FC Escalquens</title>
     <link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/enhancements.css?v=6"><link rel="stylesheet" href="/brand-charter.css"><link rel="stylesheet" href="/match-cards.css?v=8">
-    <style>
-      .profile-layout .staff{display:grid;grid-template-columns:1fr;gap:18px;align-items:start}.staff-group{overflow:hidden;border:1px solid #e8ddd7;border-radius:20px;background:#fff;box-shadow:0 10px 32px #5510180b}.staff-group.is-referent-group{border-color:#e7c54f;background:linear-gradient(135deg,#fffaf0 0%,#fff 62%)}.staff-group-head{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:15px 18px;border-bottom:1px solid #eee3dc}.staff-group-head>div{display:grid;gap:3px}.staff-group-head span{font-size:12px;font-weight:950;letter-spacing:.1em;text-transform:uppercase;color:var(--wine)}.staff-group-head small{font-size:11px;color:#796a66}.staff-group-head>b{display:grid;place-items:center;min-width:30px;height:30px;padding:0 8px;border-radius:999px;background:#f4ece7;color:var(--wine);font-size:12px}.is-referent-group .staff-group-head>b{background:var(--gold)}.staff-group-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:1px;background:#eee3dc}.staff-card{min-height:104px;padding:20px;background:#fff;display:flex;align-items:center;gap:16px}.is-referent-group .staff-card{background:#fffdf8}.staff-photo{width:68px;height:68px;flex:0 0 68px;border-radius:50%;object-fit:cover;border:3px solid #fff;box-shadow:0 0 0 2px #eadfda}.is-referent-group .staff-photo{box-shadow:0 0 0 2px var(--gold)}.staff-card-copy{min-width:0;display:grid;gap:7px}.staff-card h3{margin:0;font-size:19px;line-height:1.1}.staff-contacts{display:grid;gap:4px}.staff-contacts a{font-size:12px;color:var(--wine);text-decoration:none;overflow-wrap:anywhere}.staff-contacts a:hover{text-decoration:underline}@media(max-width:600px){.staff-group{border-radius:15px}.staff-group-grid{grid-template-columns:1fr}.staff-card{min-height:88px;padding:16px}.staff-photo{width:56px;height:56px;flex-basis:56px}.staff-card h3{font-size:17px}}
+    <style is:global>
+      .profile-layout .staff{display:grid;grid-template-columns:1fr;gap:16px;align-items:start}
+      .staff-group{overflow:hidden;background:#fff;border:1px solid var(--line);border-top:5px solid var(--wine);box-shadow:0 10px 26px #39111b0d}
+      .staff-group.is-referent-group{border-top-color:var(--gold)}
+      .staff-group-head{min-height:64px;display:flex;align-items:center;justify-content:space-between;gap:18px;padding:14px 18px;background:#faf5f1;border-bottom:1px solid var(--line)}
+      .staff-group-head>div{display:grid;gap:4px}
+      .staff-group-head span{color:var(--wine);font-size:11px;font-weight:950;letter-spacing:.1em;text-transform:uppercase}
+      .staff-group-head small{color:#756b68;font-size:10px;font-weight:700;letter-spacing:.02em;text-transform:none}
+      .staff-group-head>b{display:grid;place-items:center;min-width:31px;height:31px;padding:0 9px;background:#f1e8e2;color:var(--wine);font-size:12px;font-weight:950}
+      .staff-group.is-referent-group .staff-group-head>b{background:var(--gold);color:#211719}
+      .staff-group-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));background:var(--line);gap:1px}
+      .staff-card{min-width:0;min-height:92px;padding:18px;background:#fff;display:flex;align-items:center;gap:14px}
+      .staff-group.is-referent-group .staff-card{background:#fffdf8}
+      .staff-photo{width:62px;height:62px;flex:0 0 62px;border-radius:50%;object-fit:cover;border:3px solid #fff;box-shadow:0 0 0 1px #d7c8be}
+      .staff-group.is-referent-group .staff-photo{box-shadow:0 0 0 2px var(--gold)}
+      .staff-card-copy{min-width:0;display:grid;gap:7px}
+      .staff-card h3{margin:0;font-family:Arial,sans-serif;font-size:18px;line-height:1.15;text-transform:none}
+      .staff-contacts{display:grid;gap:4px}
+      .staff-contacts a{width:max-content;max-width:100%;color:var(--wine);font-size:11px;font-weight:800;text-decoration:underline;text-underline-offset:3px;overflow-wrap:anywhere}
+      @media(max-width:900px){.staff-group-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+      @media(max-width:600px){.staff-group-grid{grid-template-columns:1fr}.staff-card{min-height:78px;padding:15px 16px}.staff-photo{width:52px;height:52px;flex-basis:52px}.staff-card h3{font-size:16px}.staff-group-head{padding:12px 15px}}
       .team-birthyears{display:inline-flex;align-self:flex-start;width:max-content;margin:0 0 18px;padding:8px 12px;border-radius:999px;background:var(--gold);color:var(--wine);font-size:12px;font-weight:950;line-height:1;letter-spacing:.02em}
       .team-birthyears[hidden]{display:none}
     </style>
@@ -49,6 +68,6 @@ import Footer from '../../components/Footer.astro';
       </section>
     </main>
     <Footer/>
-    <script is:inline src="/team-profile.js?v=33"></script>
+    <script is:inline src="/team-profile.js?v=34"></script>
   </body>
 </html>
