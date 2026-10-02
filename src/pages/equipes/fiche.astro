@@ -9,35 +9,33 @@ import Footer from '../../components/Footer.astro';
     <link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/enhancements.css?v=6"><link rel="stylesheet" href="/brand-charter.css"><link rel="stylesheet" href="/match-cards.css?v=8">
     <style is:global>
       .profile-layout .staff{display:block}
-      .staff-compact{background:#fff;border:1px solid var(--line);border-left:6px solid var(--gold);box-shadow:0 10px 28px #39111b0b}
-      .staff-referents{padding:18px 22px 10px;background:#faf5f1}
+      .staff-compact{display:grid;gap:14px;padding:18px 20px;background:#fff;border:1px solid var(--line);border-radius:26px;box-shadow:0 12px 28px rgba(57,17,27,.08)}
       .staff-role-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:10px}
       .staff-role-heading>div{display:grid;gap:4px}
-      .staff-role-heading span,.staff-row>h3{margin:0;color:var(--wine);font-size:10px;font-weight:950;letter-spacing:.12em;text-transform:uppercase}
+      .staff-role-heading span,.staff-group>h3{margin:0;color:var(--wine);font-size:10px;font-weight:950;letter-spacing:.14em;text-transform:uppercase}
       .staff-role-heading small{color:#766a67;font-size:10px;font-weight:700}
-      .staff-referent-list{display:flex;flex-wrap:wrap;gap:10px 16px}
-      .staff-referent-list.is-single{max-width:430px}
-      .staff-referent{min-width:0;display:flex;align-items:center;gap:12px;flex:0 1 420px;padding:14px 16px;background:#fff;border:1px solid #e6dad2;border-radius:18px}
-      .staff-referent-photo{width:54px;height:54px;flex:0 0 54px;border-radius:50%;object-fit:cover;border:3px solid #fff;box-shadow:0 0 0 2px var(--gold)}
-      .staff-referent-copy{min-width:0;display:grid;gap:6px}
-      .staff-referent h3{margin:0;font-family:Arial,sans-serif;font-size:17px;line-height:1.15;text-transform:none}
-      .staff-contacts{display:flex;flex-wrap:wrap;gap:5px 14px}
-      .staff-contacts a{color:var(--wine);font-size:10px;font-weight:800;text-decoration:underline;text-underline-offset:3px;overflow-wrap:anywhere}
-      .staff-row{display:grid;grid-template-columns:145px minmax(0,1fr);gap:18px;align-items:start;padding:14px 22px;border-top:1px solid var(--line)}
-      .staff-row>h3{padding-top:5px}
-      .staff-people{display:flex;flex-wrap:wrap;gap:9px 22px;align-items:center}
-      .staff-person{position:relative;display:inline-flex;align-items:center;gap:8px;min-height:30px;color:#2a2221;font-size:13px}
+      .staff-referents{padding:8px 0 2px;border-bottom:1px solid var(--line)}
+      .staff-referent-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px 16px}
+      .staff-referent-grid.single{grid-template-columns:minmax(280px,420px);justify-content:start}
+      .staff-referent{display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:18px;background:#faf5f1;border:1px solid #eadfd7;min-width:0}
+      .staff-referent-photo{width:58px;height:58px;flex:0 0 58px;border-radius:50%;object-fit:cover;border:3px solid #fff;box-shadow:0 0 0 2px var(--gold)}
+      .staff-referent-copy{display:grid;gap:6px;min-width:0}
+      .staff-referent-copy h3{margin:0;font-family:Arial,sans-serif;font-size:17px;line-height:1.15;text-transform:none}
+      .staff-contacts{display:flex;flex-wrap:wrap;gap:5px 12px}
+      .staff-contacts a{color:var(--wine);font-size:11px;font-weight:800;text-decoration:underline;text-underline-offset:3px;overflow-wrap:anywhere}
+      .staff-group{display:grid;grid-template-columns:155px minmax(0,1fr);gap:14px;align-items:start}
+      .staff-group>h3{padding-top:8px}
+      .staff-people{display:flex;flex-wrap:wrap;gap:10px 14px}
+      .staff-person{display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border-radius:999px;background:#f5efea;border:1px solid #eadfd7;color:#2a2221;min-height:40px}
+      .staff-person img{width:30px;height:30px;flex:0 0 30px;border-radius:50%;object-fit:cover}
+      .staff-person b{font-size:13px;font-weight:800}
+      .staff-person.no-photo{padding-left:14px}
       .staff-person.no-photo:before{content:"";width:6px;height:6px;flex:0 0 6px;background:var(--gold);transform:rotate(45deg)}
-      .staff-person img{width:32px;height:32px;flex:0 0 32px;border-radius:50%;object-fit:cover}
-      .staff-person b{font-weight:800}
-      @media(max-width:650px){
-        .staff-compact{border-left-width:4px}
-        .staff-referents{padding:16px}
-        .staff-referent-list.is-single{max-width:none}
-        .staff-referent{flex-basis:100%;padding:13px 14px}
-        .staff-row{grid-template-columns:1fr;gap:8px;padding:13px 16px}
-        .staff-row>h3{padding:0}
-        .staff-people{gap:8px 18px}
+      @media(max-width:720px){
+        .staff-compact{padding:16px}
+        .staff-group{grid-template-columns:1fr;gap:8px}
+        .staff-group>h3{padding-top:0}
+        .staff-referent-grid.single{grid-template-columns:1fr}
       }
       .team-birthyears{display:inline-flex;align-self:flex-start;width:max-content;margin:0 0 18px;padding:8px 12px;border-radius:999px;background:var(--gold);color:var(--wine);font-size:12px;font-weight:950;line-height:1;letter-spacing:.02em}
       .team-birthyears[hidden]{display:none}
@@ -79,6 +77,6 @@ import Footer from '../../components/Footer.astro';
       </section>
     </main>
     <Footer/>
-    <script is:inline src="/team-profile.js?v=36"></script>
+    <script is:inline src="/team-profile.js?v=37"></script>
   </body>
 </html>
