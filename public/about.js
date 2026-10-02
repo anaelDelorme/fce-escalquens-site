@@ -13,18 +13,9 @@ const bodyHtml=value=>{
   };
 
   for(const line of lines){
-    if(!line){
-      flushList();
-      continue;
-    }
-
+    if(!line){flushList();continue}
     const bullet=line.match(/^[•·-]\s*(.+)$/);
-
-    if(bullet){
-      list.push(bullet[1]);
-      continue;
-    }
-
+    if(bullet){list.push(bullet[1]);continue}
     flushList();
     output.push(`<p>${esc(line)}</p>`);
   }
@@ -33,70 +24,18 @@ const bodyHtml=value=>{
   return output.join('');
 };
 
-const mediaHtml=(section,className)=>{
-  if(section.image_key){
-    return `<div class="${className}">
-      <img src="/media/${esc(section.image_key)}" alt="${esc(section.image_alt||'')}" loading="lazy">
-    </div>`;
-  }
+const kicker=section=>section.eyebrow?`<p class="about-kicker">${esc(section.eyebrow)}</p>`:'';
+const image=(section,className)=>section.image_key?`<div class="${className}"><img src="/media/${esc(section.image_key)}" alt="${esc(section.image_alt||'')}" loading="lazy"></div>`:'';
+const heroMedia=section=>section.image_key?image(section,'about-hero-media'):`<div class="about-hero-media"><div class="about-hero-graphic"><img src="/logo-fce.webp" alt="" aria-hidden="true"><strong>Un maillot.<br>Une famille.</strong><span>Football Club Escalquens</span></div></div>`;
 
-  return `<div class="${className} about-visual-fallback">
-    <img src="/logo-fce.webp" alt="" aria-hidden="true">
-    <strong>FC Escalquens</strong>
-    <span>Un maillot. Une famille.</span>
-  </div>`;
-};
+const heroHtml=section=>`<section class="about-hero"><div class="about-shell about-hero-inner"><div class="about-hero-copy">${kicker(section)}<h1>${esc(section.title)}</h1><div class="about-body">${bodyHtml(section.body)}</div></div>${heroMedia(section)}</div></section>`;
+const chapterHtml=section=>`<section class="about-chapter"><div class="about-shell about-chapter-inner"><div>${kicker(section)}<h2>${esc(section.title)}</h2></div><div class="about-body">${bodyHtml(section.body)}</div></div></section>`;
 
-const kicker=section=>section.eyebrow
-  ?`<p class="about-kicker">${esc(section.eyebrow)}</p>`
-  :'';
+const timelineHtml=sections=>`<section class="about-timeline-band"><div class="about-shell about-timeline">${sections.map(section=>`<article class="about-timeline-item ${section.image_key?'has-media':''}"><div class="about-timeline-date">${esc(section.eyebrow||'')}</div><div class="about-timeline-content"><div class="about-timeline-copy"><h3>${esc(section.title)}</h3><div class="about-body">${bodyHtml(section.body)}</div></div>${section.image_key?image(section,'about-timeline-media'):''}</div></article>`).join('')}</div></section>`;
 
-const chapterHtml=section=>`<section class="about-chapter about-shell">
-  <div class="about-chapter-inner">
-    <div>
-      ${kicker(section)}
-      <h2>${esc(section.title)}</h2>
-    </div>
-    <div class="about-body">${bodyHtml(section.body)}</div>
-  </div>
-</section>`;
+const featuresHtml=sections=>`<section class="about-feature-band"><div class="about-shell about-feature-grid">${sections.map(section=>`<article class="about-feature ${section.image_key?'has-media':'no-media'}">${section.image_key?image(section,'about-feature-media'):''}<div class="about-feature-copy">${kicker(section)}<h3>${esc(section.title)}</h3><div class="about-body">${bodyHtml(section.body)}</div></div></article>`).join('')}</div></section>`;
 
-const timelineHtml=sections=>`<section class="about-shell about-timeline">
-  ${sections.map(section=>`<article class="about-timeline-card">
-    <div class="about-timeline-copy">
-      ${kicker(section)}
-      <h3>${esc(section.title)}</h3>
-      <div class="about-body">${bodyHtml(section.body)}</div>
-    </div>
-    ${section.image_key
-      ?`<div class="about-card-media"><img src="/media/${esc(section.image_key)}" alt="${esc(section.image_alt||'')}" loading="lazy"></div>`
-      :''
-    }
-  </article>`).join('')}
-</section>`;
-
-const featuresHtml=sections=>`<section class="about-shell about-feature-grid">
-  ${sections.map(section=>`<article class="about-feature">
-    ${section.image_key
-      ?`<div class="about-feature-media"><img src="/media/${esc(section.image_key)}" alt="${esc(section.image_alt||'')}" loading="lazy"></div>`
-      :''
-    }
-    <div class="about-feature-copy">
-      ${kicker(section)}
-      <h3>${esc(section.title)}</h3>
-      <div class="about-body">${bodyHtml(section.body)}</div>
-    </div>
-  </article>`).join('')}
-</section>`;
-
-const peopleHtml=section=>`<section class="about-shell about-people">
-  ${mediaHtml(section,'about-people-media')}
-  <div class="about-people-copy">
-    ${kicker(section)}
-    <h3>${esc(section.title)}</h3>
-    <div class="about-body">${bodyHtml(section.body)}</div>
-  </div>
-</section>`;
+const peopleHtml=section=>`<section class="about-people-band"><div class="about-shell about-people ${section.image_key?'has-media':''}">${section.image_key?image(section,'about-people-media'):''}<div class="about-people-copy">${kicker(section)}<h3>${esc(section.title)}</h3><div class="about-body">${bodyHtml(section.body)}</div></div></div></section>`;
 
 const render=sections=>{
   if(!sections.length){
@@ -106,35 +45,21 @@ const render=sections=>{
 
   const hero=sections.find(section=>section.layout==='hero')||sections[0];
   const rest=sections.filter(section=>section!==hero);
-
-  let html=`<section class="about-shell about-hero">
-    <div class="about-hero-copy">
-      ${kicker(hero)}
-      <h1>${esc(hero.title)}</h1>
-      <div class="about-body">${bodyHtml(hero.body)}</div>
-    </div>
-    ${mediaHtml(hero,'about-media')}
-  </section>`;
+  let html=heroHtml(hero);
 
   for(let index=0;index<rest.length;){
     const section=rest[index];
 
     if(section.layout==='timeline'){
       const group=[];
-      while(index<rest.length&&rest[index].layout==='timeline'){
-        group.push(rest[index]);
-        index++;
-      }
+      while(index<rest.length&&rest[index].layout==='timeline'){group.push(rest[index]);index++}
       html+=timelineHtml(group);
       continue;
     }
 
     if(section.layout==='feature'){
       const group=[];
-      while(index<rest.length&&rest[index].layout==='feature'){
-        group.push(rest[index]);
-        index++;
-      }
+      while(index<rest.length&&rest[index].layout==='feature'){group.push(rest[index]);index++}
       html+=featuresHtml(group);
       continue;
     }
