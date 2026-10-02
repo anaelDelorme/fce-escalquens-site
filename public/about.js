@@ -1,8 +1,10 @@
+
 const aboutRoot=document.querySelector('#about-root');
 const esc=value=>String(value??'').replace(/[&<>'"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
+const normalizeBreaks=value=>String(value||'').replace(/\\r\\n/g,'\n').replace(/\\n/g,'\n').replace(/\r\n/g,'\n');
 
 const bodyHtml=value=>{
-  const lines=String(value||'').split(/\r?\n/).map(line=>line.trim());
+  const lines=normalizeBreaks(value).split(/\n/).map(line=>line.trim());
   const output=[];
   let list=[];
 
@@ -14,7 +16,7 @@ const bodyHtml=value=>{
 
   for(const line of lines){
     if(!line){flushList();continue}
-    const bullet=line.match(/^[•·-]\s*(.+)$/);
+    const bullet=line.match(/^[•·\-]\s*(.+)$/);
     if(bullet){list.push(bullet[1]);continue}
     flushList();
     output.push(`<p>${esc(line)}</p>`);
@@ -24,18 +26,56 @@ const bodyHtml=value=>{
   return output.join('');
 };
 
+const sectionMark=section=>{
+  const haystack=`${section.title||''} ${section.eyebrow||''}`.toLowerCase();
+  if(/histoire|époque|pionnier|renouveau/.test(haystack))return '🏟️';
+  if(/aujourd|rayonnement|territoire/.test(haystack))return '📍';
+  if(/valeur|esprit|engagement/.test(haystack))return '🤝';
+  if(/technique|encadrement|formation/.test(haystack))return '⚽';
+  return '⭐';
+};
+
 const kicker=section=>section.eyebrow?`<p class="about-kicker">${esc(section.eyebrow)}</p>`:'';
 const image=(section,className)=>section.image_key?`<div class="${className}"><img src="/media/${esc(section.image_key)}" alt="${esc(section.image_alt||'')}" loading="lazy"></div>`:'';
-const heroMedia=section=>section.image_key?image(section,'about-hero-media'):`<div class="about-hero-media"><div class="about-hero-graphic"><img src="/logo-fce.webp" alt="" aria-hidden="true"><strong>Un maillot.<br>Une famille.</strong><span>Football Club Escalquens</span></div></div>`;
+const heading=(tag,section)=>`<div class="about-heading"><span class="about-mark" aria-hidden="true">${sectionMark(section)}</span><${tag}>${esc(section.title)}</${tag}></div>`;
+
+const heroMedia=section=>section.image_key
+  ?image(section,'about-hero-media')
+  :`<div class="about-hero-media"><div class="about-hero-graphic"><img src="/logo-fce.webp" alt="" aria-hidden="true"><strong>Un maillot.<br>Une famille.</strong><span>Football Club Escalquens</span></div></div>`;
 
 const heroHtml=section=>`<section class="about-hero"><div class="about-shell about-hero-inner"><div class="about-hero-copy">${kicker(section)}<h1>${esc(section.title)}</h1><div class="about-body">${bodyHtml(section.body)}</div></div>${heroMedia(section)}</div></section>`;
-const chapterHtml=section=>`<section class="about-chapter"><div class="about-shell about-chapter-inner"><div>${kicker(section)}<h2>${esc(section.title)}</h2></div><div class="about-body">${bodyHtml(section.body)}</div></div></section>`;
 
-const timelineHtml=sections=>`<section class="about-timeline-band"><div class="about-shell about-timeline">${sections.map(section=>`<article class="about-timeline-item ${section.image_key?'has-media':''}"><div class="about-timeline-date">${esc(section.eyebrow||'')}</div><div class="about-timeline-content"><div class="about-timeline-copy"><h3>${esc(section.title)}</h3><div class="about-body">${bodyHtml(section.body)}</div></div>${section.image_key?image(section,'about-timeline-media'):''}</div></article>`).join('')}</div></section>`;
+const chapterHtml=section=>`<section class="about-chapter"><div class="about-shell about-chapter-inner"><div class="about-title-stack">${kicker(section)}${heading('h2',section)}</div><div class="about-body">${bodyHtml(section.body)}</div></div></section>`;
 
-const featuresHtml=sections=>`<section class="about-feature-band"><div class="about-shell about-feature-grid">${sections.map(section=>`<article class="about-feature ${section.image_key?'has-media':'no-media'}">${section.image_key?image(section,'about-feature-media'):''}<div class="about-feature-copy">${kicker(section)}<h3>${esc(section.title)}</h3><div class="about-body">${bodyHtml(section.body)}</div></div></article>`).join('')}</div></section>`;
+const timelineHtml=sections=>`<section class="about-timeline-band"><div class="about-shell about-timeline">${
+  sections.map(section=>`
+    <article class="about-timeline-item ${section.image_key?'has-media':''}">
+      <div class="about-timeline-date">${esc(section.eyebrow||'')}</div>
+      <div class="about-timeline-content">
+        <div class="about-timeline-copy">
+          ${heading('h3',section)}
+          <div class="about-body">${bodyHtml(section.body)}</div>
+        </div>
+        ${section.image_key?image(section,'about-timeline-media'):''}
+      </div>
+    </article>
+  `).join('')
+}</div></section>`;
 
-const peopleHtml=section=>`<section class="about-people-band"><div class="about-shell about-people ${section.image_key?'has-media':''}">${section.image_key?image(section,'about-people-media'):''}<div class="about-people-copy">${kicker(section)}<h3>${esc(section.title)}</h3><div class="about-body">${bodyHtml(section.body)}</div></div></div></section>`;
+const featuresHtml=sections=>`<section class="about-feature-band"><div class="about-shell about-feature-grid">${
+  sections.map(section=>`
+    <article class="about-feature ${section.image_key?'has-media':'no-media'}">
+      ${section.image_key?image(section,'about-feature-media'):''}
+      <div class="about-feature-copy">
+        ${kicker(section)}
+        ${heading('h3',section)}
+        <div class="about-body">${bodyHtml(section.body)}</div>
+      </div>
+    </article>
+  `).join('')
+}</div></section>`;
+
+const peopleHtml=section=>`<section class="about-people-band"><div class="about-shell about-people ${section.image_key?'has-media':''}">${section.image_key?image(section,'about-people-media'):''}<div class="about-people-copy">${kicker(section)}${heading('h3',section)}<div class="about-body">${bodyHtml(section.body)}</div></div></div></section>`;
 
 const render=sections=>{
   if(!sections.length){
@@ -52,14 +92,20 @@ const render=sections=>{
 
     if(section.layout==='timeline'){
       const group=[];
-      while(index<rest.length&&rest[index].layout==='timeline'){group.push(rest[index]);index++}
+      while(index<rest.length&&rest[index].layout==='timeline'){
+        group.push(rest[index]);
+        index++;
+      }
       html+=timelineHtml(group);
       continue;
     }
 
     if(section.layout==='feature'){
       const group=[];
-      while(index<rest.length&&rest[index].layout==='feature'){group.push(rest[index]);index++}
+      while(index<rest.length&&rest[index].layout==='feature'){
+        group.push(rest[index]);
+        index++;
+      }
       html+=featuresHtml(group);
       continue;
     }
