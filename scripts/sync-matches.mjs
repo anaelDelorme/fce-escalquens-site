@@ -1,5 +1,5 @@
 import { browserCollectStandings } from './standings-integrated.mjs';
-const SYNC_VERSION='2026.10.01-standings-32-fix1',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+const SYNC_VERSION='2026.10.02-import-33',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 console.log(`Collecteur FCE ${SYNC_VERSION}`);
 const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
 const endpoint=siteUrl+'/internal/sync/matches';
@@ -926,6 +926,117 @@ async function importLatestStandings(sources){
   }
 }
 
+async function importMatchRows(rows,sources){
+  const chunkSize=40;
+  const chunks=[];
+
+  for(let index=0;index<rows.length;index+=chunkSize){
+    chunks.push(rows.slice(index,index+chunkSize));
+  }
+
+  const allPlateauSourceIds=
+    rows
+      .filter(row=>
+        row?.source==='district_fal'
+        &&['plateau','animation'].includes(row?.event_type)
+      )
+      .map(row=>String(row.source_id||''))
+      .filter(Boolean);
+
+  const summary={
+    ok:true,
+    received:0,
+    accepted:0,
+    changed:0,
+    discovered:0,
+    removed_plateau_duplicates:0,
+    status:sources.some(source=>source?.status==='error')?'partial':'success'
+  };
+
+  for(let index=0;index<chunks.length;index++){
+    const final=index===chunks.length-1;
+    const chunk=chunks[index];
+    let lastError=null;
+
+    for(let attempt=1;attempt<=2;attempt++){
+      try{
+        const response=await fetch(
+          endpoint,
+          {
+            method:'POST',
+            headers:{
+              authorization:`Bearer ${token}`,
+              'content-type':'application/json'
+            },
+            body:JSON.stringify({
+              rows:chunk,
+              sources,
+              batch:{
+                final,
+                all_plateau_source_ids:
+                  final
+                    ?allPlateauSourceIds
+                    :[]
+              }
+            })
+          }
+        );
+
+        const raw=await response.text();
+
+        if(!response.ok){
+          throw new Error(
+            `HTTP ${response.status}: ${raw}`
+          );
+        }
+
+        const result=parseJson(
+          raw,
+          `import matchs lot ${index+1}`
+        );
+
+        summary.received+=Number(result.received||chunk.length);
+        summary.accepted+=Number(result.accepted||0);
+        summary.changed+=Number(result.changed||0);
+        summary.discovered+=Number(result.discovered||0);
+        summary.removed_plateau_duplicates+=
+          Number(result.removed_plateau_duplicates||0);
+
+        console.log(
+          `Cloudflare matchs : lot ${index+1}/${chunks.length} — `
+          +`${Number(result.accepted||0)} accepté(s), `
+          +`${Number(result.changed||0)} changement(s).`
+        );
+
+        lastError=null;
+        break;
+
+      }catch(error){
+        lastError=error;
+
+        if(attempt<2){
+          console.log(
+            `Import matchs lot ${index+1}/${chunks.length} en échec, nouvel essai...`
+          );
+
+          await new Promise(
+            resolve=>setTimeout(resolve,1200)
+          );
+        }
+      }
+    }
+
+    if(lastError){
+      throw new Error(
+        `Import Cloudflare lot ${index+1}/${chunks.length} : `
+        +String(lastError?.message||lastError)
+      );
+    }
+  }
+
+  return summary;
+}
+
 async function main(){
   let rows=[],sources=[];
   try{
@@ -942,13 +1053,18 @@ async function main(){
   }
   latestSources=sources;
   if(!rows.length)throw new Error(`Aucune donnée collectée : ${sources.map(item=>item.status==='ok'?`${item.source} OK (${item.count} rencontre)`: `${item.source} ERREUR — ${item.error}`).join(' ; ')}`);
-  const response=await fetch(endpoint,{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({rows,sources})});
-  const raw=await response.text();
-  if(!response.ok)throw new Error(`Import Cloudflare HTTP ${response.status}: ${raw}`);
+
+  const importResult=
+    await importMatchRows(
+      rows,
+      sources
+    );
 
   await importLatestStandings(sources);
 
-  console.log(raw);
+  console.log(
+    JSON.stringify(importResult)
+  );
 
   console.table(sources);
   const failures=sources.filter(item=>item.status==='error');

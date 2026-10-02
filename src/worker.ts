@@ -991,9 +991,18 @@ async function ingestMatches(request: Request, env: Env) {
   if (!env.FCE_SYNC_TOKEN || !secureToken(supplied, env.FCE_SYNC_TOKEN)) {
     return json({ error: "Jeton de synchronisation invalide" }, 401);
   }
-  const body = await request.json<{ rows?: AnyRow[]; sources?: AnyRow[] }>().catch(() => null);
+  const body = await request.json<{
+    rows?: AnyRow[];
+    sources?: AnyRow[];
+    batch?: {
+      final?: boolean;
+      all_plateau_source_ids?: string[];
+    };
+  }>().catch(() => null);
   const rows = body?.rows;
   if (!Array.isArray(rows) || rows.length > 1000) return json({ error: "Lot de rencontres invalide" }, 400);
+  const batchMode = Boolean(body?.batch);
+  const finalBatch = !batchMode || body?.batch?.final === true;
   const [seasonId, teams, unassigned] = await Promise.all([
     activeSeasonId(env),
     env.DB.prepare("SELECT id,name,category FROM teams WHERE active=1").all<AnyRow>(),
@@ -1003,11 +1012,13 @@ async function ingestMatches(request: Request, env: Env) {
   const loadedEntries = await env.DB.prepare("SELECT id,team_id,fff_team_id,category_code FROM team_competitions WHERE active=1 AND season_id=?")
     .bind(seasonId).all<AnyRow>();
   const entries = new Map((loadedEntries.results || []).map(entry => [String(entry.fff_team_id || ""), entry]));
+  const refreshedEntries = new Set<string>();
   let changed = 0;
   let accepted = 0;
   let discovered = 0;
   for (const row of rows) {
-    if (!["fff", "district_fal"].includes(row.source) || !row.source_id || !row.starts_at || !row.home_team || !row.away_team) continue;
+    try {
+      if (!["fff", "district_fal"].includes(row.source) || !row.source_id || !row.starts_at || !row.home_team || !row.away_team) continue;
     const fffTeamId = String(row.team_fff_id || "");
     const official = row.official_team || {};
     let entry = fffTeamId ? entries.get(fffTeamId) : null;
@@ -1027,7 +1038,7 @@ async function ingestMatches(request: Request, env: Env) {
       entry = { id: Number(inserted.meta.last_row_id), team_id: unassigned.id, fff_team_id: fffTeamId };
       entries.set(fffTeamId, entry);
       discovered++;
-    } else if (entry) {
+    } else if (entry && !refreshedEntries.has(fffTeamId)) {
       await env.DB.prepare(`UPDATE team_competitions SET
         name=?,team_number=?,category_code=?,competition_name=?,division=?,pool=?,
         last_seen_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
@@ -1042,6 +1053,7 @@ async function ingestMatches(request: Request, env: Env) {
         official.competition_name || row.competition || "",
         official.division || "", official.pool || ""
       ).run();
+      refreshedEntries.add(fffTeamId);
     }
     // Aucune déduction par le libellé U15/U15F : seul l'identifiant FFF exact
     // et l'affectation validée dans l'admin déterminent le groupe sportif.
@@ -1053,7 +1065,13 @@ async function ingestMatches(request: Request, env: Env) {
       season_id: seasonId,
       raw_json: row.raw_json || row
     });
-    accepted++;
+      accepted++;
+    } catch (error) {
+      return json({
+        error: `Import rencontre ${String(row?.source || "?")}/${String(row?.source_id || "?")} impossible`,
+        detail: error instanceof Error ? error.message : String(error)
+      }, 500);
+    }
   }
   const sourceResults = Array.isArray(body?.sources) ? body.sources : [];
   const syncStatus = sourceResults.some(source => source?.status === "error") ? "partial" : "success";
@@ -1061,10 +1079,13 @@ async function ingestMatches(request: Request, env: Env) {
   // une collecte FFF complète, les plateaux absents du lot courant sont donc
   // des doublons obsolètes. Les ajouts manuels utilisent une autre source.
   let removedPlateauDuplicates = 0;
-  if (syncStatus === "success") {
-    const currentPlateaux = rows
-      .filter(row => row.source === "district_fal" && ["plateau", "animation"].includes(row.event_type))
-      .map(row => String(row.source_id));
+  if (syncStatus === "success" && finalBatch) {
+    const suppliedPlateaux = body?.batch?.all_plateau_source_ids;
+    const currentPlateaux = Array.isArray(suppliedPlateaux)
+      ? suppliedPlateaux.map(value => String(value)).filter(Boolean)
+      : rows
+          .filter(row => row.source === "district_fal" && ["plateau", "animation"].includes(row.event_type))
+          .map(row => String(row.source_id));
     if (currentPlateaux.length) {
       const deleted = await env.DB.prepare(`DELETE FROM matches
         WHERE source='district_fal' AND manually_created=0 AND (season_id=? OR season_id IS NULL)
@@ -1074,11 +1095,13 @@ async function ingestMatches(request: Request, env: Env) {
       removedPlateauDuplicates = Number(deleted.meta.changes || 0);
     }
   }
-  await env.DB.prepare(`INSERT INTO sync_runs(
-    source,finished_at,status,imported_count,error_message
-  ) VALUES('github_actions',CURRENT_TIMESTAMP,?,?,?)`).bind(
-    syncStatus, changed, JSON.stringify(sourceResults)
-  ).run();
+  if (finalBatch) {
+    await env.DB.prepare(`INSERT INTO sync_runs(
+      source,finished_at,status,imported_count,error_message
+    ) VALUES('github_actions',CURRENT_TIMESTAMP,?,?,?)`).bind(
+      syncStatus, changed, JSON.stringify(sourceResults)
+    ).run();
+  }
   // Les pages publiques sont mises en cache pour économiser D1. Une collecte
   // réussie doit toutefois rendre immédiatement visibles les nouveaux scores.
   const origin = new URL(request.url).origin;
@@ -1095,12 +1118,15 @@ async function ingestMatches(request: Request, env: Env) {
   // Ne jamais faire échouer une synchronisation parce qu'une purge
   // de cache échoue. Les détails de plateau ont un cache court et
   // se rafraîchiront naturellement.
-  await Promise.allSettled(
-    cacheKeys.map(key => cache.delete(key))
-  );
+  if (finalBatch) {
+    await Promise.allSettled(
+      cacheKeys.map(key => cache.delete(key))
+    );
+  }
   return json({
     ok: true, received: rows.length, accepted, changed, discovered,
-    removed_plateau_duplicates: removedPlateauDuplicates, status: syncStatus
+    removed_plateau_duplicates: removedPlateauDuplicates, status: syncStatus,
+    final: finalBatch
   });
 }
 
