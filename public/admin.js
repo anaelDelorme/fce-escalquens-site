@@ -35,13 +35,14 @@ const schemas={
     'display_order',
     'active'
   ],
+  about_sections:['section_key','eyebrow','title','body','image_key','image_alt','layout','display_order','active'],
   matches:['season_id','team_id','competition','starts_at','venue','venue_address','latitude','longitude','home_team','away_team','home_score','away_score','status'],
   standings:['source','phase_id','season_id','team_id','team_name','position','played','won','drawn','lost','goals_for','goals_against','points'],
   documents:['slug','title','kind','object_key','published'],
   admins:['email','name','active']
 };
 const collectionLabels={teams:'Groupes sportifs',team_competitions:'Équipes FFF récupérées',seasons:'Saisons',competition_levels:'Niveaux',venues:'Terrains',club_members:'Licenciés & encadrants',team_staff:'Affectations aux équipes',training_sessions:'Entraînements',contacts:'Contacts',tournaments:'Tournois',tournament_teams:'Participations aux tournois',sponsors:'Partenaires',sponsor_packages:'Mécénat — formules',site_media:'Photos du site',home_slides:'Diaporama accueil',shop_categories:'Boutique — catégories',shop_products:'Boutique — articles',shop_settings:'Boutique — réglages',
-recruitment_posts:'Nous rejoindre — annonces',matches:'Matchs',standings:'Classements',documents:'Documents',admins:'Administrateurs'};
+recruitment_posts:'Nous rejoindre — annonces',about_sections:'Qui nous sommes — blocs',matches:'Matchs',standings:'Classements',documents:'Documents',admins:'Administrateurs'};
 const labels={slug:'Identifiant URL',label:'Libellé de la saison',season_id:'Saison',name:'Nom',team_number:'Numéro d’équipe',full_name:'Nom et prénom',category:'Domaine',category_code:'Code catégorie FFF',group_name:'Section du club',level:'Niveau',level_id:'Niveau',short_name:'Nom court',gender:'Genre',description:'Présentation',player_count:'Nombre de licenciés',photo_key:'Photo',logo_key:'Logo',image_key:'Photo de l’article',license_number:'Numéro de licence',member_id:'Licencié / encadrant',display_order:'Ordre d’affichage',active:'Actif',team_id:'Groupe sportif',competition_team_id:'Équipe engagée',fff_team_id:'Identifiant équipe FFF',competition_name:'Nom de la compétition',division:'Division',pool:'Poule',weekday:'Jour',starts_at:'Date et heure / heure de début',ends_at:'Heure de fin',venue:'Terrain / lieu',venue_id:'Terrain',venue_address:'Adresse du lieu',address:'Adresse complète',latitude:'Latitude GPS',longitude:'Longitude GPS',maps_url:'Lien Google Maps',notes:'Notes',role:'Rôle dans l’équipe',email:'Email',phone:'Téléphone',responsibilities:'Missions / sujets traités',availability:'Disponibilités',published:'Publié',summary:'Résumé',starts_on:'Date de début',ends_on:'Date de fin',categories:'Sections concernées',registration_url:'Lien d’inscription',tournify_url:'Lien Tournify',organizer:'Organisateur',tournament_id:'Tournoi',rules_key:'Règlement PDF',status:'Statut',source:'Source',source_id:'Identifiant source',competition:'Compétition',home_team:'Équipe à domicile',away_team:'Équipe à l’extérieur',home_score:'Score domicile',away_score:'Score extérieur',phase_id:'Identifiant phase',team_name:'Nom de l’équipe',position:'Position',played:'Matchs joués',won:'Victoires',drawn:'Nuls',lost:'Défaites',goals_for:'Buts pour',goals_against:'Buts contre',points:'Points',title:'Titre',kind:'Type de document',object_key:'Photo',alt_text:'Description de l’image',website_url:'Site internet',tier:'Type de partenariat',benefits:'Avantages / contreparties',shop_category_id:'Catégorie boutique',short_description:'Accroche courte',price_label:'Prix affiché',price_details:'Détail des prix',sizes:'Tailles proposées',options:'Options proposées',delivery_delay:'Délai indicatif',featured:'Article à la une',highlighted:'Article phare',contact_email:'E-mail de commande',catalogue_title:'Titre du catalogue',catalogue_key:'Catalogue PDF',order_subject:'Objet des e-mails',
 audience:'Profil recherché',
 target:'Public / catégorie',
@@ -50,13 +51,13 @@ commitment:'Disponibilités / engagement',
 location:'Lieu',
 contact_name:'Personne à contacter',
 contact_phone:'Téléphone de contact',
-apply_url:'Lien de candidature'};
+apply_url:'Lien de candidature',section_key:'Identifiant du bloc',eyebrow:'Sur-titre',body:'Texte',image_alt:'Description de la photo',layout:'Mise en page'};
 const booleans=new Set(['active','published','featured','highlighted']);
 const numbers=new Set(['team_id','competition_team_id','tournament_id','season_id','member_id','venue_id','level_id','shop_category_id','latitude','longitude','weekday','player_count','display_order','home_score','away_score','position','played','won','drawn','lost','goals_for','goals_against','points']);
 const files=new Set(['photo_key','logo_key','rules_key','object_key','image_key','catalogue_key']);
-const textareas=new Set(['description','short_description','price_details','sizes','options','benefits','summary','notes','responsibilities','profile','commitment']);
+const textareas=new Set(['description','short_description','price_details','sizes','options','benefits','summary','notes','responsibilities','profile','commitment','body']);
 const clubCategories=['Seniors','Formation','Académie','Féminines'];
-const options={group_name:clubCategories.map(value=>[value,value]),gender:[['mixed','Mixte'],['female','Féminin'],['male','Masculin']],weekday:[[1,'Lundi'],[2,'Mardi'],[3,'Mercredi'],[4,'Jeudi'],[5,'Vendredi'],[6,'Samedi'],[7,'Dimanche']],role:[['coach_referent','Coach référent'],['coach','Coach'],['dirigeant','Dirigeant'],['arbitre','Parents aidants']],status:[['scheduled','Programmé'],['finished','Terminé'],['postponed','Reporté'],['cancelled','Annulé'],['draft','Brouillon'],['published','Publié'],['open','Ouvert'],['closed','Fermé']],tier:[['majeur','Partenaire majeur'],['premium','Partenaire premium'],['partenaire','Partenaire'],['soutien','Soutien']],kind:[['photo','Photo'],['pdf','PDF'],['boutique','Boutique']]};
+const options={group_name:clubCategories.map(value=>[value,value]),gender:[['mixed','Mixte'],['female','Féminin'],['male','Masculin']],weekday:[[1,'Lundi'],[2,'Mardi'],[3,'Mercredi'],[4,'Jeudi'],[5,'Vendredi'],[6,'Samedi'],[7,'Dimanche']],role:[['coach_referent','Coach référent'],['coach','Coach'],['dirigeant','Dirigeant'],['arbitre','Parents aidants']],status:[['scheduled','Programmé'],['finished','Terminé'],['postponed','Reporté'],['cancelled','Annulé'],['draft','Brouillon'],['published','Publié'],['open','Ouvert'],['closed','Fermé']],tier:[['majeur','Partenaire majeur'],['premium','Partenaire premium'],['partenaire','Partenaire'],['soutien','Soutien']],kind:[['photo','Photo'],['pdf','PDF'],['boutique','Boutique']],layout:[['hero','Bandeau d’ouverture'],['heading','Introduction de chapitre'],['timeline','Frise historique'],['feature','Bloc éditorial'],['people','Direction technique']]};
 const contactRoles=[['responsable_mecenat','Responsable mécénat'],['presidence','Présidence'],['community_manager','Community Manager'],['secretariat','Secrétariat'],['tresorerie','Trésorerie'],['responsable_technique','Responsable technique'],['communication','Communication'],['responsable_sportif','Responsable sportif'],['responsable_boutique','Responsable boutique'],['referent','Référent'],['autre','Autre']];
 let current='teams',editing=null,editingRow={},token=sessionStorage.getItem('admin-token')||'',references={teams:[],club_members:[],venues:[],competition_levels:[],seasons:[],tournaments:[],team_competitions:[],shop_categories:[]},referencesLoaded=false,loadedRows=[];
 const $=selector=>document.querySelector(selector);
@@ -167,7 +168,8 @@ async function toggleShopVisibility(id,button){
   }
 }
 function field(name,value){
-  const title=`<span>${labels[name]||name}</span><small>${name}</small>`;
+  const fieldLabel=current==='about_sections'&&name==='image_key'?'Photo du bloc':labels[name]||name;
+  const title=`<span>${fieldLabel}</span><small>${name}</small>`;
   if(current==='team_competitions'&&Number(editingRow.discovered_automatically)===1&&['name','team_number','fff_team_id','category_code','competition_name','division','pool'].includes(name))return `<label><span class="field-title">${title}</span><input type="text" name="${name}" value="${esc(value)}" readonly></label>`;
   if(
     current==='shop_products'
@@ -304,7 +306,13 @@ async function open(row={}){
             highlighted:0,
             display_order:0
           }
-        :{};
+        :current==='about_sections'
+          ?{
+              layout:'feature',
+              display_order:0,
+              active:1
+            }
+          :{};
 
   $('#fields').innerHTML=schemas[current]
     .map(name=>
@@ -399,6 +407,16 @@ async function save(event){
     }
   }
   const slugify=value=>String(value||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+  if(current==='about_sections'){
+    values.title=String(values.title||'').trim();
+    values.section_key=String(values.section_key||'').trim()||slugify(values.title);
+    values.eyebrow=String(values.eyebrow||'').trim();
+    values.body=String(values.body||'').trim();
+    values.image_key=String(values.image_key||'').trim();
+    values.image_alt=String(values.image_alt||'').trim();
+    values.layout=String(values.layout||'feature').trim()||'feature';
+    values.display_order=Number.isFinite(Number(values.display_order))?Number(values.display_order):0;
+  }
   if(current==='teams'){const level=references.competition_levels.find(item=>String(item.id)===String(values.level_id));values.slug=editingRow.slug||slugify(values.name);values.category=editingRow.category||values.name;values.level=level?.name||'';values.player_count=values.player_count??0;values.display_order=editingRow.display_order??0;}
   if(current==='training_sessions'){const team=references.teams.find(item=>String(item.id)===String(values.team_id));const venue=references.venues.find(item=>String(item.id)===String(values.venue_id));values.category=team?.category||team?.name||editingRow.category||'';values.venue=venue?.name||'';values.address=venue?.address||'';}
   if(current==='tournaments'){const venue=references.venues.find(item=>String(item.id)===String(values.venue_id));values.slug=editingRow.slug||slugify(values.name);values.venue=venue?.name||editingRow.venue||'';values.categories=JSON.stringify([...form.querySelectorAll('[data-category-choice]:checked')].map(input=>input.value));}

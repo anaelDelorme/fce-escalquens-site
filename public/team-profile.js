@@ -64,14 +64,9 @@ const safeHttpUrl=value=>{
     return '';
   }
 };
-const roleLabels={coach_referent:'Coach référent',coach:'Coach',dirigeant:'Dirigeant',arbitre:'Parents aidants'};
-const staffInitials=value=>String(value||'')
-  .trim()
-  .split(/\s+/)
-  .filter(Boolean)
-  .slice(0,2)
-  .map(part=>part[0]?.toUpperCase()||'')
-  .join('');
+const roleLabels={coach_referent:'Coach référent',coach:'Coach',arbitre:'Parents aidants',dirigeant:'Dirigeant'};
+const staffGroupLabels={coach_referent:'Coach référent',coach:'Coachs',arbitre:'Parents aidants',dirigeant:'Dirigeants'};
+const staffRoleOrder=['coach_referent','coach','arbitre','dirigeant'];
 const staffCollator=new Intl.Collator('fr',{sensitivity:'base'});
 const dateFormat=new Intl.DateTimeFormat('fr-FR',{timeZone:'Europe/Paris',weekday:'long',day:'numeric',month:'long'});
 const timeFormat=new Intl.DateTimeFormat('fr-FR',{timeZone:'Europe/Paris',hour:'2-digit',minute:'2-digit'});
@@ -327,29 +322,66 @@ fetch(`/api/page/team-profile?slug=${encodeURIComponent(slug||'')}&v=28`).then(a
   const photo=document.querySelector('#team-photo'),visual=photo.closest('.team-visual');
   const revealPhoto=(source,fallback)=>{const loader=new Image();loader.onload=()=>{photo.src=source;photo.alt=team.photo_alt||`Photo du groupe ${team.name}`;photo.classList.add('is-ready');visual.setAttribute('aria-busy','false')};loader.onerror=()=>{if(source!==fallback)revealPhoto(fallback,fallback);else visual.setAttribute('aria-busy','false')};loader.src=source};
   revealPhoto(teamPhoto,defaultPhoto);
-  const sortedStaff=[...staff].sort((a,b)=>((a.role==='coach_referent'?0:1)-(b.role==='coach_referent'?0:1))||staffCollator.compare(a.member?.full_name||'',b.member?.full_name||''));
+  const roleRank=role=>{
+    const index=staffRoleOrder.indexOf(role);
+    return index>=0?index:staffRoleOrder.length;
+  };
+  const sortedStaff=[...staff].sort((a,b)=>
+    roleRank(a.role)-roleRank(b.role)
+    ||staffCollator.compare(a.member?.full_name||'',b.member?.full_name||'')
+  );
   const staffNode=document.querySelector('#team-staff');
-  staffNode.innerHTML=sortedStaff.map(item=>{
-    const member=item.member||{};
-    const hasPhoto=Boolean(member.photo_key);
-    const hasContact=Boolean(member.email||member.phone);
-    const compact=!hasPhoto&&!hasContact;
-    const classes=[
-      item.role==='coach_referent'?'is-referent':'',
-      compact?'is-compact':''
-    ].filter(Boolean).join(' ');
-    const avatar=hasPhoto
-      ?`<img src="/media/${esc(member.photo_key)}" alt="">`
-      :`<span class="staff-avatar" aria-hidden="true">${esc(staffInitials(member.full_name)||'FCE')}</span>`;
-    return `<article class="${classes}">
-      ${avatar}
-      <div class="staff-copy">
-        <small>${roleLabels[item.role]||esc(item.role)}</small>
-        <h3>${esc(member.full_name)}</h3>
-        ${member.email?`<a href="mailto:${esc(member.email)}">${esc(member.email)}</a>`:''}
-        ${member.phone?`<a href="tel:${esc(member.phone)}">${esc(member.phone)}</a>`:''}
+  const staffGroups=new Map();
+
+  sortedStaff.forEach(item=>{
+    const role=item.role||'autre';
+    if(!staffGroups.has(role))staffGroups.set(role,[]);
+    staffGroups.get(role).push(item);
+  });
+
+  const orderedRoles=[
+    ...staffRoleOrder.filter(role=>staffGroups.has(role)),
+    ...[...staffGroups.keys()]
+      .filter(role=>!staffRoleOrder.includes(role))
+      .sort(staffCollator.compare)
+  ];
+
+  staffNode.innerHTML=orderedRoles.map(role=>{
+    const items=staffGroups.get(role)||[];
+    const referent=role==='coach_referent';
+    const label=staffGroupLabels[role]||roleLabels[role]||role;
+
+    return `<section class="staff-group ${referent?'is-referent-group':''}">
+      <header class="staff-group-head">
+        <div>
+          <span>${esc(label)}</span>
+          ${referent?'<small>Votre contact principal pour cette équipe</small>':''}
+        </div>
+        <b>${items.length}</b>
+      </header>
+      <div class="staff-group-grid">
+        ${items.map(item=>{
+          const member=item.member||{};
+          const photo=member.photo_key
+            ?`<img class="staff-photo" src="/media/${esc(member.photo_key)}" alt="" loading="lazy">`
+            :'';
+          const contacts=referent
+            ?`<div class="staff-contacts">
+                ${member.email?`<a href="mailto:${esc(member.email)}">${esc(member.email)}</a>`:''}
+                ${member.phone?`<a href="tel:${esc(member.phone)}">${esc(member.phone)}</a>`:''}
+              </div>`
+            :'';
+
+          return `<article class="staff-card ${photo?'has-photo':''}">
+            ${photo}
+            <div class="staff-card-copy">
+              <h3>${esc(member.full_name)}</h3>
+              ${contacts}
+            </div>
+          </article>`;
+        }).join('')}
       </div>
-    </article>`;
+    </section>`;
   }).join('')||'<p>Encadrement à venir.</p>';
   staffNode.setAttribute('aria-busy','false');
   const days=['','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];

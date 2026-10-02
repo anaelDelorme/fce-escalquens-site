@@ -19,7 +19,8 @@ const tables = new Set([
   "tournament_teams", "matches", "match_participants", "standings", "social_posts",
   "documents", "club_members", "team_staff", "admins", "venues",
   "competition_levels", "seasons", "sponsors", "site_media", "home_slides",
-  "shop_categories", "shop_products", "shop_settings", "sponsor_packages", "recruitment_posts"
+  "shop_categories", "shop_products", "shop_settings", "sponsor_packages", "recruitment_posts",
+  "about_sections"
 ]);
 
 const editable: Record<string, string[]> = {
@@ -63,6 +64,17 @@ const editable: Record<string, string[]> = {
     "image_key",
     "display_order",
     "active"
+  ],
+  about_sections: [
+    "section_key",
+    "eyebrow",
+    "title",
+    "body",
+    "image_key",
+    "image_alt",
+    "layout",
+    "display_order",
+    "active"
   ]
 };
 
@@ -82,7 +94,8 @@ const defaultOrder: Record<string, string> = {
   shop_categories: "display_order ASC, name COLLATE NOCASE ASC",
   shop_products: "display_order ASC, name COLLATE NOCASE ASC",
   shop_settings: "id ASC",
-  recruitment_posts: "display_order ASC, id DESC"
+  recruitment_posts: "display_order ASC, id DESC",
+  about_sections: "display_order ASC, id ASC"
 };
 
 function json(data: unknown, status = 200) {
@@ -184,6 +197,12 @@ async function api(request: Request, env: Env, url: URL) {
     if (table === "home_slides") {
       await caches.default.delete(new Request(`${url.origin}/api/page/home`));
     }
+    if (table === "about_sections") {
+      await Promise.allSettled([
+        caches.default.delete(new Request(`${url.origin}/api/page/about`)),
+        caches.default.delete(new Request(`${url.origin}/api/page/about?v=1`))
+      ]);
+    }
     return json({ ok: true });
   }
   const body = await request.json<Record<string, unknown>>().catch(() => ({}));
@@ -275,6 +294,12 @@ async function api(request: Request, env: Env, url: URL) {
           new Request(`${url.origin}/api/page/recruitment`)
         );
       }
+      if (table === "about_sections") {
+        await Promise.allSettled([
+          caches.default.delete(new Request(`${url.origin}/api/page/about`)),
+          caches.default.delete(new Request(`${url.origin}/api/page/about?v=1`))
+        ]);
+      }
       return json({ id: result.meta.last_row_id }, 201);
     } catch (error) { return json({ error: databaseError(error) }, 409); }
   }
@@ -303,6 +328,12 @@ async function api(request: Request, env: Env, url: URL) {
           new Request(`${url.origin}/api/page/recruitment`)
         );
       }
+      if (table === "about_sections") {
+        await Promise.allSettled([
+          caches.default.delete(new Request(`${url.origin}/api/page/about`)),
+          caches.default.delete(new Request(`${url.origin}/api/page/about?v=1`))
+        ]);
+      }
       return json({ ok: true });
     } catch (error) { return json({ error: databaseError(error) }, 409); }
   }
@@ -315,6 +346,27 @@ async function pageData(env: Env, url: URL) {
   const page = url.pathname.slice("/api/page/".length);
   const activeSeason = "(SELECT id FROM seasons WHERE active=1 LIMIT 1)";
   const now = new Date().toISOString();
+
+  if (page === "about") {
+    const rows = await env.DB.prepare(`
+      SELECT
+        section_key,
+        eyebrow,
+        title,
+        body,
+        image_key,
+        image_alt,
+        layout,
+        display_order
+      FROM about_sections
+      WHERE active=1
+      ORDER BY display_order,id
+    `).all<AnyRow>();
+
+    return publicJson({
+      sections: resultRows(rows)
+    });
+  }
 
   if (page === "teams") {
     const rows = await env.DB.prepare(`SELECT
@@ -474,7 +526,13 @@ async function pageData(env: Env, url: URL) {
       staff: resultRows(staff).map(row => ({
         role: row.role,
         display_order: row.display_order,
-        member: { id: row.member_id, full_name: row.full_name, email: row.email, phone: row.phone, photo_key: row.photo_key }
+        member: {
+          id: row.member_id,
+          full_name: row.full_name,
+          email: row.role === "coach_referent" ? row.email : "",
+          phone: row.role === "coach_referent" ? row.phone : "",
+          photo_key: row.photo_key
+        }
       })),
       sessions: resultRows(sessions),
       upcoming: resultRows(upcoming),

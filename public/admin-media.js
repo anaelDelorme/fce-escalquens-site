@@ -42,6 +42,13 @@
     if(current==='shop_products'&&field==='image_key')return {width:1200,height:900,label:'Article boutique · 1200 × 900 · 4:3',mode:'cover'};
     if(current==='recruitment_posts'&&field==='image_key')return {width:1600,height:900,label:'Annonce recrutement · 1600 × 900 · 16:9',mode:'cover'};
 
+    if(current==='about_sections'&&field==='image_key'){
+      const layout=form?.querySelector('[name="layout"]')?.value||editingRow.layout||'feature';
+      if(layout==='people')return {width:1200,height:1500,label:'Qui nous sommes · portrait · 1200 × 1500 · 4:5',mode:'cover'};
+      if(layout==='hero')return {width:1600,height:1200,label:'Qui nous sommes · couverture · 1600 × 1200 · 4:3',mode:'cover'};
+      return {width:1600,height:1000,label:'Qui nous sommes · 1600 × 1000 · 8:5',mode:'cover'};
+    }
+
     if(current==='sponsors'&&field==='logo_key'){
       const tier=form?.querySelector('[name="tier"]')?.value||editingRow.tier||'partenaire';
       if(tier==='majeur')return {width:1200,height:600,label:'Partenaire majeur · 1200 × 600 · 2:1',mode:'contain'};
