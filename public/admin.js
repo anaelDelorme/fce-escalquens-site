@@ -16,7 +16,7 @@ const schemas={
   home_slides:['object_key','alt_text','display_order','active'],
   shop_categories:['name','description','display_order','active'],
   shop_products:['shop_category_id','name','short_description','description','price_label','price_details','sizes','options','delivery_delay','image_key','featured','highlighted','display_order','active'],
-  shop_settings:['contact_email','catalogue_title','catalogue_key','order_subject'],
+  shop_settings:['shop_enabled','maintenance_image_key','contact_email','catalogue_title','catalogue_key','order_subject'],
   recruitment_posts:[
     'title',
     'audience',
@@ -51,10 +51,10 @@ commitment:'Disponibilités / engagement',
 location:'Lieu',
 contact_name:'Personne à contacter',
 contact_phone:'Téléphone de contact',
-apply_url:'Lien de candidature',section_key:'Identifiant du bloc',eyebrow:'Sur-titre',body:'Texte',image_alt:'Description de la photo',layout:'Mise en page'};
-const booleans=new Set(['active','published','featured','highlighted']);
+apply_url:'Lien de candidature',section_key:'Identifiant du bloc',eyebrow:'Sur-titre',body:'Texte',image_alt:'Description de la photo',layout:'Mise en page',shop_enabled:'Boutique ouverte',maintenance_image_key:'Image quand la boutique est fermée'};
+const booleans=new Set(['active','published','featured','highlighted','shop_enabled']);
 const numbers=new Set(['team_id','competition_team_id','tournament_id','season_id','member_id','venue_id','level_id','shop_category_id','latitude','longitude','weekday','player_count','display_order','home_score','away_score','position','played','won','drawn','lost','goals_for','goals_against','points']);
-const files=new Set(['photo_key','logo_key','rules_key','object_key','image_key','catalogue_key']);
+const files=new Set(['photo_key','logo_key','rules_key','object_key','image_key','catalogue_key','maintenance_image_key']);
 const textareas=new Set(['description','short_description','price_details','sizes','options','benefits','summary','notes','responsibilities','profile','commitment','body']);
 const clubCategories=['Seniors','Formation','Académie','Féminines'];
 const options={group_name:clubCategories.map(value=>[value,value]),gender:[['mixed','Mixte'],['female','Féminin'],['male','Masculin']],weekday:[[1,'Lundi'],[2,'Mardi'],[3,'Mercredi'],[4,'Jeudi'],[5,'Vendredi'],[6,'Samedi'],[7,'Dimanche']],role:[['coach_referent','Coach référent'],['coach','Coach'],['dirigeant','Dirigeant'],['arbitre','Parents aidants']],status:[['scheduled','Programmé'],['finished','Terminé'],['postponed','Reporté'],['cancelled','Annulé'],['draft','Brouillon'],['published','Publié'],['open','Ouvert'],['closed','Fermé']],tier:[['majeur','Partenaire majeur'],['premium','Partenaire premium'],['partenaire','Partenaire'],['soutien','Soutien']],kind:[['photo','Photo'],['pdf','PDF'],['boutique','Boutique']],layout:[['hero','Bandeau d’ouverture'],['heading','Introduction de chapitre'],['timeline','Frise historique'],['feature','Bloc éditorial'],['people','Direction technique']]};
@@ -209,7 +209,7 @@ function field(name,value){
   }
 
   if(booleans.has(name))return `<label class="toggle-field"><span class="field-title">${title}</span><input type="hidden" name="${name}" value="0"><input type="checkbox" name="${name}" value="1" ${Number(value)!==0?'checked':''}><i></i><b>${Number(value)!==0?'Oui':'Non'}</b></label>`;
-  if(files.has(name)){const imageField=['photo_key','logo_key','image_key'].includes(name)||(['site_media','home_slides'].includes(current)&&name==='object_key');return `<label class="file-field"><span class="field-title">${title}</span><input type="hidden" name="${name}" value="${esc(value)}"><input type="file" data-upload="${name}" data-image="${imageField?'1':'0'}" accept="${imageField?'image/*':'.pdf'}"><span class="file-state">${value?`Fichier actuel : ${esc(value)}`:'Choisir un fichier'}</span>${value&&imageField?`<img src="/media/${esc(value)}" alt="Aperçu">`:value?`<a href="/media/${esc(value)}" target="_blank" rel="noopener">Ouvrir le fichier actuel</a>`:''}</label>`}
+  if(files.has(name)){const imageField=['photo_key','logo_key','image_key','maintenance_image_key'].includes(name)||(['site_media','home_slides'].includes(current)&&name==='object_key');return `<label class="file-field"><span class="field-title">${title}</span><input type="hidden" name="${name}" value="${esc(value)}"><input type="file" data-upload="${name}" data-image="${imageField?'1':'0'}" accept="${imageField?'image/*':'.pdf'}"><span class="file-state">${value?`Fichier actuel : ${esc(value)}`:'Choisir un fichier'}</span>${value&&imageField?`<img src="/media/${esc(value)}" alt="Aperçu">`:value?`<a href="/media/${esc(value)}" target="_blank" rel="noopener">Ouvrir le fichier actuel</a>`:''}</label>`}
   if(['team_id','competition_team_id','tournament_id','member_id','venue_id','level_id','season_id','shop_category_id'].includes(name)){const rows=name==='team_id'?references.teams:name==='competition_team_id'?references.team_competitions:name==='tournament_id'?references.tournaments:name==='member_id'?references.club_members:name==='venue_id'?references.venues:name==='season_id'?references.seasons:name==='shop_category_id'?references.shop_categories:references.competition_levels;const required=current==='team_competitions'&&name==='team_id'?'required':'';return `<label><span class="field-title">${title}</span><select name="${name}" ${required}><option value="">Sélectionner…</option>${rows.filter(row=>row.active!==0).map(row=>`<option value="${row.id}" ${String(row.id)===String(value)?'selected':''}>${esc(row.name||row.full_name||row.label)}</option>`).join('')}</select></label>`}
   if(name==='category'&&current==='contacts'){const choices=['Club',...clubCategories,'Mécénat','Bureau','Technique'];return `<label><span class="field-title">${title}</span><select name="${name}">${choices.map(choice=>`<option value="${choice}" ${choice===value?'selected':''}>${choice}</option>`).join('')}</select></label>`}
   if(name==='role'&&current==='contacts')return `<label><span class="field-title">${title}</span><select name="${name}">${contactRoles.map(([key,text])=>`<option value="${key}" ${key===value?'selected':''}>${text}</option>`).join('')}</select></label>`;

@@ -40,6 +40,7 @@
     if(current==='club_members'&&field==='photo_key')return {width:900,height:900,label:'Portrait · 900 × 900 · 1:1',mode:'cover'};
     if(current==='home_slides'&&field==='object_key')return {width:1600,height:900,label:'Diaporama accueil · 1600 × 900 · 16:9',mode:'cover'};
     if(current==='shop_products'&&field==='image_key')return {width:1200,height:900,label:'Article boutique · 1200 × 900 · 4:3',mode:'cover'};
+    if(current==='shop_settings'&&field==='maintenance_image_key')return {width:1500,height:1000,label:'Boutique fermée · 1500 × 1000 · 3:2',mode:'contain'};
     if(current==='recruitment_posts'&&field==='image_key')return {width:1600,height:900,label:'Annonce recrutement · 1600 × 900 · 16:9',mode:'cover'};
 
     if(current==='about_sections'&&field==='image_key'){

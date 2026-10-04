@@ -46,7 +46,7 @@ const editable: Record<string, string[]> = {
   home_slides: ["object_key", "alt_text", "display_order", "active"],
   shop_categories: ["slug", "name", "description", "display_order", "active"],
   shop_products: ["shop_category_id", "slug", "name", "short_description", "description", "price_label", "price_details", "sizes", "options", "delivery_delay", "image_key", "featured", "highlighted", "active", "display_order"],
-  shop_settings: ["contact_email", "catalogue_title", "catalogue_key", "order_subject"],
+  shop_settings: ["shop_enabled", "maintenance_image_key", "contact_email", "catalogue_title", "catalogue_key", "order_subject"],
   recruitment_posts: [
     "title",
     "audience",
@@ -673,7 +673,7 @@ async function pageData(env: Env, url: URL) {
           active=1
           AND TRIM(COALESCE(image_key,''))<>''
         ORDER BY featured DESC,display_order,name COLLATE NOCASE`),
-      env.DB.prepare(`SELECT contact_email,catalogue_title,catalogue_key,order_subject,updated_at
+      env.DB.prepare(`SELECT shop_enabled,maintenance_image_key,contact_email,catalogue_title,catalogue_key,order_subject,updated_at
         FROM shop_settings WHERE id=1 LIMIT 1`),
       env.DB.prepare("SELECT slot,object_key,fallback_path,alt_text FROM site_media WHERE slot='shop_hero' LIMIT 1")
     ]);
@@ -681,6 +681,8 @@ async function pageData(env: Env, url: URL) {
       categories: resultRows(categories),
       products: resultRows(products),
       settings: resultRows(settings)[0] || {
+        shop_enabled: 1,
+        maintenance_image_key: "",
         contact_email: "fcescalquens@gmail.com",
         catalogue_title: "Catalogue complet",
         catalogue_key: "",
@@ -741,7 +743,10 @@ async function pageData(env: Env, url: URL) {
 }
 
 async function cachedPageData(request: Request, env: Env, url: URL, ctx: ExecutionContext) {
-  if (url.pathname === "/api/page/team-profile") {
+  if (
+    url.pathname === "/api/page/team-profile"
+    || url.pathname === "/api/page/shop"
+  ) {
     const response = await pageData(env, url);
     const headers = new Headers(response.headers);
     headers.set("cache-control", "no-store");

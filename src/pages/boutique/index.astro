@@ -11,11 +11,22 @@ import Footer from '../../components/Footer.astro';
     <link rel="stylesheet" href="/styles.css">
     <link rel="stylesheet" href="/enhancements.css?v=6">
     <link rel="stylesheet" href="/brand-charter.css">
-    <link rel="stylesheet" href="/shop.css?v=2">
+    <link rel="stylesheet" href="/shop.css?v=3">
   </head>
   <body>
     <Header/>
-    <main class="shop-page">
+    <main class="shop-page is-loading" id="shop-page">
+      <section id="shop-maintenance" class="shop-maintenance" hidden aria-label="Boutique temporairement fermée">
+        <div class="shop-maintenance-inner">
+          <img id="shop-maintenance-image" alt="La boutique du FC Escalquens ouvre bientôt" hidden>
+          <div id="shop-maintenance-fallback" class="shop-maintenance-fallback">
+            <img src="/logo-fce.webp" alt="">
+            <p class="eyebrow">Boutique du club</p>
+            <h1>La boutique ouvre bientôt.</h1>
+            <p>Nous préparons les derniers détails. Revenez très vite !</p>
+          </div>
+        </div>
+      </section>
       <section class="shop-hero">
         <div class="shop-hero-copy">
           <p class="eyebrow">Boutique du club</p>
@@ -80,6 +91,6 @@ import Footer from '../../components/Footer.astro';
       </section>
     </main>
     <Footer/>
-    <script is:inline src="/shop.js?v=2"></script>
+    <script is:inline src="/shop.js?v=3"></script>
   </body>
 </html>
