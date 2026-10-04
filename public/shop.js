@@ -45,13 +45,33 @@ const revealShopHero=media=>{
   const load=(candidate,allowFallback)=>{const loader=new Image();loader.onload=()=>{hero.src=candidate;hero.classList.add('is-ready')};loader.onerror=()=>{if(allowFallback&&candidate!==fallback)load(fallback,false)};loader.src=candidate};
   load(source,true);
 };
+const showShopMaintenance=settings=>{
+  const page=document.querySelector('#shop-page');
+  const section=document.querySelector('#shop-maintenance');
+  const image=document.querySelector('#shop-maintenance-image');
+  const fallback=document.querySelector('#shop-maintenance-fallback');
+  if(!page||!section)return;
+  const enabled=Number(settings?.shop_enabled??1)!==0;
+  page.classList.remove('is-loading');
+  if(enabled){page.classList.remove('is-closed');section.hidden=true;return;}
+  page.classList.add('is-closed');section.hidden=false;
+  const key=String(settings?.maintenance_image_key||'').trim();
+  if(key&&image){
+    image.src=`/media/${encodeURIComponent(key).replace(/%2F/g,'/')}`;
+    image.hidden=false;if(fallback)fallback.hidden=true;
+    image.onerror=()=>{image.hidden=true;if(fallback)fallback.hidden=false;};
+  }else{if(image)image.hidden=true;if(fallback)fallback.hidden=false;}
+};
+
 async function loadShop(){
   const featuredNode=document.querySelector('#shop-featured'),categoriesNode=document.querySelector('#shop-categories');
   try{
-    const response=await fetch('/api/page/shop?v=2'),data=await response.json();
+    const response=await fetch('/api/page/shop?v=3'),data=await response.json();
     if(!response.ok)throw new Error(data.error||'Boutique indisponible');
     const products=data.products||[],categories=data.categories||[],featured=products.find(product=>Number(product.featured)===1)||products[0];
     window.shopSettings=data.settings||{};
+    showShopMaintenance(window.shopSettings);
+    if(Number(window.shopSettings.shop_enabled??1)===0)return;
     revealShopHero((data.site_media||[]).find(item=>item.slot==='shop_hero'));
     if(featured){
       featuredNode.innerHTML=`<div class="featured-visual">${productVisual(featured,true)}<span>À la une</span></div><div class="featured-copy"><small>${shopEsc(featured.price_label||'Prix à confirmer')}</small><h3>${shopEsc(featured.name)}</h3>${productDescriptions(featured)}${productMeta(featured)}${orderButton(featured)}</div>`;
@@ -64,7 +84,7 @@ async function loadShop(){
     const catalogue=document.querySelector('#shop-catalogue');
     if(data.settings?.catalogue_key){catalogue.href=`/media/${encodeURIComponent(data.settings.catalogue_key).replace(/%2F/g,'/')}`;catalogue.textContent=`${data.settings.catalogue_title||'Catalogue complet'} →`;catalogue.target='_blank';catalogue.rel='noopener';catalogue.removeAttribute('aria-disabled')}
     bindProductButtons();
-  }catch(error){revealShopHero(null);featuredNode.innerHTML='<p class="shop-empty">L’article à la une est momentanément indisponible.</p>';categoriesNode.innerHTML='<p class="shop-empty">La boutique ne peut pas être chargée pour le moment.</p>'}
+  }catch(error){document.querySelector('#shop-page')?.classList.remove('is-loading');revealShopHero(null);featuredNode.innerHTML='<p class="shop-empty">L’article à la une est momentanément indisponible.</p>';categoriesNode.innerHTML='<p class="shop-empty">La boutique ne peut pas être chargée pour le moment.</p>'}
 }
 function bindProductButtons(){document.querySelectorAll('[data-order-product]').forEach(button=>button.addEventListener('click',()=>{
   const textarea=document.querySelector('#shop-order-form textarea[name="request"]'),line=`- ${button.dataset.orderProduct}\n  Quantité : 1\n  Taille : \n  Option(s) : `;

@@ -245,3 +245,19 @@
 .shop-text-gold{color:#9a7000;font-weight:800}
 .product-delay span{color:var(--wine);font-weight:800}
 .order-status{grid-column:1/-1;min-height:18px;margin:0;color:var(--wine);font-size:12px;font-weight:800;line-height:1.45}
+
+
+/* Boutique temporairement fermée */
+.shop-page.is-loading>section:not(.shop-maintenance){visibility:hidden}
+.shop-page.is-closed>section:not(.shop-maintenance){display:none}
+.shop-maintenance[hidden]{display:none!important}
+.shop-maintenance{min-height:calc(100svh - 88px);padding:46px 24px 64px;display:grid;place-items:center;background:radial-gradient(circle at 15% 10%,#b2132a55,transparent 32%),linear-gradient(135deg,var(--wine2),#5e0c1b)}
+.shop-maintenance-inner{width:min(1180px,100%);display:grid;place-items:center}
+#shop-maintenance-image{display:block;width:min(1100px,100%);height:auto;max-height:calc(100svh - 150px);object-fit:contain;background:#fff;border-radius:24px;box-shadow:0 30px 80px #24030d66}
+.shop-maintenance-fallback{width:min(900px,100%);padding:70px 30px;text-align:center;color:#fff}
+.shop-maintenance-fallback[hidden]{display:none}
+.shop-maintenance-fallback>img{width:120px;height:120px;object-fit:contain;margin-bottom:26px}
+.shop-maintenance-fallback .eyebrow{color:var(--gold)}
+.shop-maintenance-fallback h1{margin:14px 0 20px;font:clamp(54px,7vw,100px)/.9 Impact,'Arial Narrow',sans-serif;text-transform:uppercase}
+.shop-maintenance-fallback>p:last-child{margin:0 auto;max-width:600px;color:#eadde1;font-size:18px;line-height:1.6}
+@media(max-width:650px){.shop-maintenance{min-height:calc(100svh - 72px);padding:24px 14px 38px}#shop-maintenance-image{border-radius:15px;max-height:none}}
