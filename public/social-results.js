@@ -234,121 +234,172 @@
   async function paintBackground(ctx,item){
     const image=await loadImage(assetUrl(chosenBackground(item)));
 
-    // Base très sombre, comme le visuel de référence.
-    ctx.fillStyle='#09090a';
+    // Fond noir légèrement chaud.
+    const base=ctx.createLinearGradient(0,0,1080,1350);
+    base.addColorStop(0,'#0b090a');
+    base.addColorStop(.5,'#080809');
+    base.addColorStop(1,'#100809');
+    ctx.fillStyle=base;
     ctx.fillRect(0,0,1080,1350);
 
-    // Fond personnalisé éventuel : texture discrète uniquement.
+    // Un fond custom reste une texture discrète, jamais la composition principale.
     if(image){
       ctx.save();
-      ctx.globalAlpha=.15;
+      ctx.globalAlpha=.13;
       drawCover(ctx,image,0,0,1080,1350);
       ctx.restore();
 
-      const veil=ctx.createLinearGradient(0,0,0,1350);
-      veil.addColorStop(0,'rgba(4,4,5,.52)');
-      veil.addColorStop(.52,'rgba(4,4,5,.72)');
-      veil.addColorStop(1,'rgba(4,4,5,.50)');
-      ctx.fillStyle=veil;
+      ctx.fillStyle='rgba(3,3,4,.42)';
       ctx.fillRect(0,0,1080,1350);
     }
 
-    // Rouge lumineux en haut-gauche.
-    const topGlow=ctx.createRadialGradient(35,20,10,35,20,470);
-    topGlow.addColorStop(0,'rgba(255,40,18,.95)');
-    topGlow.addColorStop(.32,'rgba(195,12,18,.60)');
-    topGlow.addColorStop(1,'rgba(120,0,8,0)');
+    // Lueur rouge haut gauche.
+    const topGlow=ctx.createRadialGradient(10,5,15,10,5,480);
+    topGlow.addColorStop(0,'rgba(255,42,18,.92)');
+    topGlow.addColorStop(.25,'rgba(202,13,20,.60)');
+    topGlow.addColorStop(1,'rgba(100,0,8,0)');
     ctx.fillStyle=topGlow;
-    ctx.fillRect(0,0,540,430);
+    ctx.fillRect(0,0,520,420);
 
-    // Rouge lumineux en bas-droite.
-    const bottomGlow=ctx.createRadialGradient(1060,1330,20,1060,1330,540);
-    bottomGlow.addColorStop(0,'rgba(255,44,18,.94)');
-    bottomGlow.addColorStop(.34,'rgba(190,8,18,.62)');
-    bottomGlow.addColorStop(1,'rgba(120,0,8,0)');
+    // Lueur rouge bas droit.
+    const bottomGlow=ctx.createRadialGradient(1070,1345,30,1070,1345,560);
+    bottomGlow.addColorStop(0,'rgba(255,40,15,.94)');
+    bottomGlow.addColorStop(.34,'rgba(196,8,17,.62)');
+    bottomGlow.addColorStop(1,'rgba(110,0,8,0)');
     ctx.fillStyle=bottomGlow;
-    ctx.fillRect(500,820,580,530);
+    ctx.fillRect(480,805,600,545);
 
-    // Grandes griffures / bandes rouges.
+    // Brush rouge irrégulier en haut gauche.
     ctx.save();
-
-    ctx.fillStyle='rgba(174,13,21,.96)';
+    ctx.fillStyle='rgba(179,11,20,.96)';
     ctx.beginPath();
     ctx.moveTo(0,0);
-    ctx.lineTo(300,0);
-    ctx.lineTo(160,110);
-    ctx.lineTo(20,165);
+    ctx.lineTo(322,0);
+    ctx.lineTo(290,22);
+    ctx.lineTo(250,29);
+    ctx.lineTo(276,45);
+    ctx.lineTo(222,58);
+    ctx.lineTo(245,75);
+    ctx.lineTo(176,92);
+    ctx.lineTo(198,110);
+    ctx.lineTo(117,134);
+    ctx.lineTo(135,150);
+    ctx.lineTo(55,174);
+    ctx.lineTo(0,196);
     ctx.closePath();
     ctx.fill();
 
-    ctx.fillStyle='rgba(215,18,24,.86)';
+    // Petit brush rouge côté droit.
+    ctx.fillStyle='rgba(204,16,24,.90)';
     ctx.beginPath();
-    ctx.moveTo(905,252);
-    ctx.lineTo(1080,215);
-    ctx.lineTo(1080,520);
-    ctx.lineTo(965,480);
+    ctx.moveTo(1012,240);
+    ctx.lineTo(1080,214);
+    ctx.lineTo(1080,540);
+    ctx.lineTo(1047,521);
+    ctx.lineTo(1056,488);
+    ctx.lineTo(1029,498);
+    ctx.lineTo(1039,452);
+    ctx.lineTo(1007,468);
+    ctx.lineTo(1021,416);
+    ctx.lineTo(990,431);
     ctx.closePath();
     ctx.fill();
 
-    ctx.fillStyle='rgba(206,14,24,.94)';
+    // Gros brush bas droit, irrégulier.
+    ctx.fillStyle='rgba(196,12,21,.94)';
     ctx.beginPath();
-    ctx.moveTo(775,1110);
-    ctx.lineTo(1080,970);
+    ctx.moveTo(648,1350);
+    ctx.lineTo(705,1310);
+    ctx.lineTo(743,1298);
+    ctx.lineTo(730,1278);
+    ctx.lineTo(796,1255);
+    ctx.lineTo(783,1234);
+    ctx.lineTo(850,1211);
+    ctx.lineTo(839,1188);
+    ctx.lineTo(907,1164);
+    ctx.lineTo(896,1144);
+    ctx.lineTo(970,1112);
+    ctx.lineTo(957,1095);
+    ctx.lineTo(1080,1038);
     ctx.lineTo(1080,1350);
-    ctx.lineTo(620,1350);
     ctx.closePath();
     ctx.fill();
 
+    // Stries rouge vif par-dessus le brush.
+    ctx.strokeStyle='rgba(247,32,23,.54)';
+    ctx.lineWidth=9;
+    ctx.beginPath();
+    ctx.moveTo(726,1325);
+    ctx.lineTo(1080,1124);
+    ctx.stroke();
+    ctx.lineWidth=5;
+    ctx.beginPath();
+    ctx.moveTo(770,1350);
+    ctx.lineTo(1080,1184);
+    ctx.stroke();
     ctx.restore();
 
-    // Lignes fines diagonales en haut.
+    // Traits fins diagonaux haut gauche.
     ctx.save();
-    ctx.strokeStyle='rgba(255,255,255,.12)';
+    ctx.strokeStyle='rgba(255,255,255,.13)';
     ctx.lineWidth=2;
-    for(const offset of [-210,-120,-30,60,150,240,330]){
+    for(const offset of [-220,-150,-80,-10,60,130,200,270,340]){
       ctx.beginPath();
-      ctx.moveTo(offset,210);
-      ctx.lineTo(offset+660,-10);
+      ctx.moveTo(offset,215);
+      ctx.lineTo(offset+690,-15);
       ctx.stroke();
     }
     ctx.restore();
 
-    // Halftone rouge haut-gauche.
+    // Halftone rouge haut gauche.
+    ctx.save();
+    for(let row=0;row<10;row++){
+      for(let col=0;col<11-row;col++){
+        const alpha=Math.max(.04,.34-row*.023);
+        const radius=Math.max(2.2,8.2-row*.58);
+        ctx.beginPath();
+        ctx.fillStyle=`rgba(222,26,30,${alpha})`;
+        ctx.arc(20+col*20,142+row*20,radius,0,Math.PI*2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+
+    // Halftone rouge bas droit.
     ctx.save();
     for(let row=0;row<9;row++){
-      for(let col=0;col<10-row;col++){
-        const alpha=Math.max(.05,.34-row*.025);
-        const radius=Math.max(2,8-row*.62);
+      for(let col=0;col<11-row;col++){
+        const alpha=Math.max(.04,.30-row*.022);
+        const radius=Math.max(2,7.2-row*.52);
         ctx.beginPath();
-        ctx.fillStyle=`rgba(224,26,30,${alpha})`;
-        ctx.arc(24+col*21,160+row*21,radius,0,Math.PI*2);
+        ctx.fillStyle=`rgba(222,26,30,${alpha})`;
+        ctx.arc(1072-col*18,1285-row*18,radius,0,Math.PI*2);
         ctx.fill();
       }
     }
     ctx.restore();
 
-    // Halftone bas-droit.
+    // Petites projections orangées comme sur la référence.
     ctx.save();
-    for(let row=0;row<8;row++){
-      for(let col=0;col<10-row;col++){
-        const alpha=Math.max(.05,.30-row*.024);
-        const radius=Math.max(2,7-row*.58);
-        ctx.beginPath();
-        ctx.fillStyle=`rgba(224,26,30,${alpha})`;
-        ctx.arc(1064-col*19,1275-row*19,radius,0,Math.PI*2);
-        ctx.fill();
-      }
-    }
+    ctx.fillStyle='rgba(255,87,23,.72)';
+    [
+      [902,36,4],[962,91,3],[58,323,3],[913,362,4],
+      [145,748,2.5],[874,732,3],[64,905,2.5],[1018,887,3]
+    ].forEach(([x,y,r])=>{
+      ctx.beginPath();
+      ctx.arc(x,y,r,0,Math.PI*2);
+      ctx.fill();
+    });
     ctx.restore();
 
-    // Grain très léger pour casser l'aspect trop "propre".
+    // Grain très léger.
     ctx.save();
-    ctx.globalAlpha=.08;
-    for(let i=0;i<120;i++){
-      const x=(i*83)%1080;
-      const y=(i*137)%1350;
-      ctx.fillStyle=i%3===0?'#ff3a22':'#ffffff';
-      ctx.fillRect(x,y,1+(i%2),1+(i%2));
+    ctx.globalAlpha=.055;
+    for(let i=0;i<150;i++){
+      const x=(i*79)%1080;
+      const y=(i*149)%1350;
+      ctx.fillStyle=i%4===0?'#ff3b27':'#fff';
+      ctx.fillRect(x,y,1,1);
     }
     ctx.restore();
   }
@@ -357,92 +408,85 @@
     ctx.save();
     ctx.textAlign='center';
 
-    // Titre brush très grand, proche du visuel de référence.
     ctx.translate(540,0);
-    ctx.rotate(-.025);
+    ctx.rotate(-.018);
+
     ctx.fillStyle='#f5d31b';
-    ctx.shadowColor='rgba(0,0,0,.58)';
+    ctx.shadowColor='rgba(0,0,0,.62)';
     ctx.shadowBlur=8;
-    ctx.font=`400 108px ${EDO}`;
-    ctx.fillText('RÉSULTATS',0,150);
+    ctx.font=`400 142px ${EDO}`;
+    ctx.fillText('RÉSULTATS',0,170);
+
     ctx.restore();
 
-    // Petit trait jaune brossé sous le titre.
     ctx.save();
     ctx.translate(540,0);
-    ctx.rotate(-.045);
+    ctx.rotate(-.035);
     ctx.fillStyle='#f5d31b';
-    roundedRect(ctx,-155,182,310,13,7);
+    roundedRect(ctx,-185,205,370,14,7);
     ctx.fill();
     ctx.restore();
 
-    // Catégorie blanche, très visible.
     ctx.textAlign='center';
     ctx.fillStyle='#ffffff';
-    ctx.shadowColor='rgba(0,0,0,.35)';
-    ctx.shadowBlur=5;
-    ctx.font=`400 72px ${EDO}`;
-    ctx.fillText(item.category||'ÉQUIPE',540,265);
+    ctx.shadowColor='rgba(0,0,0,.50)';
+    ctx.shadowBlur=6;
+    ctx.font=`400 108px ${EDO}`;
+    ctx.fillText(item.category||'ÉQUIPE',540,365);
 
-    // Date volontairement très discrète.
     ctx.shadowBlur=0;
-    ctx.fillStyle='rgba(255,255,255,.78)';
-    ctx.font=`900 15px ${TEXT}`;
-    ctx.fillText(displayDate(item.starts_at),540,302);
   }
 
   async function drawFooter(ctx){
     const crest=await loadImage('/logo-fce.png',2500);
 
-    // Pas de barre sombre : on garde le fond visible comme sur la référence.
     ctx.save();
 
-    // Pseudo en bas à gauche.
     ctx.textAlign='left';
     ctx.fillStyle='#f5d31b';
-    ctx.shadowColor='rgba(0,0,0,.65)';
-    ctx.shadowBlur=4;
-    ctx.font=`900 30px ${TEXT}`;
-    ctx.fillText('@FCEscalquens',62,1296);
+    ctx.shadowColor='rgba(0,0,0,.70)';
+    ctx.shadowBlur=5;
+    ctx.font=`900 34px ${TEXT}`;
+    ctx.fillText('@FCEscalquens',58,1297);
 
-    // Blason au centre bas.
     if(crest){
       ctx.shadowBlur=0;
-      drawContain(ctx,crest,400,1110,280,210);
+      drawContain(ctx,crest,386,1088,310,245);
     }
 
-    // Facebook.
     ctx.shadowBlur=0;
+
     ctx.fillStyle='#3159d5';
-    roundedRect(ctx,805,1213,78,78,16);
+    roundedRect(ctx,790,1205,90,90,18);
     ctx.fill();
+
     ctx.fillStyle='#fff';
     ctx.textAlign='center';
     ctx.textBaseline='middle';
-    ctx.font='900 58px Arial';
-    ctx.fillText('f',844,1253);
+    ctx.font='900 66px Arial';
+    ctx.fillText('f',835,1250);
 
-    // Instagram.
-    const ig=ctx.createLinearGradient(915,1210,997,1295);
+    const ig=ctx.createLinearGradient(906,1204,1004,1302);
     ig.addColorStop(0,'#5b51d8');
     ig.addColorStop(.42,'#c13584');
     ig.addColorStop(.72,'#e1306c');
     ig.addColorStop(1,'#feda75');
+
     ctx.fillStyle=ig;
-    roundedRect(ctx,920,1213,78,78,18);
+    roundedRect(ctx,910,1205,90,90,20);
     ctx.fill();
 
     ctx.strokeStyle='#fff';
-    ctx.lineWidth=5;
-    roundedRect(ctx,938,1231,40,40,10);
+    ctx.lineWidth=6;
+    roundedRect(ctx,931,1226,48,48,12);
     ctx.stroke();
 
     ctx.beginPath();
-    ctx.arc(958,1251,10.5,0,Math.PI*2);
+    ctx.arc(955,1250,12.5,0,Math.PI*2);
     ctx.stroke();
 
     ctx.beginPath();
-    ctx.arc(975,1234,3.6,0,Math.PI*2);
+    ctx.arc(976,1229,4.2,0,Math.PI*2);
     ctx.fillStyle='#fff';
     ctx.fill();
 
@@ -463,32 +507,18 @@
 
     drawHeader(ctx,item);
 
-    // Logos très grands, comme sur la référence.
     await Promise.all([
-      drawTeamLogo(ctx,item.home_team,82,335,330),
-      drawTeamLogo(ctx,item.away_team,668,335,330)
+      drawTeamLogo(ctx,item.home_team,38,420,430),
+      drawTeamLogo(ctx,item.away_team,612,420,430)
     ]);
 
-    // Noms sous les logos, beaucoup plus discrets que le score.
     ctx.textAlign='center';
-    ctx.fillStyle='rgba(255,255,255,.96)';
-    ctx.shadowColor='rgba(0,0,0,.5)';
-    ctx.shadowBlur=4;
-
-    fitText(ctx,String(item.home_team||'').toUpperCase(),390,29,17,EDO,400);
-    ctx.fillText(String(item.home_team||'').toUpperCase(),247,710);
-
-    fitText(ctx,String(item.away_team||'').toUpperCase(),390,29,17,EDO,400);
-    ctx.fillText(String(item.away_team||'').toUpperCase(),833,710);
-
-    // Score : élément principal du bas du visuel.
-    ctx.shadowBlur=7;
     ctx.fillStyle='#f5d31b';
-    ctx.font=`400 154px ${EDO}`;
-    ctx.fillText(`${item.home_score} - ${item.away_score}`,540,940);
+    ctx.shadowColor='rgba(0,0,0,.70)';
+    ctx.shadowBlur=9;
+    ctx.font=`400 198px ${EDO}`;
+    ctx.fillText(`${item.home_score} - ${item.away_score}`,540,1082);
 
-    // Le visuel de référence reste volontairement épuré :
-    // pas de "victoire/défaite" ni de compétition au milieu.
     ctx.shadowBlur=0;
 
     await drawFooter(ctx);
@@ -508,27 +538,27 @@
     drawHeader(ctx,item);
 
     if(pages>1){
-      ctx.fillStyle='rgba(255,255,255,.78)';
-      ctx.font=`900 15px ${TEXT}`;
+      ctx.fillStyle='rgba(255,255,255,.80)';
+      ctx.font=`900 16px ${TEXT}`;
       ctx.textAlign='center';
-      ctx.fillText(`VISUEL ${page+1}/${pages}`,540,332);
+      ctx.fillText(`VISUEL ${page+1}/${pages}`,540,405);
     }
 
-    let y=392;
+    let y=455;
 
     for(const g of games){
       ctx.save();
-      ctx.fillStyle='rgba(5,5,6,.72)';
-      ctx.strokeStyle='rgba(245,211,27,.35)';
+      ctx.fillStyle='rgba(5,5,6,.70)';
+      ctx.strokeStyle='rgba(245,211,27,.28)';
       ctx.lineWidth=2;
-      roundedRect(ctx,48,y-18,984,140,24);
+      roundedRect(ctx,48,y-20,984,138,24);
       ctx.fill();
       ctx.stroke();
       ctx.restore();
 
       await Promise.all([
-        drawTeamLogo(ctx,g.home_team,66,y-6,104),
-        drawTeamLogo(ctx,g.away_team,910,y-6,104)
+        drawTeamLogo(ctx,g.home_team,65,y-4,108),
+        drawTeamLogo(ctx,g.away_team,907,y-4,108)
       ]);
 
       ctx.fillStyle='#ffffff';
@@ -543,10 +573,13 @@
 
       ctx.textAlign='center';
       ctx.fillStyle='#f5d31b';
-      ctx.font=`400 54px ${EDO}`;
+      ctx.shadowColor='rgba(0,0,0,.55)';
+      ctx.shadowBlur=5;
+      ctx.font=`400 57px ${EDO}`;
       ctx.fillText(`${g.home_score} - ${g.away_score}`,540,y+58);
+      ctx.shadowBlur=0;
 
-      y+=151;
+      y+=150;
     }
 
     await drawFooter(ctx);
