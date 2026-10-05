@@ -232,176 +232,18 @@
   }
 
   async function paintBackground(ctx,item){
-    const image=await loadImage(assetUrl(chosenBackground(item)));
+    const asset=chosenBackground(item);
+    const image=await loadImage(assetUrl(asset),4000);
 
-    // Fond noir légèrement chaud.
-    const base=ctx.createLinearGradient(0,0,1080,1350);
-    base.addColorStop(0,'#0b090a');
-    base.addColorStop(.5,'#080809');
-    base.addColorStop(1,'#100809');
-    ctx.fillStyle=base;
+    // Le fond officiel est une vraie image finale : on l'utilise telle quelle.
+    // Aucun brush, aplat rouge, halftone ou forme géométrique n'est redessiné
+    // par Canvas par-dessus.
+    ctx.fillStyle='#080808';
     ctx.fillRect(0,0,1080,1350);
 
-    // Un fond custom reste une texture discrète, jamais la composition principale.
     if(image){
-      ctx.save();
-      ctx.globalAlpha=.13;
       drawCover(ctx,image,0,0,1080,1350);
-      ctx.restore();
-
-      ctx.fillStyle='rgba(3,3,4,.42)';
-      ctx.fillRect(0,0,1080,1350);
     }
-
-    // Lueur rouge haut gauche.
-    const topGlow=ctx.createRadialGradient(10,5,15,10,5,480);
-    topGlow.addColorStop(0,'rgba(255,42,18,.92)');
-    topGlow.addColorStop(.25,'rgba(202,13,20,.60)');
-    topGlow.addColorStop(1,'rgba(100,0,8,0)');
-    ctx.fillStyle=topGlow;
-    ctx.fillRect(0,0,520,420);
-
-    // Lueur rouge bas droit.
-    const bottomGlow=ctx.createRadialGradient(1070,1345,30,1070,1345,560);
-    bottomGlow.addColorStop(0,'rgba(255,40,15,.94)');
-    bottomGlow.addColorStop(.34,'rgba(196,8,17,.62)');
-    bottomGlow.addColorStop(1,'rgba(110,0,8,0)');
-    ctx.fillStyle=bottomGlow;
-    ctx.fillRect(480,805,600,545);
-
-    // Brush rouge irrégulier en haut gauche.
-    ctx.save();
-    ctx.fillStyle='rgba(179,11,20,.96)';
-    ctx.beginPath();
-    ctx.moveTo(0,0);
-    ctx.lineTo(322,0);
-    ctx.lineTo(290,22);
-    ctx.lineTo(250,29);
-    ctx.lineTo(276,45);
-    ctx.lineTo(222,58);
-    ctx.lineTo(245,75);
-    ctx.lineTo(176,92);
-    ctx.lineTo(198,110);
-    ctx.lineTo(117,134);
-    ctx.lineTo(135,150);
-    ctx.lineTo(55,174);
-    ctx.lineTo(0,196);
-    ctx.closePath();
-    ctx.fill();
-
-    // Petit brush rouge côté droit.
-    ctx.fillStyle='rgba(204,16,24,.90)';
-    ctx.beginPath();
-    ctx.moveTo(1012,240);
-    ctx.lineTo(1080,214);
-    ctx.lineTo(1080,540);
-    ctx.lineTo(1047,521);
-    ctx.lineTo(1056,488);
-    ctx.lineTo(1029,498);
-    ctx.lineTo(1039,452);
-    ctx.lineTo(1007,468);
-    ctx.lineTo(1021,416);
-    ctx.lineTo(990,431);
-    ctx.closePath();
-    ctx.fill();
-
-    // Gros brush bas droit, irrégulier.
-    ctx.fillStyle='rgba(196,12,21,.94)';
-    ctx.beginPath();
-    ctx.moveTo(648,1350);
-    ctx.lineTo(705,1310);
-    ctx.lineTo(743,1298);
-    ctx.lineTo(730,1278);
-    ctx.lineTo(796,1255);
-    ctx.lineTo(783,1234);
-    ctx.lineTo(850,1211);
-    ctx.lineTo(839,1188);
-    ctx.lineTo(907,1164);
-    ctx.lineTo(896,1144);
-    ctx.lineTo(970,1112);
-    ctx.lineTo(957,1095);
-    ctx.lineTo(1080,1038);
-    ctx.lineTo(1080,1350);
-    ctx.closePath();
-    ctx.fill();
-
-    // Stries rouge vif par-dessus le brush.
-    ctx.strokeStyle='rgba(247,32,23,.54)';
-    ctx.lineWidth=9;
-    ctx.beginPath();
-    ctx.moveTo(726,1325);
-    ctx.lineTo(1080,1124);
-    ctx.stroke();
-    ctx.lineWidth=5;
-    ctx.beginPath();
-    ctx.moveTo(770,1350);
-    ctx.lineTo(1080,1184);
-    ctx.stroke();
-    ctx.restore();
-
-    // Traits fins diagonaux haut gauche.
-    ctx.save();
-    ctx.strokeStyle='rgba(255,255,255,.13)';
-    ctx.lineWidth=2;
-    for(const offset of [-220,-150,-80,-10,60,130,200,270,340]){
-      ctx.beginPath();
-      ctx.moveTo(offset,215);
-      ctx.lineTo(offset+690,-15);
-      ctx.stroke();
-    }
-    ctx.restore();
-
-    // Halftone rouge haut gauche.
-    ctx.save();
-    for(let row=0;row<10;row++){
-      for(let col=0;col<11-row;col++){
-        const alpha=Math.max(.04,.34-row*.023);
-        const radius=Math.max(2.2,8.2-row*.58);
-        ctx.beginPath();
-        ctx.fillStyle=`rgba(222,26,30,${alpha})`;
-        ctx.arc(20+col*20,142+row*20,radius,0,Math.PI*2);
-        ctx.fill();
-      }
-    }
-    ctx.restore();
-
-    // Halftone rouge bas droit.
-    ctx.save();
-    for(let row=0;row<9;row++){
-      for(let col=0;col<11-row;col++){
-        const alpha=Math.max(.04,.30-row*.022);
-        const radius=Math.max(2,7.2-row*.52);
-        ctx.beginPath();
-        ctx.fillStyle=`rgba(222,26,30,${alpha})`;
-        ctx.arc(1072-col*18,1285-row*18,radius,0,Math.PI*2);
-        ctx.fill();
-      }
-    }
-    ctx.restore();
-
-    // Petites projections orangées comme sur la référence.
-    ctx.save();
-    ctx.fillStyle='rgba(255,87,23,.72)';
-    [
-      [902,36,4],[962,91,3],[58,323,3],[913,362,4],
-      [145,748,2.5],[874,732,3],[64,905,2.5],[1018,887,3]
-    ].forEach(([x,y,r])=>{
-      ctx.beginPath();
-      ctx.arc(x,y,r,0,Math.PI*2);
-      ctx.fill();
-    });
-    ctx.restore();
-
-    // Grain très léger.
-    ctx.save();
-    ctx.globalAlpha=.055;
-    for(let i=0;i<150;i++){
-      const x=(i*79)%1080;
-      const y=(i*149)%1350;
-      ctx.fillStyle=i%4===0?'#ff3b27':'#fff';
-      ctx.fillRect(x,y,1,1);
-    }
-    ctx.restore();
   }
 
   function drawHeader(ctx,item){
@@ -414,8 +256,8 @@
     ctx.fillStyle='#f5d31b';
     ctx.shadowColor='rgba(0,0,0,.62)';
     ctx.shadowBlur=8;
-    ctx.font=`400 118px ${EDO}`;
-    ctx.fillText('RÉSULTATS',0,155);
+    ctx.font=`400 116px ${EDO}`;
+    ctx.fillText('RÉSULTATS',0,152);
 
     ctx.restore();
 
@@ -423,7 +265,7 @@
     ctx.translate(540,0);
     ctx.rotate(-.03);
     ctx.fillStyle='#f5d31b';
-    roundedRect(ctx,-145,185,290,12,6);
+    roundedRect(ctx,-142,182,284,11,6);
     ctx.fill();
     ctx.restore();
 
@@ -431,8 +273,8 @@
     ctx.fillStyle='#ffffff';
     ctx.shadowColor='rgba(0,0,0,.45)';
     ctx.shadowBlur=6;
-    ctx.font=`400 88px ${EDO}`;
-    ctx.fillText(item.category||'ÉQUIPE',540,325);
+    ctx.font=`400 86px ${EDO}`;
+    ctx.fillText(item.category||'ÉQUIPE',540,315);
 
     ctx.shadowBlur=0;
   }
@@ -446,45 +288,48 @@
     ctx.fillStyle='#f5d31b';
     ctx.shadowColor='rgba(0,0,0,.70)';
     ctx.shadowBlur=5;
-    ctx.font=`900 28px ${TEXT}`;
-    ctx.fillText('@FCEscalquens',58,1292);
+    ctx.font=`900 27px ${TEXT}`;
+    ctx.fillText('@FCEscalquens',58,1290);
 
+    // Blason nettement plus petit.
     if(crest){
       ctx.shadowBlur=0;
-      drawContain(ctx,crest,430,1118,220,175);
+      drawContain(ctx,crest,450,1142,180,140);
     }
 
+    // Facebook plus petit.
     ctx.fillStyle='#3159d5';
-    roundedRect(ctx,825,1214,72,72,16);
+    roundedRect(ctx,840,1226,58,58,13);
     ctx.fill();
 
     ctx.fillStyle='#fff';
     ctx.textAlign='center';
     ctx.textBaseline='middle';
-    ctx.font='900 52px Arial';
-    ctx.fillText('f',861,1250);
+    ctx.font='900 42px Arial';
+    ctx.fillText('f',869,1255);
 
-    const ig=ctx.createLinearGradient(915,1212,995,1292);
+    // Instagram plus petit.
+    const ig=ctx.createLinearGradient(920,1224,984,1288);
     ig.addColorStop(0,'#5b51d8');
     ig.addColorStop(.42,'#c13584');
     ig.addColorStop(.72,'#e1306c');
     ig.addColorStop(1,'#feda75');
 
     ctx.fillStyle=ig;
-    roundedRect(ctx,920,1214,72,72,18);
+    roundedRect(ctx,922,1226,58,58,14);
     ctx.fill();
 
     ctx.strokeStyle='#fff';
-    ctx.lineWidth=5;
-    roundedRect(ctx,938,1232,36,36,10);
+    ctx.lineWidth=4;
+    roundedRect(ctx,937,1241,28,28,8);
     ctx.stroke();
 
     ctx.beginPath();
-    ctx.arc(956,1250,9.5,0,Math.PI*2);
+    ctx.arc(951,1255,7.5,0,Math.PI*2);
     ctx.stroke();
 
     ctx.beginPath();
-    ctx.arc(971,1237,3.3,0,Math.PI*2);
+    ctx.arc(963,1243,2.7,0,Math.PI*2);
     ctx.fillStyle='#fff';
     ctx.fill();
 
@@ -506,16 +351,18 @@
     drawHeader(ctx,item);
 
     await Promise.all([
-      drawTeamLogo(ctx,item.home_team,58,395,395),
-      drawTeamLogo(ctx,item.away_team,627,395,395)
+      drawTeamLogo(ctx,item.home_team,58,375,395),
+      drawTeamLogo(ctx,item.away_team,627,375,395)
     ]);
 
     ctx.textAlign='center';
     ctx.fillStyle='#f5d31b';
     ctx.shadowColor='rgba(0,0,0,.70)';
     ctx.shadowBlur=9;
-    ctx.font=`400 214px ${EDO}`;
-    ctx.fillText(`${item.home_score} - ${item.away_score}`,540,1015);
+    ctx.font=`400 224px ${EDO}`;
+
+    // Plus haut que la version précédente.
+    ctx.fillText(`${item.home_score} - ${item.away_score}`,540,970);
 
     ctx.shadowBlur=0;
 
