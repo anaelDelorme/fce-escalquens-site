@@ -21,7 +21,7 @@
   const EDO='"Edo SZ",Impact,"Arial Narrow",Arial,sans-serif';
   const TEXT='Arial,sans-serif';
   const FCE={id:'fce',name:'FC Escalquens',url:'/logo-fce.png',kind:'team_logo'};
-  const BUILTIN_BG={id:'',name:'Style FCE officiel',url:'',kind:'background'};
+  const BUILTIN_BG={id:'',name:'Style FCE officiel',url:'/fond-insta-resultats-fce.png',kind:'background'};
 
   let publicAssets=[];
   let adminAssets=[];
