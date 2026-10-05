@@ -1,5 +1,7 @@
 -- Bibliothèque des logos et fonds du générateur Instagram.
-CREATE TABLE social_visual_assets (
+-- Idempotent car la table peut déjà exister sur staging après un ancien essai.
+
+CREATE TABLE IF NOT EXISTS social_visual_assets (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   kind TEXT NOT NULL CHECK(kind IN ('team_logo','background')),
   name TEXT NOT NULL,
@@ -11,7 +13,7 @@ CREATE TABLE social_visual_assets (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_social_visual_assets_public
+CREATE INDEX IF NOT EXISTS idx_social_visual_assets_public
 ON social_visual_assets(active,kind,display_order,name);
 
 PRAGMA optimize;
