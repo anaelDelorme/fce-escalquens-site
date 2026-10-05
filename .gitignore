@@ -34,6 +34,3 @@ __pycache__/
 test.sql
 backups/prod-20260923-191114.sql
 backups/prod-20260923-191114.sql.sha256
-
-# Diagnostics privés des synchronisations (archivés dans Actions)
-sync-reports/

@@ -2,19 +2,6 @@ name: Synchroniser les matchs — production
 
 on:
   workflow_dispatch:
-    inputs:
-      dry_run:
-        description: "Audit FFF sans écriture Cloudflare"
-        type: boolean
-        default: true
-      verify_date:
-        description: "Date à contrôler (AAAA-MM-JJ, facultatif)"
-        type: string
-        default: ""
-      verify_count:
-        description: "Nombre d'événements attendu ce jour (facultatif)"
-        type: string
-        default: ""
 
   schedule:
     - cron: "7 20 * * 1" # lundi 20h07
@@ -46,7 +33,7 @@ jobs:
       issues: write
 
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v7
@@ -56,18 +43,12 @@ jobs:
           node-version: 24
           package-manager-cache: false
 
-      - name: Vérifier les invariants
-        run: npm run test:sync
-
       - name: Collecter et importer
         run: node scripts/sync-matches.mjs
         env:
           FCE_SITE_URL: ${{ secrets.FCE_SITE_URL }}
           FCE_SYNC_TOKEN: ${{ secrets.FCE_SYNC_TOKEN }}
           ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
-          SYNC_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && '1' || '0' }}
-          SYNC_VERIFY_DATE: ${{ inputs.verify_date }}
-          SYNC_VERIFY_COUNT: ${{ inputs.verify_count }}
 
       - name: Ouvrir l’alerte de synchronisation
         if: failure()
@@ -92,7 +73,7 @@ jobs:
             }
 
       - name: Fermer l’alerte après rétablissement
-        if: success() && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
+        if: success()
         uses: actions/github-script@v8
         with:
           script: |
@@ -119,39 +100,3 @@ jobs:
                 state: 'closed'
               });
             }
-
-      - name: Conserver les diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: fff-sync-${{ github.run_id }}-${{ github.run_attempt }}
-          path: sync-reports/
-          retention-days: 30
-          if-no-files-found: warn
-
-  notify-failure:
-    needs: sync
-    if: always() && needs.sync.result != 'success'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-      actions: read
-    steps:
-      - uses: actions/checkout@v7
-      - name: Récupérer le bilan si disponible
-        continue-on-error: true
-        uses: actions/download-artifact@v4
-        with:
-          name: fff-sync-${{ github.run_id }}-${{ github.run_attempt }}
-          path: sync-reports/
-      - name: Envoyer le mail à chaque échec
-        run: python3 scripts/send-sync-failure.py
-        env:
-          SYNC_ENV: production
-          SYNC_SMTP_HOST: ${{ secrets.SYNC_SMTP_HOST }}
-          SYNC_SMTP_PORT: ${{ secrets.SYNC_SMTP_PORT }}
-          SYNC_SMTP_USER: ${{ secrets.SYNC_SMTP_USER }}
-          SYNC_SMTP_PASSWORD: ${{ secrets.SYNC_SMTP_PASSWORD }}
-          SYNC_MAIL_FROM: ${{ secrets.SYNC_MAIL_FROM }}
-          SYNC_MAIL_TO: ${{ secrets.SYNC_MAIL_TO }}

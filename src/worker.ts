@@ -20,7 +20,7 @@ const tables = new Set([
   "documents", "club_members", "team_staff", "admins", "venues",
   "competition_levels", "seasons", "sponsors", "site_media", "home_slides",
   "shop_categories", "shop_products", "shop_settings", "sponsor_packages", "recruitment_posts",
-  "about_sections", "social_visual_assets"
+  "about_sections"
 ]);
 
 const editable: Record<string, string[]> = {
@@ -75,14 +75,6 @@ const editable: Record<string, string[]> = {
     "layout",
     "display_order",
     "active"
-  ],
-  social_visual_assets: [
-    "kind",
-    "name",
-    "aliases",
-    "object_key",
-    "display_order",
-    "active"
   ]
 };
 
@@ -103,8 +95,7 @@ const defaultOrder: Record<string, string> = {
   shop_products: "display_order ASC, name COLLATE NOCASE ASC",
   shop_settings: "id ASC",
   recruitment_posts: "display_order ASC, id DESC",
-  about_sections: "display_order ASC, id ASC",
-  social_visual_assets: "kind ASC, display_order ASC, name COLLATE NOCASE ASC"
+  about_sections: "display_order ASC, id ASC"
 };
 
 function json(data: unknown, status = 200) {
@@ -355,17 +346,6 @@ async function pageData(env: Env, url: URL) {
   const page = url.pathname.slice("/api/page/".length);
   const activeSeason = "(SELECT id FROM seasons WHERE active=1 LIMIT 1)";
   const now = new Date().toISOString();
-
-  if (page === "social-assets") {
-    const rows = await env.DB.prepare(`
-      SELECT id,kind,name,aliases,object_key,display_order
-      FROM social_visual_assets
-      WHERE active=1
-      ORDER BY kind,display_order,name COLLATE NOCASE
-    `).all<AnyRow>();
-
-    return publicJson({ assets: resultRows(rows) });
-  }
 
   if (page === "about") {
     const rows = await env.DB.prepare(`
@@ -779,9 +759,7 @@ async function cachedPageData(request: Request, env: Env, url: URL, ctx: Executi
   }
 
   const cache = caches.default;
-  const cacheUrl = new URL(url);
-  if (["/api/page/matches","/api/page/home"].includes(url.pathname)) cacheUrl.searchParams.delete("v");
-  const key = new Request(cacheUrl.toString(), { method: "GET" });
+  const key = new Request(url.toString(), { method: "GET" });
   const cached = await cache.match(key);
   if (cached) return cached;
   const response = await pageData(env, url);
@@ -793,9 +771,7 @@ async function cachedPlateauGames(request: Request, env: Env, url: URL, ctx: Exe
   const plateauId = Number(url.searchParams.get("plateau_id"));
   if (!Number.isInteger(plateauId) || plateauId <= 0) return publicJson({ error: "Plateau invalide" }, 400);
   const cache = caches.default;
-  const cacheUrl = new URL(url);
-  if (["/api/page/matches","/api/page/home"].includes(url.pathname)) cacheUrl.searchParams.delete("v");
-  const key = new Request(cacheUrl.toString(), { method: "GET" });
+  const key = new Request(url.toString(), { method: "GET" });
   const cached = await cache.match(key);
   if (cached) return cached;
   const rows = await env.DB.prepare(`SELECT source_game_id,display_order,home_team,away_team,
@@ -924,11 +900,7 @@ async function activeSeasonId(env: Env) {
   return (await env.DB.prepare("SELECT id FROM seasons WHERE active=1 LIMIT 1").first<{ id: number }>())?.id ?? null;
 }
 
-export async function upsertMatch(env: Env, row: AnyRow) {
-  const protectedRow = await env.DB.prepare(`SELECT id FROM matches WHERE source=? AND source_id=?
-    AND (score_locked_at IS NOT NULL OR home_score IS NOT NULL OR away_score IS NOT NULL OR manually_created=1)`)
-    .bind(row.source,row.source_id).first();
-  if (protectedRow) return 0;
+async function upsertMatch(env: Env, row: AnyRow) {
   const values = [
     row.source, row.source_id, row.team_id ?? null, row.competition_team_id ?? null,
     row.season_id ?? null, row.category || "", row.competition || "", row.starts_at,
@@ -955,8 +927,7 @@ export async function upsertMatch(env: Env, row: AnyRow) {
       external_updated_at=excluded.external_updated_at,home_logo_url=excluded.home_logo_url,
       away_logo_url=excluded.away_logo_url,time_confirmed=excluded.time_confirmed,
       raw_json=excluded.raw_json,synced_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
-    WHERE matches.score_locked_at IS NULL AND matches.home_score IS NULL AND matches.away_score IS NULL AND matches.manually_created=0
-    AND (matches.starts_at IS NOT excluded.starts_at
+    WHERE matches.starts_at IS NOT excluded.starts_at
       OR matches.team_id IS NOT excluded.team_id
       OR matches.competition_team_id IS NOT excluded.competition_team_id
       OR matches.season_id IS NOT excluded.season_id
@@ -968,11 +939,10 @@ export async function upsertMatch(env: Env, row: AnyRow) {
       OR matches.status IS NOT excluded.status OR matches.event_type IS NOT excluded.event_type
       OR matches.source_url IS NOT excluded.source_url
       OR matches.home_logo_url IS NOT excluded.home_logo_url OR matches.away_logo_url IS NOT excluded.away_logo_url
-      OR matches.time_confirmed IS NOT excluded.time_confirmed)`
+      OR matches.time_confirmed IS NOT excluded.time_confirmed`
   ).bind(...values).run();
-  const stored = await env.DB.prepare("SELECT id,home_score,away_score,manually_created,score_locked_at FROM matches WHERE source=? AND source_id=?")
-    .bind(row.source, row.source_id).first<AnyRow>();
-  if (!result.meta.changes && stored && (stored.score_locked_at !== null || stored.home_score !== null || stored.away_score !== null || stored.manually_created)) return 0;
+  const stored = await env.DB.prepare("SELECT id FROM matches WHERE source=? AND source_id=?")
+    .bind(row.source, row.source_id).first<{ id: number }>();
   let participantsChanged = 0;
   if (stored && Array.isArray(row.participants)) {
     const incoming = row.participants.filter((participant: AnyRow) => participant?.name).map((participant: AnyRow, index: number) => ({
@@ -1023,12 +993,11 @@ export async function upsertMatch(env: Env, row: AnyRow) {
         away_logo_url: String(game.away_logo_url || ""),
         raw_json: JSON.stringify(game.raw_json || game)
       }));
-    const existingResult = await env.DB.prepare(`SELECT source_game_id,display_order,home_team,away_team,score_locked_at,
+    const existingResult = await env.DB.prepare(`SELECT source_game_id,display_order,home_team,away_team,
       home_score,away_score,status,home_logo_url,away_logo_url
       FROM plateau_games WHERE plateau_match_id=? ORDER BY display_order,id`).bind(stored.id).all<AnyRow>();
     const existing = (existingResult.results || []).map(game => ({
       source_game_id: String(game.source_game_id || ""),
-      score_locked_at: game.score_locked_at,
       display_order: Number(game.display_order || 0),
       home_team: String(game.home_team || ""),
       away_team: String(game.away_team || ""),
@@ -1038,19 +1007,10 @@ export async function upsertMatch(env: Env, row: AnyRow) {
       home_logo_url: String(game.home_logo_url || ""),
       away_logo_url: String(game.away_logo_url || "")
     }));
-    // Garder les résultats acquis, même si un programme vide ou un identifiant
-    // historique différent est renvoyé par la FFF.
-    const scored = existing.filter(game => game.score_locked_at !== null || game.home_score !== null || game.away_score !== null);
-    const writable = incoming.filter(game => !scored.some(saved =>
-      saved.source_game_id === game.source_game_id ||
-      (saved.source_game_id.startsWith(`${saved.home_team}|${saved.away_team}|`) &&
-        saved.home_team === game.home_team && saved.away_team === game.away_team)
-    ));
-    const incomingComparable = [...scored,...writable].map(({ raw_json: _rawJson, score_locked_at: _lock, ...game }: AnyRow) => game);
-    const existingComparable = existing.map(({score_locked_at: _lock,...game})=>game);
-    if (JSON.stringify(existingComparable) !== JSON.stringify(incomingComparable)) {
-      const statements = [env.DB.prepare("DELETE FROM plateau_games WHERE plateau_match_id=? AND score_locked_at IS NULL AND home_score IS NULL AND away_score IS NULL").bind(stored.id)];
-      for (const game of writable) {
+    const incomingComparable = incoming.map(({ raw_json: _rawJson, ...game }) => game);
+    if (JSON.stringify(existing) !== JSON.stringify(incomingComparable)) {
+      const statements = [env.DB.prepare("DELETE FROM plateau_games WHERE plateau_match_id=?").bind(stored.id)];
+      for (const game of incoming) {
         statements.push(env.DB.prepare(`INSERT INTO plateau_games(
           plateau_match_id,source_game_id,display_order,home_team,away_team,home_score,away_score,
           status,home_logo_url,away_logo_url,raw_json
@@ -1094,56 +1054,19 @@ async function latestSyncRun(env: Env) {
     FROM sync_runs WHERE source='github_actions' ORDER BY id DESC LIMIT 1`).first<AnyRow>();
 }
 
-async function verifySyncMatches(request: Request, env: Env) {
-  const supplied=request.headers.get("authorization")?.replace(/^Bearer\s+/i,"")||"";
-  if(!env.FCE_SYNC_TOKEN||!secureToken(supplied,env.FCE_SYNC_TOKEN))return json({error:"Jeton invalide"},401);
-  const body=await request.json<AnyRow>().catch(()=>null);
-  if(!Array.isArray(body?.rows)||body.rows.length>40)return json({error:"Lot de vérification invalide"},400);
-  let verified=0,protectedCount=0;
-  const differences: AnyRow[]=[],conflicts: AnyRow[]=[];
-  const fields=["starts_at","home_team","away_team","status","event_type","home_score","away_score"];
-  for(const row of body.rows){
-    if(!row || !["fff","district_fal"].includes(row.source)||!row.source_id)return json({error:"Identité invalide"},400);
-    const saved=await env.DB.prepare("SELECT * FROM matches WHERE source=? AND source_id=?").bind(row.source,row.source_id).first<AnyRow>();
-    if(!saved){differences.push({source:row.source,source_id:row.source_id,reason:"missing"});continue;}
-    const changed=fields.filter(field=>(saved[field]??null)!==(row[field]??(field==="event_type"?"match":field==="status"?"scheduled":null)));
-    const locked=saved.score_locked_at!==null||saved.home_score!==null||saved.away_score!==null||saved.manually_created;
-    if(locked){protectedCount++;if(changed.length)conflicts.push({source:row.source,source_id:row.source_id,fields:changed,reason:"protected_result"});}
-    else if(changed.length){differences.push({source:row.source,source_id:row.source_id,fields:changed});continue;}
-    if(!locked && Array.isArray(row.plateau_games)){
-      const games=await env.DB.prepare("SELECT * FROM plateau_games WHERE plateau_match_id=?").bind(saved.id).all<AnyRow>();
-      let complete=true;
-      for(const game of row.plateau_games){
-        const stored=(games.results||[]).find(item=>item.source_game_id===game.source_game_id ||
-          (String(item.source_game_id).startsWith(`${item.home_team}|${item.away_team}|`) && item.home_team===game.home_team && item.away_team===game.away_team));
-        if(!stored){complete=false;differences.push({source_id:row.source_id,source_game_id:game.source_game_id,reason:"missing_game"});continue;}
-        if(stored.score_locked_at!==null||stored.home_score!==null||stored.away_score!==null)continue;
-        if(["home_team","away_team","home_score","away_score","status"].some(field=>(stored[field]??null)!==(game[field]??(field==="status"?"scheduled":null)))){
-          complete=false;differences.push({source_id:row.source_id,source_game_id:game.source_game_id,reason:"game_mismatch"});
-        }
-      }
-      if(!complete)continue;
-    }
-    verified++;
-  }
-  return json({ok:!differences.length,verified,protected_count:protectedCount,conflicts,differences},differences.length?409:200);
-}
-
 async function recordSyncStatus(request: Request, env: Env) {
   const supplied = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") || "";
   if (!env.FCE_SYNC_TOKEN || !secureToken(supplied, env.FCE_SYNC_TOKEN)) {
     return json({ error: "Jeton de synchronisation invalide" }, 401);
   }
   const body = await request.json<AnyRow>().catch(() => null);
-  if (!body || !["running", "success", "partial", "error"].includes(body.status)) {
+  if (!body || !["success", "partial", "error"].includes(body.status)) {
     return json({ error: "État de synchronisation invalide" }, 400);
   }
   await env.DB.prepare(`INSERT INTO sync_runs(source,finished_at,status,imported_count,error_message)
     VALUES('github_actions',CURRENT_TIMESTAMP,?,?,?)`).bind(
     body.status, Number(body.imported_count || 0), JSON.stringify(body.sources || [])
   ).run();
-  const origin=new URL(request.url).origin;
-  await Promise.allSettled(["/api/page/matches","/api/page/home"].map(path=>caches.default.delete(new Request(origin+path))));
   return json({ ok: true });
 }
 
@@ -1162,14 +1085,6 @@ async function ingestMatches(request: Request, env: Env) {
   }>().catch(() => null);
   const rows = body?.rows;
   if (!Array.isArray(rows) || rows.length > 1000) return json({ error: "Lot de rencontres invalide" }, 400);
-  const invalid = rows.some(row => !row || !["fff","district_fal"].includes(row.source) ||
-    !row.source_id || !Number.isFinite(Date.parse(row.starts_at)) || !row.home_team || !row.away_team ||
-    [row.home_score,row.away_score].some(score => score !== null && score !== undefined &&
-      (!Number.isInteger(score) || score < 0)) ||
-    (row.plateau_games !== undefined && (!Array.isArray(row.plateau_games) || row.plateau_games.some((game: AnyRow) =>
-      !game?.source_game_id || !game.home_team || !game.away_team ||
-      [game.home_score,game.away_score].some(score => score !== null && score !== undefined && (!Number.isInteger(score) || score < 0))))));
-  if (invalid) return json({error:"Rencontre invalide : lot refusé"},400);
   const batchMode = Boolean(body?.batch);
   const finalBatch = !batchMode || body?.batch?.final === true;
   const [seasonId, teams, unassigned] = await Promise.all([
@@ -1244,9 +1159,33 @@ async function ingestMatches(request: Request, env: Env) {
   }
   const sourceResults = Array.isArray(body?.sources) ? body.sources : [];
   const syncStatus = sourceResults.some(source => source?.status === "error") ? "partial" : "success";
-  // L'absence dans un scrape n'est jamais une preuve de suppression officielle.
-  // Le bilan global est enregistré par le collecteur après les classements.
-  const removedPlateauDuplicates = 0;
+  // Un ancien collecteur FAL utilisait un identifiant à trois segments. Après
+  // une collecte FFF complète, les plateaux absents du lot courant sont donc
+  // des doublons obsolètes. Les ajouts manuels utilisent une autre source.
+  let removedPlateauDuplicates = 0;
+  if (syncStatus === "success" && finalBatch) {
+    const suppliedPlateaux = body?.batch?.all_plateau_source_ids;
+    const currentPlateaux = Array.isArray(suppliedPlateaux)
+      ? suppliedPlateaux.map(value => String(value)).filter(Boolean)
+      : rows
+          .filter(row => row.source === "district_fal" && ["plateau", "animation"].includes(row.event_type))
+          .map(row => String(row.source_id));
+    if (currentPlateaux.length) {
+      const deleted = await env.DB.prepare(`DELETE FROM matches
+        WHERE source='district_fal' AND manually_created=0 AND (season_id=? OR season_id IS NULL)
+        AND event_type IN ('plateau','animation')
+        AND source_id NOT IN (${currentPlateaux.map(() => "?").join(",")})`)
+        .bind(seasonId, ...currentPlateaux).run();
+      removedPlateauDuplicates = Number(deleted.meta.changes || 0);
+    }
+  }
+  if (finalBatch) {
+    await env.DB.prepare(`INSERT INTO sync_runs(
+      source,finished_at,status,imported_count,error_message
+    ) VALUES('github_actions',CURRENT_TIMESTAMP,?,?,?)`).bind(
+      syncStatus, changed, JSON.stringify(sourceResults)
+    ).run();
+  }
   // Les pages publiques sont mises en cache pour économiser D1. Une collecte
   // réussie doit toutefois rendre immédiatement visibles les nouveaux scores.
   const origin = new URL(request.url).origin;
@@ -1257,7 +1196,6 @@ async function ingestMatches(request: Request, env: Env) {
     new Request(`${origin}/api/page/matches?v=20`),
     new Request(`${origin}/api/page/matches?v=21`),
     new Request(`${origin}/api/page/matches?v=22`),
-    new Request(`${origin}/api/page/matches?v=23`),
     new Request(`${origin}/api/page/home`)
   ];
 
@@ -1334,18 +1272,6 @@ async function ingestStandings(
     );
   }
 
-
-  const positions = new Map<string,Set<number>>();
-  for (const row of rows) {
-    if(row?.source!=="fff" || !row.phase_id || !row.team_name || !Number.isInteger(row.position) || row.position<1)
-      return json({error:"Ligne de classement invalide"},400);
-    const phase=String(row.phase_id);
-    if(!positions.has(phase))positions.set(phase,new Set());
-    if(positions.get(phase)!.has(row.position))return json({error:"Rang de classement dupliqué"},400);
-    positions.get(phase)!.add(row.position);
-  }
-  if(!positions.size || [...positions.values()].some(group=>[...group].some(rank=>rank>group.size)))
-    return json({error:"Classement vide ou tronqué"},400);
 
   const seasonId =
     await activeSeasonId(env);
@@ -1551,10 +1477,19 @@ async function ingestStandings(
     };
 
 
-  // Replace only the complete official phases supplied; retain other phases.
-  const statements=[...positions.keys()].map(phase=>env.DB.prepare(
-    "DELETE FROM standings WHERE source='fff' AND season_id=? AND phase_id=?"
-  ).bind(seasonId,phase));
+  const statements=[
+    env.DB
+      .prepare(`
+        DELETE FROM standings
+
+        WHERE
+          source='fff'
+          AND season_id=?
+      `)
+      .bind(
+        seasonId
+      )
+  ];
 
 
   let accepted=0;
@@ -1880,8 +1815,7 @@ async function stagingAction(request: Request, env: Env) {
         "x-github-api-version": "2026-03-10"
       },
       body: JSON.stringify({
-        ref: env.STAGING_WORKFLOW_REF || "develop",
-        ...(body.action === "sync_matches" ? {inputs:{dry_run:false}} : {})
+        ref: env.STAGING_WORKFLOW_REF || "develop"
       })
     }
   );
@@ -1921,9 +1855,6 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === "/internal/sync/matches" && request.method === "POST") {
       return ingestMatches(request, env);
-    }
-    if (url.pathname === "/internal/sync/verify" && request.method === "POST") {
-      return verifySyncMatches(request, env);
     }
     if (url.pathname === "/internal/sync/status" && request.method === "POST") {
       return recordSyncStatus(request, env);

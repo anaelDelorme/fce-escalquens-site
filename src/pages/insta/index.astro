@@ -10,15 +10,14 @@ import Header from '../../components/Header.astro';
     <link rel="stylesheet" href="/styles.css">
     <link rel="stylesheet" href="/enhancements.css?v=6">
     <link rel="stylesheet" href="/social-visuals.css">
-    <link rel="stylesheet" href="/social-results.css?v=1">
   </head>
   <body class="insta-tool">
     <Header/>
     <main class="visual-maker">
       <section class="visual-maker__intro">
         <p class="eyebrow">Communication du club</p>
-        <h1>Créer les visuels<br>du club.</h1>
-        <p>Préparez les rencontres à venir ou générez les résultats des matchs et des plateaux du week-end à partir des données déjà synchronisées.</p>
+        <h1>Créer le visuel<br>des rencontres.</h1>
+        <p>Choisissez une date : les rencontres, plateaux, horaires et lieux déjà synchronisés seront placés automatiquement dans une image au format Instagram et Facebook.</p>
       </section>
 
       <section class="visual-maker__workspace" aria-labelledby="visual-maker-title">
@@ -39,51 +38,7 @@ import Header from '../../components/Header.astro';
         <p id="visual-status" class="visual-maker__status" aria-live="polite">Choisissez une date pour commencer.</p>
         <div id="visual-previews" class="visual-maker__previews"></div>
       </section>
-
-      <section class="result-studio" aria-labelledby="result-studio-title">
-        <div class="result-studio__head">
-          <div>
-            <p class="eyebrow">Résultats</p>
-            <h2 id="result-studio-title">Créer les résultats du week-end</h2>
-            <p>Le samedi et le dimanche sont regroupés. Un match produit un visuel individuel ; un plateau produit un récapitulatif de ses mini-matchs avec score.</p>
-          </div>
-          <form id="result-form">
-            <label><span>Samedi du week-end</span><input id="result-weekend-date" type="date" required></label>
-            <label><span>Fond par défaut</span><select id="result-default-background"><option value="">Fond FCE intégré</option></select></label>
-            <button type="submit">Préparer les résultats</button>
-          </form>
-        </div>
-        <p id="result-status" class="result-studio__status" aria-live="polite">Choisissez un week-end pour commencer.</p>
-        <div id="result-editor"></div>
-        <p class="result-preview-note">Les corrections faites ici servent uniquement aux PNG : elles ne modifient ni la base ni la synchronisation FFF.</p>
-        <div id="result-previews" class="visual-maker__previews result-previews"></div>
-      </section>
-
-      <details id="visual-library" class="visual-library">
-        <summary>Bibliothèque Instagram — logos et fonds R2</summary>
-        <p class="visual-library__intro">Importez les logos haute définition une seule fois. Le générateur rapproche ensuite automatiquement le nom de l'adversaire du nom du fichier et des alias. Cette partie utilise l'accès administrateur.</p>
-        <div class="visual-library__grid">
-          <section>
-            <p class="eyebrow">Logos d'équipes</p>
-            <h2>Importer un dossier</h2>
-            <p>Les noms de fichiers deviennent les noms de référence. PNG/WebP avec fond transparent recommandés.</p>
-            <input id="social-logo-folder" type="file" accept="image/*" multiple webkitdirectory>
-            <button id="social-upload-logos" type="button">Importer les logos sélectionnés</button>
-          </section>
-          <section>
-            <p class="eyebrow">Fonds</p>
-            <h2>Ajouter un fond</h2>
-            <p>Le fond sera recadré automatiquement au format 1080 × 1350 lors de la génération.</p>
-            <label>Nom du fond <input id="social-background-name" type="text" placeholder="Ex. Vestiaire seniors"></label>
-            <input id="social-background-file" type="file" accept="image/*">
-            <button id="social-upload-background" type="button">Ajouter ce fond</button>
-          </section>
-        </div>
-        <p id="social-library-status" class="visual-library__status" aria-live="polite"></p>
-        <div id="social-library-assets" class="visual-library-assets"></div>
-      </details>
     </main>
     <script is:inline src="/social-visuals.js"></script>
-    <script is:inline src="/social-results.js?v=3"></script>
   </body>
 </html>
