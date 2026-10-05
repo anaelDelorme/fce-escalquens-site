@@ -414,25 +414,25 @@
     ctx.fillStyle='#f5d31b';
     ctx.shadowColor='rgba(0,0,0,.62)';
     ctx.shadowBlur=8;
-    ctx.font=`400 142px ${EDO}`;
-    ctx.fillText('RÉSULTATS',0,170);
+    ctx.font=`400 118px ${EDO}`;
+    ctx.fillText('RÉSULTATS',0,155);
 
     ctx.restore();
 
     ctx.save();
     ctx.translate(540,0);
-    ctx.rotate(-.035);
+    ctx.rotate(-.03);
     ctx.fillStyle='#f5d31b';
-    roundedRect(ctx,-185,205,370,14,7);
+    roundedRect(ctx,-145,185,290,12,6);
     ctx.fill();
     ctx.restore();
 
     ctx.textAlign='center';
     ctx.fillStyle='#ffffff';
-    ctx.shadowColor='rgba(0,0,0,.50)';
+    ctx.shadowColor='rgba(0,0,0,.45)';
     ctx.shadowBlur=6;
-    ctx.font=`400 108px ${EDO}`;
-    ctx.fillText(item.category||'ÉQUIPE',540,365);
+    ctx.font=`400 88px ${EDO}`;
+    ctx.fillText(item.category||'ÉQUIPE',540,325);
 
     ctx.shadowBlur=0;
   }
@@ -446,47 +446,45 @@
     ctx.fillStyle='#f5d31b';
     ctx.shadowColor='rgba(0,0,0,.70)';
     ctx.shadowBlur=5;
-    ctx.font=`900 34px ${TEXT}`;
-    ctx.fillText('@FCEscalquens',58,1297);
+    ctx.font=`900 28px ${TEXT}`;
+    ctx.fillText('@FCEscalquens',58,1292);
 
     if(crest){
       ctx.shadowBlur=0;
-      drawContain(ctx,crest,386,1088,310,245);
+      drawContain(ctx,crest,430,1118,220,175);
     }
 
-    ctx.shadowBlur=0;
-
     ctx.fillStyle='#3159d5';
-    roundedRect(ctx,790,1205,90,90,18);
+    roundedRect(ctx,825,1214,72,72,16);
     ctx.fill();
 
     ctx.fillStyle='#fff';
     ctx.textAlign='center';
     ctx.textBaseline='middle';
-    ctx.font='900 66px Arial';
-    ctx.fillText('f',835,1250);
+    ctx.font='900 52px Arial';
+    ctx.fillText('f',861,1250);
 
-    const ig=ctx.createLinearGradient(906,1204,1004,1302);
+    const ig=ctx.createLinearGradient(915,1212,995,1292);
     ig.addColorStop(0,'#5b51d8');
     ig.addColorStop(.42,'#c13584');
     ig.addColorStop(.72,'#e1306c');
     ig.addColorStop(1,'#feda75');
 
     ctx.fillStyle=ig;
-    roundedRect(ctx,910,1205,90,90,20);
+    roundedRect(ctx,920,1214,72,72,18);
     ctx.fill();
 
     ctx.strokeStyle='#fff';
-    ctx.lineWidth=6;
-    roundedRect(ctx,931,1226,48,48,12);
+    ctx.lineWidth=5;
+    roundedRect(ctx,938,1232,36,36,10);
     ctx.stroke();
 
     ctx.beginPath();
-    ctx.arc(955,1250,12.5,0,Math.PI*2);
+    ctx.arc(956,1250,9.5,0,Math.PI*2);
     ctx.stroke();
 
     ctx.beginPath();
-    ctx.arc(976,1229,4.2,0,Math.PI*2);
+    ctx.arc(971,1237,3.3,0,Math.PI*2);
     ctx.fillStyle='#fff';
     ctx.fill();
 
@@ -508,16 +506,16 @@
     drawHeader(ctx,item);
 
     await Promise.all([
-      drawTeamLogo(ctx,item.home_team,38,420,430),
-      drawTeamLogo(ctx,item.away_team,612,420,430)
+      drawTeamLogo(ctx,item.home_team,58,395,395),
+      drawTeamLogo(ctx,item.away_team,627,395,395)
     ]);
 
     ctx.textAlign='center';
     ctx.fillStyle='#f5d31b';
     ctx.shadowColor='rgba(0,0,0,.70)';
     ctx.shadowBlur=9;
-    ctx.font=`400 198px ${EDO}`;
-    ctx.fillText(`${item.home_score} - ${item.away_score}`,540,1082);
+    ctx.font=`400 214px ${EDO}`;
+    ctx.fillText(`${item.home_score} - ${item.away_score}`,540,1015);
 
     ctx.shadowBlur=0;
 
@@ -539,47 +537,47 @@
 
     if(pages>1){
       ctx.fillStyle='rgba(255,255,255,.80)';
-      ctx.font=`900 16px ${TEXT}`;
+      ctx.font=`900 15px ${TEXT}`;
       ctx.textAlign='center';
-      ctx.fillText(`VISUEL ${page+1}/${pages}`,540,405);
+      ctx.fillText(`VISUEL ${page+1}/${pages}`,540,382);
     }
 
-    let y=455;
+    let y=430;
 
     for(const g of games){
       ctx.save();
       ctx.fillStyle='rgba(5,5,6,.70)';
-      ctx.strokeStyle='rgba(245,211,27,.28)';
+      ctx.strokeStyle='rgba(245,211,27,.24)';
       ctx.lineWidth=2;
-      roundedRect(ctx,48,y-20,984,138,24);
+      roundedRect(ctx,52,y-18,976,130,24);
       ctx.fill();
       ctx.stroke();
       ctx.restore();
 
       await Promise.all([
-        drawTeamLogo(ctx,g.home_team,65,y-4,108),
-        drawTeamLogo(ctx,g.away_team,907,y-4,108)
+        drawTeamLogo(ctx,g.home_team,68,y-2,98),
+        drawTeamLogo(ctx,g.away_team,914,y-2,98)
       ]);
 
       ctx.fillStyle='#ffffff';
 
       ctx.textAlign='left';
-      fitText(ctx,g.home_team,292,22,14,TEXT,900);
-      ctx.fillText(g.home_team,190,y+48);
+      fitText(ctx,g.home_team,285,21,14,TEXT,900);
+      ctx.fillText(g.home_team,188,y+42);
 
       ctx.textAlign='right';
-      fitText(ctx,g.away_team,292,22,14,TEXT,900);
-      ctx.fillText(g.away_team,890,y+48);
+      fitText(ctx,g.away_team,285,21,14,TEXT,900);
+      ctx.fillText(g.away_team,892,y+42);
 
       ctx.textAlign='center';
       ctx.fillStyle='#f5d31b';
       ctx.shadowColor='rgba(0,0,0,.55)';
       ctx.shadowBlur=5;
-      ctx.font=`400 57px ${EDO}`;
-      ctx.fillText(`${g.home_score} - ${g.away_score}`,540,y+58);
+      ctx.font=`400 52px ${EDO}`;
+      ctx.fillText(`${g.home_score} - ${g.away_score}`,540,y+54);
       ctx.shadowBlur=0;
 
-      y+=150;
+      y+=142;
     }
 
     await drawFooter(ctx);
