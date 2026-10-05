@@ -234,181 +234,219 @@
   async function paintBackground(ctx,item){
     const image=await loadImage(assetUrl(chosenBackground(item)));
 
-    const base=ctx.createLinearGradient(0,0,1080,1350);
-    base.addColorStop(0,'#09090b');
-    base.addColorStop(.45,'#0d0b0d');
-    base.addColorStop(1,'#120609');
-    ctx.fillStyle=base;
+    // Base très sombre, comme le visuel de référence.
+    ctx.fillStyle='#09090a';
     ctx.fillRect(0,0,1080,1350);
 
+    // Fond personnalisé éventuel : texture discrète uniquement.
     if(image){
       ctx.save();
-      ctx.globalAlpha=.16;
+      ctx.globalAlpha=.15;
       drawCover(ctx,image,0,0,1080,1350);
       ctx.restore();
+
+      const veil=ctx.createLinearGradient(0,0,0,1350);
+      veil.addColorStop(0,'rgba(4,4,5,.52)');
+      veil.addColorStop(.52,'rgba(4,4,5,.72)');
+      veil.addColorStop(1,'rgba(4,4,5,.50)');
+      ctx.fillStyle=veil;
+      ctx.fillRect(0,0,1080,1350);
     }
 
-    const glowTop=ctx.createRadialGradient(80,40,20,80,40,420);
-    glowTop.addColorStop(0,'rgba(255,45,25,.95)');
-    glowTop.addColorStop(.32,'rgba(210,15,20,.58)');
-    glowTop.addColorStop(1,'rgba(210,15,20,0)');
-    ctx.fillStyle=glowTop;
-    ctx.fillRect(0,0,470,380);
+    // Rouge lumineux en haut-gauche.
+    const topGlow=ctx.createRadialGradient(35,20,10,35,20,470);
+    topGlow.addColorStop(0,'rgba(255,40,18,.95)');
+    topGlow.addColorStop(.32,'rgba(195,12,18,.60)');
+    topGlow.addColorStop(1,'rgba(120,0,8,0)');
+    ctx.fillStyle=topGlow;
+    ctx.fillRect(0,0,540,430);
 
-    const glowBottom=ctx.createRadialGradient(1030,1300,30,1030,1300,520);
-    glowBottom.addColorStop(0,'rgba(255,35,20,.92)');
-    glowBottom.addColorStop(.35,'rgba(210,15,20,.52)');
-    glowBottom.addColorStop(1,'rgba(210,15,20,0)');
-    ctx.fillStyle=glowBottom;
-    ctx.fillRect(540,860,540,490);
+    // Rouge lumineux en bas-droite.
+    const bottomGlow=ctx.createRadialGradient(1060,1330,20,1060,1330,540);
+    bottomGlow.addColorStop(0,'rgba(255,44,18,.94)');
+    bottomGlow.addColorStop(.34,'rgba(190,8,18,.62)');
+    bottomGlow.addColorStop(1,'rgba(120,0,8,0)');
+    ctx.fillStyle=bottomGlow;
+    ctx.fillRect(500,820,580,530);
 
+    // Grandes griffures / bandes rouges.
     ctx.save();
-    ctx.globalAlpha=.95;
 
-    ctx.fillStyle='#9f0f18';
+    ctx.fillStyle='rgba(174,13,21,.96)';
     ctx.beginPath();
     ctx.moveTo(0,0);
-    ctx.lineTo(255,0);
-    ctx.lineTo(155,110);
-    ctx.lineTo(28,150);
+    ctx.lineTo(300,0);
+    ctx.lineTo(160,110);
+    ctx.lineTo(20,165);
     ctx.closePath();
     ctx.fill();
 
-    ctx.fillStyle='#d0161d';
+    ctx.fillStyle='rgba(215,18,24,.86)';
     ctx.beginPath();
-    ctx.moveTo(860,1110);
-    ctx.lineTo(1080,995);
+    ctx.moveTo(905,252);
+    ctx.lineTo(1080,215);
+    ctx.lineTo(1080,520);
+    ctx.lineTo(965,480);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle='rgba(206,14,24,.94)';
+    ctx.beginPath();
+    ctx.moveTo(775,1110);
+    ctx.lineTo(1080,970);
     ctx.lineTo(1080,1350);
-    ctx.lineTo(665,1350);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.fillStyle='rgba(210,18,24,.86)';
-    ctx.beginPath();
-    ctx.moveTo(900,310);
-    ctx.lineTo(1080,255);
-    ctx.lineTo(1080,535);
-    ctx.lineTo(955,505);
+    ctx.lineTo(620,1350);
     ctx.closePath();
     ctx.fill();
 
     ctx.restore();
 
+    // Lignes fines diagonales en haut.
     ctx.save();
-    ctx.strokeStyle='rgba(255,255,255,.14)';
+    ctx.strokeStyle='rgba(255,255,255,.12)';
     ctx.lineWidth=2;
-    for(const offset of [-150,-60,30,120,210,300]){
+    for(const offset of [-210,-120,-30,60,150,240,330]){
       ctx.beginPath();
-      ctx.moveTo(offset,180);
-      ctx.lineTo(offset+620,-10);
+      ctx.moveTo(offset,210);
+      ctx.lineTo(offset+660,-10);
       ctx.stroke();
     }
     ctx.restore();
 
+    // Halftone rouge haut-gauche.
+    ctx.save();
+    for(let row=0;row<9;row++){
+      for(let col=0;col<10-row;col++){
+        const alpha=Math.max(.05,.34-row*.025);
+        const radius=Math.max(2,8-row*.62);
+        ctx.beginPath();
+        ctx.fillStyle=`rgba(224,26,30,${alpha})`;
+        ctx.arc(24+col*21,160+row*21,radius,0,Math.PI*2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+
+    // Halftone bas-droit.
     ctx.save();
     for(let row=0;row<8;row++){
-      for(let col=0;col<9-row;col++){
-        const x=28+col*20;
-        const y=138+row*20;
-        const r=Math.max(2,8-row*.7);
-        ctx.beginPath();
-        ctx.fillStyle=`rgba(220,28,32,${0.28-row*0.02})`;
-        ctx.arc(x,y,r,0,Math.PI*2);
-        ctx.fill();
-      }
-    }
-    ctx.restore();
-
-    ctx.save();
-    for(let row=0;row<7;row++){
       for(let col=0;col<10-row;col++){
-        const x=1060-(col*18);
-        const y=1288-(row*18);
-        const r=Math.max(2,7-row*.65);
+        const alpha=Math.max(.05,.30-row*.024);
+        const radius=Math.max(2,7-row*.58);
         ctx.beginPath();
-        ctx.fillStyle=`rgba(220,28,32,${0.26-row*0.02})`;
-        ctx.arc(x,y,r,0,Math.PI*2);
+        ctx.fillStyle=`rgba(224,26,30,${alpha})`;
+        ctx.arc(1064-col*19,1275-row*19,radius,0,Math.PI*2);
         ctx.fill();
       }
     }
     ctx.restore();
 
-    const panel=ctx.createLinearGradient(90,250,990,1110);
-    panel.addColorStop(0,'rgba(0,0,0,.18)');
-    panel.addColorStop(.5,'rgba(0,0,0,.12)');
-    panel.addColorStop(1,'rgba(0,0,0,.18)');
-    ctx.fillStyle=panel;
-    roundedRect(ctx,55,245,970,905,48);
-    ctx.fill();
+    // Grain très léger pour casser l'aspect trop "propre".
+    ctx.save();
+    ctx.globalAlpha=.08;
+    for(let i=0;i<120;i++){
+      const x=(i*83)%1080;
+      const y=(i*137)%1350;
+      ctx.fillStyle=i%3===0?'#ff3a22':'#ffffff';
+      ctx.fillRect(x,y,1+(i%2),1+(i%2));
+    }
+    ctx.restore();
   }
 
   function drawHeader(ctx,item){
+    ctx.save();
     ctx.textAlign='center';
 
-    ctx.fillStyle='#f3cc16';
-    ctx.font=`400 88px ${EDO}`;
-    ctx.fillText('RÉSULTATS',540,120);
+    // Titre brush très grand, proche du visuel de référence.
+    ctx.translate(540,0);
+    ctx.rotate(-.025);
+    ctx.fillStyle='#f5d31b';
+    ctx.shadowColor='rgba(0,0,0,.58)';
+    ctx.shadowBlur=8;
+    ctx.font=`400 108px ${EDO}`;
+    ctx.fillText('RÉSULTATS',0,150);
+    ctx.restore();
 
-    ctx.fillRect(415,150,250,7);
+    // Petit trait jaune brossé sous le titre.
+    ctx.save();
+    ctx.translate(540,0);
+    ctx.rotate(-.045);
+    ctx.fillStyle='#f5d31b';
+    roundedRect(ctx,-155,182,310,13,7);
+    ctx.fill();
+    ctx.restore();
 
+    // Catégorie blanche, très visible.
+    ctx.textAlign='center';
     ctx.fillStyle='#ffffff';
-    ctx.font=`400 58px ${EDO}`;
-    ctx.fillText(item.category||'ÉQUIPE',540,245);
+    ctx.shadowColor='rgba(0,0,0,.35)';
+    ctx.shadowBlur=5;
+    ctx.font=`400 72px ${EDO}`;
+    ctx.fillText(item.category||'ÉQUIPE',540,265);
 
-    ctx.fillStyle='rgba(255,255,255,.92)';
-    ctx.font=`900 18px ${TEXT}`;
-    ctx.fillText(displayDate(item.starts_at),540,285);
+    // Date volontairement très discrète.
+    ctx.shadowBlur=0;
+    ctx.fillStyle='rgba(255,255,255,.78)';
+    ctx.font=`900 15px ${TEXT}`;
+    ctx.fillText(displayDate(item.starts_at),540,302);
   }
 
   async function drawFooter(ctx){
     const crest=await loadImage('/logo-fce.png',2500);
 
-    ctx.fillStyle='rgba(0,0,0,.18)';
-    ctx.fillRect(0,1170,1080,180);
+    // Pas de barre sombre : on garde le fond visible comme sur la référence.
+    ctx.save();
 
+    // Pseudo en bas à gauche.
     ctx.textAlign='left';
-    ctx.fillStyle='#f4cc14';
-    ctx.font=`900 28px ${TEXT}`;
-    ctx.fillText('@FCEscalquens',62,1287);
+    ctx.fillStyle='#f5d31b';
+    ctx.shadowColor='rgba(0,0,0,.65)';
+    ctx.shadowBlur=4;
+    ctx.font=`900 30px ${TEXT}`;
+    ctx.fillText('@FCEscalquens',62,1296);
 
+    // Blason au centre bas.
     if(crest){
-      drawContain(ctx,crest,404,1146,270,168);
+      ctx.shadowBlur=0;
+      drawContain(ctx,crest,400,1110,280,210);
     }
 
+    // Facebook.
+    ctx.shadowBlur=0;
     ctx.fillStyle='#3159d5';
-    roundedRect(ctx,805,1215,72,72,17);
+    roundedRect(ctx,805,1213,78,78,16);
     ctx.fill();
-
     ctx.fillStyle='#fff';
     ctx.textAlign='center';
     ctx.textBaseline='middle';
-    ctx.font='900 54px Arial';
-    ctx.fillText('f',841,1251);
+    ctx.font='900 58px Arial';
+    ctx.fillText('f',844,1253);
 
-    const ig=ctx.createLinearGradient(910,1215,990,1295);
+    // Instagram.
+    const ig=ctx.createLinearGradient(915,1210,997,1295);
     ig.addColorStop(0,'#5b51d8');
-    ig.addColorStop(.46,'#c13584');
-    ig.addColorStop(.73,'#e1306c');
+    ig.addColorStop(.42,'#c13584');
+    ig.addColorStop(.72,'#e1306c');
     ig.addColorStop(1,'#feda75');
-
     ctx.fillStyle=ig;
-    roundedRect(ctx,914,1215,72,72,18);
+    roundedRect(ctx,920,1213,78,78,18);
     ctx.fill();
 
     ctx.strokeStyle='#fff';
     ctx.lineWidth=5;
-    roundedRect(ctx,931,1232,38,38,10);
+    roundedRect(ctx,938,1231,40,40,10);
     ctx.stroke();
 
     ctx.beginPath();
-    ctx.arc(950,1251,10,0,Math.PI*2);
+    ctx.arc(958,1251,10.5,0,Math.PI*2);
     ctx.stroke();
 
     ctx.beginPath();
-    ctx.arc(966,1235,3.5,0,Math.PI*2);
+    ctx.arc(975,1234,3.6,0,Math.PI*2);
     ctx.fillStyle='#fff';
     ctx.fill();
 
+    ctx.restore();
     ctx.textBaseline='alphabetic';
   }
 
@@ -425,33 +463,33 @@
 
     drawHeader(ctx,item);
 
+    // Logos très grands, comme sur la référence.
     await Promise.all([
-      drawTeamLogo(ctx,item.home_team,105,335,275),
-      drawTeamLogo(ctx,item.away_team,700,335,275)
+      drawTeamLogo(ctx,item.home_team,82,335,330),
+      drawTeamLogo(ctx,item.away_team,668,335,330)
     ]);
 
+    // Noms sous les logos, beaucoup plus discrets que le score.
     ctx.textAlign='center';
-    ctx.fillStyle='#ffffff';
+    ctx.fillStyle='rgba(255,255,255,.96)';
+    ctx.shadowColor='rgba(0,0,0,.5)';
+    ctx.shadowBlur=4;
 
-    fitText(ctx,String(item.home_team).toUpperCase(),330,30,18,EDO,400);
-    ctx.fillText(String(item.home_team).toUpperCase(),242,675);
+    fitText(ctx,String(item.home_team||'').toUpperCase(),390,29,17,EDO,400);
+    ctx.fillText(String(item.home_team||'').toUpperCase(),247,710);
 
-    fitText(ctx,String(item.away_team).toUpperCase(),330,30,18,EDO,400);
-    ctx.fillText(String(item.away_team).toUpperCase(),838,675);
+    fitText(ctx,String(item.away_team||'').toUpperCase(),390,29,17,EDO,400);
+    ctx.fillText(String(item.away_team||'').toUpperCase(),833,710);
 
-    ctx.fillStyle='#f4cc14';
-    ctx.font=`400 118px ${EDO}`;
-    ctx.fillText(`${item.home_score} - ${item.away_score}`,540,885);
+    // Score : élément principal du bas du visuel.
+    ctx.shadowBlur=7;
+    ctx.fillStyle='#f5d31b';
+    ctx.font=`400 154px ${EDO}`;
+    ctx.fillText(`${item.home_score} - ${item.away_score}`,540,940);
 
-    ctx.fillStyle='#ffffff';
-    ctx.font=`400 42px ${EDO}`;
-    ctx.fillText(resultLabel(item),540,980);
-
-    if(item.competition){
-      fitText(ctx,String(item.competition).toUpperCase(),760,20,14,TEXT,900);
-      ctx.fillStyle='rgba(255,255,255,.92)';
-      ctx.fillText(String(item.competition).toUpperCase(),540,1030);
-    }
+    // Le visuel de référence reste volontairement épuré :
+    // pas de "victoire/défaite" ni de compétition au milieu.
+    ctx.shadowBlur=0;
 
     await drawFooter(ctx);
   }
@@ -470,51 +508,45 @@
     drawHeader(ctx,item);
 
     if(pages>1){
-      ctx.fillStyle='rgba(255,255,255,.94)';
-      ctx.font=`900 16px ${TEXT}`;
+      ctx.fillStyle='rgba(255,255,255,.78)';
+      ctx.font=`900 15px ${TEXT}`;
       ctx.textAlign='center';
-      ctx.fillText(`VISUEL ${page+1}/${pages}`,540,315);
+      ctx.fillText(`VISUEL ${page+1}/${pages}`,540,332);
     }
 
-    let y=405;
+    let y=392;
 
     for(const g of games){
-      ctx.fillStyle='rgba(0,0,0,.34)';
-      roundedRect(ctx,62,y-18,956,128,24);
+      ctx.save();
+      ctx.fillStyle='rgba(5,5,6,.72)';
+      ctx.strokeStyle='rgba(245,211,27,.35)';
+      ctx.lineWidth=2;
+      roundedRect(ctx,48,y-18,984,140,24);
       ctx.fill();
+      ctx.stroke();
+      ctx.restore();
 
       await Promise.all([
-        drawTeamLogo(ctx,g.home_team,82,y-6,92),
-        drawTeamLogo(ctx,g.away_team,906,y-6,92)
+        drawTeamLogo(ctx,g.home_team,66,y-6,104),
+        drawTeamLogo(ctx,g.away_team,910,y-6,104)
       ]);
 
       ctx.fillStyle='#ffffff';
 
       ctx.textAlign='left';
-      fitText(ctx,g.home_team,285,22,14,TEXT,900);
-      ctx.fillText(g.home_team,190,y+40);
+      fitText(ctx,g.home_team,292,22,14,TEXT,900);
+      ctx.fillText(g.home_team,190,y+48);
 
       ctx.textAlign='right';
-      fitText(ctx,g.away_team,285,22,14,TEXT,900);
-      ctx.fillText(g.away_team,888,y+40);
+      fitText(ctx,g.away_team,292,22,14,TEXT,900);
+      ctx.fillText(g.away_team,890,y+48);
 
-      ctx.fillStyle='#8b1047';
-      roundedRect(ctx,434,y+4,212,66,18);
-      ctx.fill();
-
-      ctx.fillStyle='#f4cc14';
       ctx.textAlign='center';
-      ctx.font=`400 44px ${EDO}`;
-      ctx.fillText(`${g.home_score} - ${g.away_score}`,540,y+50);
+      ctx.fillStyle='#f5d31b';
+      ctx.font=`400 54px ${EDO}`;
+      ctx.fillText(`${g.home_score} - ${g.away_score}`,540,y+58);
 
-      y+=138;
-    }
-
-    if(item.competition){
-      ctx.fillStyle='rgba(255,255,255,.92)';
-      ctx.textAlign='center';
-      fitText(ctx,String(item.competition).toUpperCase(),760,18,13,TEXT,900);
-      ctx.fillText(String(item.competition).toUpperCase(),540,1120);
+      y+=151;
     }
 
     await drawFooter(ctx);
