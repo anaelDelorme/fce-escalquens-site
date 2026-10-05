@@ -21,7 +21,7 @@
   const EDO='"Edo SZ",Impact,"Arial Narrow",Arial,sans-serif';
   const TEXT='Arial,sans-serif';
   const FCE={id:'fce',name:'FC Escalquens',url:'/logo-fce.png',kind:'team_logo'};
-  const BUILTIN_BG={id:'',name:'Fond résultats FCE',url:'',kind:'background'};
+  const BUILTIN_BG={id:'',name:'Style FCE officiel',url:'',kind:'background'};
 
   let publicAssets=[];
   let adminAssets=[];
@@ -94,7 +94,7 @@
     return id?(backgrounds().find(a=>String(a.id)===id)||BUILTIN_BG):BUILTIN_BG;
   }
   function backgroundOptions(value=''){
-    return `<option value="" ${!value?'selected':''}>Fond résultats FCE</option>`+
+    return `<option value="" ${!value?'selected':''}>Style FCE officiel</option>`+
       backgrounds().map(a=>`<option value="${a.id}" ${String(a.id)===String(value)?'selected':''}>${esc(a.name)}</option>`).join('');
   }
   function fillBackgroundSelect(){
@@ -233,47 +233,290 @@
 
   async function paintBackground(ctx,item){
     const image=await loadImage(assetUrl(chosenBackground(item)));
-    const gradient=ctx.createLinearGradient(0,0,1080,1350);
-    gradient.addColorStop(0,'#1a0508');gradient.addColorStop(.18,'#43070f');gradient.addColorStop(.48,'#09090b');gradient.addColorStop(.78,'#2c0308');gradient.addColorStop(1,'#7d0a10');
-    ctx.fillStyle=gradient;ctx.fillRect(0,0,1080,1350);
-    if(image){ctx.save();ctx.globalAlpha=.25;drawCover(ctx,image,0,0,1080,1350);ctx.restore();}
-    const glow=ctx.createRadialGradient(90,70,20,90,70,520);glow.addColorStop(0,'rgba(255,35,20,.92)');glow.addColorStop(.4,'rgba(215,16,14,.52)');glow.addColorStop(1,'rgba(215,16,14,0)');ctx.fillStyle=glow;ctx.fillRect(0,0,1080,500);
-    ctx.save();ctx.strokeStyle='rgba(255,255,255,.10)';ctx.lineWidth=2;for(const o of [-160,-70,20,120,210,320]){ctx.beginPath();ctx.moveTo(o,170);ctx.lineTo(o+620,-10);ctx.stroke();}ctx.restore();
-    const card=ctx.createLinearGradient(40,285,1035,1110);card.addColorStop(0,'#f6d840');card.addColorStop(.55,'#f4d648');card.addColorStop(1,'#eccd40');ctx.fillStyle=card;roundedRect(ctx,14,255,1052,915,88);ctx.fill();
+
+    const base=ctx.createLinearGradient(0,0,1080,1350);
+    base.addColorStop(0,'#09090b');
+    base.addColorStop(.45,'#0d0b0d');
+    base.addColorStop(1,'#120609');
+    ctx.fillStyle=base;
+    ctx.fillRect(0,0,1080,1350);
+
+    if(image){
+      ctx.save();
+      ctx.globalAlpha=.16;
+      drawCover(ctx,image,0,0,1080,1350);
+      ctx.restore();
+    }
+
+    const glowTop=ctx.createRadialGradient(80,40,20,80,40,420);
+    glowTop.addColorStop(0,'rgba(255,45,25,.95)');
+    glowTop.addColorStop(.32,'rgba(210,15,20,.58)');
+    glowTop.addColorStop(1,'rgba(210,15,20,0)');
+    ctx.fillStyle=glowTop;
+    ctx.fillRect(0,0,470,380);
+
+    const glowBottom=ctx.createRadialGradient(1030,1300,30,1030,1300,520);
+    glowBottom.addColorStop(0,'rgba(255,35,20,.92)');
+    glowBottom.addColorStop(.35,'rgba(210,15,20,.52)');
+    glowBottom.addColorStop(1,'rgba(210,15,20,0)');
+    ctx.fillStyle=glowBottom;
+    ctx.fillRect(540,860,540,490);
+
+    ctx.save();
+    ctx.globalAlpha=.95;
+
+    ctx.fillStyle='#9f0f18';
+    ctx.beginPath();
+    ctx.moveTo(0,0);
+    ctx.lineTo(255,0);
+    ctx.lineTo(155,110);
+    ctx.lineTo(28,150);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle='#d0161d';
+    ctx.beginPath();
+    ctx.moveTo(860,1110);
+    ctx.lineTo(1080,995);
+    ctx.lineTo(1080,1350);
+    ctx.lineTo(665,1350);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle='rgba(210,18,24,.86)';
+    ctx.beginPath();
+    ctx.moveTo(900,310);
+    ctx.lineTo(1080,255);
+    ctx.lineTo(1080,535);
+    ctx.lineTo(955,505);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+
+    ctx.save();
+    ctx.strokeStyle='rgba(255,255,255,.14)';
+    ctx.lineWidth=2;
+    for(const offset of [-150,-60,30,120,210,300]){
+      ctx.beginPath();
+      ctx.moveTo(offset,180);
+      ctx.lineTo(offset+620,-10);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    ctx.save();
+    for(let row=0;row<8;row++){
+      for(let col=0;col<9-row;col++){
+        const x=28+col*20;
+        const y=138+row*20;
+        const r=Math.max(2,8-row*.7);
+        ctx.beginPath();
+        ctx.fillStyle=`rgba(220,28,32,${0.28-row*0.02})`;
+        ctx.arc(x,y,r,0,Math.PI*2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+
+    ctx.save();
+    for(let row=0;row<7;row++){
+      for(let col=0;col<10-row;col++){
+        const x=1060-(col*18);
+        const y=1288-(row*18);
+        const r=Math.max(2,7-row*.65);
+        ctx.beginPath();
+        ctx.fillStyle=`rgba(220,28,32,${0.26-row*0.02})`;
+        ctx.arc(x,y,r,0,Math.PI*2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+
+    const panel=ctx.createLinearGradient(90,250,990,1110);
+    panel.addColorStop(0,'rgba(0,0,0,.18)');
+    panel.addColorStop(.5,'rgba(0,0,0,.12)');
+    panel.addColorStop(1,'rgba(0,0,0,.18)');
+    ctx.fillStyle=panel;
+    roundedRect(ctx,55,245,970,905,48);
+    ctx.fill();
   }
+
   function drawHeader(ctx,item){
-    ctx.textAlign='center';ctx.fillStyle='#f4cc14';ctx.font=`400 82px ${EDO}`;ctx.fillText('RÉSULTATS',540,120);ctx.fillRect(415,150,250,7);
-    ctx.fillStyle='#111';ctx.font=`400 50px ${EDO}`;ctx.fillText(item.category||'ÉQUIPE',540,330);ctx.font=`900 20px ${TEXT}`;ctx.fillText(displayDate(item.starts_at),540,365);
+    ctx.textAlign='center';
+
+    ctx.fillStyle='#f3cc16';
+    ctx.font=`400 88px ${EDO}`;
+    ctx.fillText('RÉSULTATS',540,120);
+
+    ctx.fillRect(415,150,250,7);
+
+    ctx.fillStyle='#ffffff';
+    ctx.font=`400 58px ${EDO}`;
+    ctx.fillText(item.category||'ÉQUIPE',540,245);
+
+    ctx.fillStyle='rgba(255,255,255,.92)';
+    ctx.font=`900 18px ${TEXT}`;
+    ctx.fillText(displayDate(item.starts_at),540,285);
   }
+
   async function drawFooter(ctx){
     const crest=await loadImage('/logo-fce.png',2500);
-    ctx.fillStyle='rgba(9,9,11,.91)';ctx.fillRect(0,1170,1080,180);
-    ctx.textAlign='left';ctx.fillStyle='#f4cc14';ctx.font=`900 26px ${TEXT}`;ctx.fillText('@FCEscalquens',68,1288);
-    if(crest)drawContain(ctx,crest,390,1138,300,175);
-    ctx.fillStyle='#3159d5';roundedRect(ctx,796,1218,72,72,17);ctx.fill();ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';ctx.font=`900 54px Arial`;ctx.fillText('f',832,1256);
-    const ig=ctx.createLinearGradient(900,1215,980,1295);ig.addColorStop(0,'#5b51d8');ig.addColorStop(.46,'#c13584');ig.addColorStop(.73,'#e1306c');ig.addColorStop(1,'#feda75');ctx.fillStyle=ig;roundedRect(ctx,904,1218,72,72,18);ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=5;roundedRect(ctx,921,1235,38,38,10);ctx.stroke();ctx.beginPath();ctx.arc(940,1254,10,0,Math.PI*2);ctx.stroke();ctx.beginPath();ctx.arc(956,1238,3.5,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();ctx.textBaseline='alphabetic';
+
+    ctx.fillStyle='rgba(0,0,0,.18)';
+    ctx.fillRect(0,1170,1080,180);
+
+    ctx.textAlign='left';
+    ctx.fillStyle='#f4cc14';
+    ctx.font=`900 28px ${TEXT}`;
+    ctx.fillText('@FCEscalquens',62,1287);
+
+    if(crest){
+      drawContain(ctx,crest,404,1146,270,168);
+    }
+
+    ctx.fillStyle='#3159d5';
+    roundedRect(ctx,805,1215,72,72,17);
+    ctx.fill();
+
+    ctx.fillStyle='#fff';
+    ctx.textAlign='center';
+    ctx.textBaseline='middle';
+    ctx.font='900 54px Arial';
+    ctx.fillText('f',841,1251);
+
+    const ig=ctx.createLinearGradient(910,1215,990,1295);
+    ig.addColorStop(0,'#5b51d8');
+    ig.addColorStop(.46,'#c13584');
+    ig.addColorStop(.73,'#e1306c');
+    ig.addColorStop(1,'#feda75');
+
+    ctx.fillStyle=ig;
+    roundedRect(ctx,914,1215,72,72,18);
+    ctx.fill();
+
+    ctx.strokeStyle='#fff';
+    ctx.lineWidth=5;
+    roundedRect(ctx,931,1232,38,38,10);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(950,1251,10,0,Math.PI*2);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(966,1235,3.5,0,Math.PI*2);
+    ctx.fillStyle='#fff';
+    ctx.fill();
+
+    ctx.textBaseline='alphabetic';
   }
 
   async function drawMatch(canvas,item){
-    canvas.width=1080;canvas.height=1350;const ctx=canvas.getContext('2d');
-    await Promise.all([ensureFont(),paintBackground(ctx,item)]);drawHeader(ctx,item);
-    await Promise.all([drawTeamLogo(ctx,item.home_team,108,430,215),drawTeamLogo(ctx,item.away_team,756,430,215)]);
-    ctx.fillStyle='#151214';ctx.textAlign='center';fitText(ctx,String(item.home_team).toUpperCase(),320,32,19,EDO,400);ctx.fillText(String(item.home_team).toUpperCase(),215,692);fitText(ctx,String(item.away_team).toUpperCase(),320,32,19,EDO,400);ctx.fillText(String(item.away_team).toUpperCase(),864,692);
-    ctx.fillStyle='#8b1047';roundedRect(ctx,278,735,524,160,28);ctx.fill();ctx.fillStyle='#f4cc14';ctx.font=`400 112px ${EDO}`;ctx.fillText(`${item.home_score} - ${item.away_score}`,540,850);
-    ctx.fillStyle='#121214';ctx.font=`400 44px ${EDO}`;ctx.fillText(resultLabel(item),540,965);
-    if(item.competition){fitText(ctx,String(item.competition).toUpperCase(),720,22,14,TEXT,900);ctx.fillStyle='#4b4144';ctx.fillText(String(item.competition).toUpperCase(),540,1015);}
+    canvas.width=1080;
+    canvas.height=1350;
+
+    const ctx=canvas.getContext('2d');
+
+    await Promise.all([
+      ensureFont(),
+      paintBackground(ctx,item)
+    ]);
+
+    drawHeader(ctx,item);
+
+    await Promise.all([
+      drawTeamLogo(ctx,item.home_team,105,335,275),
+      drawTeamLogo(ctx,item.away_team,700,335,275)
+    ]);
+
+    ctx.textAlign='center';
+    ctx.fillStyle='#ffffff';
+
+    fitText(ctx,String(item.home_team).toUpperCase(),330,30,18,EDO,400);
+    ctx.fillText(String(item.home_team).toUpperCase(),242,675);
+
+    fitText(ctx,String(item.away_team).toUpperCase(),330,30,18,EDO,400);
+    ctx.fillText(String(item.away_team).toUpperCase(),838,675);
+
+    ctx.fillStyle='#f4cc14';
+    ctx.font=`400 118px ${EDO}`;
+    ctx.fillText(`${item.home_score} - ${item.away_score}`,540,885);
+
+    ctx.fillStyle='#ffffff';
+    ctx.font=`400 42px ${EDO}`;
+    ctx.fillText(resultLabel(item),540,980);
+
+    if(item.competition){
+      fitText(ctx,String(item.competition).toUpperCase(),760,20,14,TEXT,900);
+      ctx.fillStyle='rgba(255,255,255,.92)';
+      ctx.fillText(String(item.competition).toUpperCase(),540,1030);
+    }
+
     await drawFooter(ctx);
   }
+
   async function drawPlateau(canvas,item,games,page,pages){
-    canvas.width=1080;canvas.height=1350;const ctx=canvas.getContext('2d');await Promise.all([ensureFont(),paintBackground(ctx,item)]);drawHeader(ctx,item);
-    if(pages>1){ctx.fillStyle='#161214';ctx.font=`900 16px ${TEXT}`;ctx.textAlign='center';ctx.fillText(`VISUEL ${page+1}/${pages}`,540,397);}
-    let y=430;
-    for(const g of games){
-      ctx.fillStyle='rgba(255,255,255,.48)';roundedRect(ctx,55,y-25,970,125,22);ctx.fill();
-      await Promise.all([drawTeamLogo(ctx,g.home_team,70,y-15,94),drawTeamLogo(ctx,g.away_team,916,y-15,94)]);
-      ctx.fillStyle='#141214';ctx.textAlign='left';fitText(ctx,g.home_team,275,22,14,TEXT,900);ctx.fillText(g.home_team,182,y+40);ctx.textAlign='right';fitText(ctx,g.away_team,275,22,14,TEXT,900);ctx.fillText(g.away_team,894,y+40);
-      ctx.fillStyle='#8b1047';roundedRect(ctx,438,y-4,204,78,18);ctx.fill();ctx.textAlign='center';ctx.fillStyle='#f4cc14';ctx.font=`400 47px ${EDO}`;ctx.fillText(`${g.home_score} - ${g.away_score}`,540,y+52);y+=138;
+    canvas.width=1080;
+    canvas.height=1350;
+
+    const ctx=canvas.getContext('2d');
+
+    await Promise.all([
+      ensureFont(),
+      paintBackground(ctx,item)
+    ]);
+
+    drawHeader(ctx,item);
+
+    if(pages>1){
+      ctx.fillStyle='rgba(255,255,255,.94)';
+      ctx.font=`900 16px ${TEXT}`;
+      ctx.textAlign='center';
+      ctx.fillText(`VISUEL ${page+1}/${pages}`,540,315);
     }
+
+    let y=405;
+
+    for(const g of games){
+      ctx.fillStyle='rgba(0,0,0,.34)';
+      roundedRect(ctx,62,y-18,956,128,24);
+      ctx.fill();
+
+      await Promise.all([
+        drawTeamLogo(ctx,g.home_team,82,y-6,92),
+        drawTeamLogo(ctx,g.away_team,906,y-6,92)
+      ]);
+
+      ctx.fillStyle='#ffffff';
+
+      ctx.textAlign='left';
+      fitText(ctx,g.home_team,285,22,14,TEXT,900);
+      ctx.fillText(g.home_team,190,y+40);
+
+      ctx.textAlign='right';
+      fitText(ctx,g.away_team,285,22,14,TEXT,900);
+      ctx.fillText(g.away_team,888,y+40);
+
+      ctx.fillStyle='#8b1047';
+      roundedRect(ctx,434,y+4,212,66,18);
+      ctx.fill();
+
+      ctx.fillStyle='#f4cc14';
+      ctx.textAlign='center';
+      ctx.font=`400 44px ${EDO}`;
+      ctx.fillText(`${g.home_score} - ${g.away_score}`,540,y+50);
+
+      y+=138;
+    }
+
+    if(item.competition){
+      ctx.fillStyle='rgba(255,255,255,.92)';
+      ctx.textAlign='center';
+      fitText(ctx,String(item.competition).toUpperCase(),760,18,13,TEXT,900);
+      ctx.fillText(String(item.competition).toUpperCase(),540,1120);
+    }
+
     await drawFooter(ctx);
   }
 
