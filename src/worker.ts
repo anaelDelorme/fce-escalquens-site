@@ -20,7 +20,7 @@ const tables = new Set([
   "documents", "club_members", "team_staff", "admins", "venues",
   "competition_levels", "seasons", "sponsors", "site_media", "home_slides",
   "shop_categories", "shop_products", "shop_settings", "sponsor_packages", "recruitment_posts",
-  "about_sections"
+  "about_sections", "social_visual_assets"
 ]);
 
 const editable: Record<string, string[]> = {
@@ -75,6 +75,14 @@ const editable: Record<string, string[]> = {
     "layout",
     "display_order",
     "active"
+  ],
+  social_visual_assets: [
+    "kind",
+    "name",
+    "aliases",
+    "object_key",
+    "display_order",
+    "active"
   ]
 };
 
@@ -95,7 +103,8 @@ const defaultOrder: Record<string, string> = {
   shop_products: "display_order ASC, name COLLATE NOCASE ASC",
   shop_settings: "id ASC",
   recruitment_posts: "display_order ASC, id DESC",
-  about_sections: "display_order ASC, id ASC"
+  about_sections: "display_order ASC, id ASC",
+  social_visual_assets: "kind ASC, display_order ASC, name COLLATE NOCASE ASC"
 };
 
 function json(data: unknown, status = 200) {
@@ -346,6 +355,25 @@ async function pageData(env: Env, url: URL) {
   const page = url.pathname.slice("/api/page/".length);
   const activeSeason = "(SELECT id FROM seasons WHERE active=1 LIMIT 1)";
   const now = new Date().toISOString();
+
+  if (page === "social-assets") {
+    const rows = await env.DB.prepare(`
+      SELECT
+        id,
+        kind,
+        name,
+        aliases,
+        object_key,
+        display_order
+      FROM social_visual_assets
+      WHERE active=1
+      ORDER BY kind,display_order,name COLLATE NOCASE
+    `).all<AnyRow>();
+
+    return publicJson({
+      assets: resultRows(rows)
+    });
+  }
 
   if (page === "about") {
     const rows = await env.DB.prepare(`
@@ -746,6 +774,7 @@ async function cachedPageData(request: Request, env: Env, url: URL, ctx: Executi
   if (
     url.pathname === "/api/page/team-profile"
     || url.pathname === "/api/page/shop"
+    || url.pathname === "/api/page/social-assets"
   ) {
     const response = await pageData(env, url);
     const headers = new Headers(response.headers);
