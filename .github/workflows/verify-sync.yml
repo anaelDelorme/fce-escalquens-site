@@ -1,0 +1,26 @@
+name: Vérifier la synchronisation FFF
+on:
+  pull_request:
+    paths:
+      - 'src/worker.ts'
+      - 'scripts/**'
+      - 'migrations/**'
+      - 'tests/**'
+      - 'package*.json'
+      - '.github/workflows/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test:sync
+      - run: npm run build

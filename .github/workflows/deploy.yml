@@ -11,6 +11,8 @@ jobs:
       - uses: actions/setup-node@v7
         with: {node-version: 24, cache: npm}
       - run: npm ci
+      - name: Tester les invariants FFF avant déploiement
+        run: npm run test:sync
       - run: npm run build
       - name: Appliquer les migrations D1
         run: npx wrangler d1 migrations apply DB --remote

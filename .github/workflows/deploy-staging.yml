@@ -28,6 +28,9 @@ jobs:
       - name: Installer les dépendances
         run: npm ci
 
+      - name: Tester les invariants FFF avant déploiement
+        run: npm run test:sync
+
       - name: Construire le site
         run: npm run build
 
