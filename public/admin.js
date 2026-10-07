@@ -1,5 +1,5 @@
 const schemas={
-  teams:['name','group_name','level_id','gender','description','player_count','photo_key','active'],
+  teams:['name','group_name','level_id','gender','description','player_count','photo_key','display_order','active'],
   team_competitions:['team_id','season_id','name','team_number','fff_team_id','category_code','competition_name','division','pool','level_id','active'],
   competition_levels:['name','short_name','description','active'],
   venues:['name','address','latitude','longitude','maps_url','notes','active'],

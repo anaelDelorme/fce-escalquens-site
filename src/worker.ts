@@ -87,7 +87,7 @@ const editable: Record<string, string[]> = {
 };
 
 const defaultOrder: Record<string, string> = {
-  teams: "name COLLATE NOCASE ASC",
+  teams: "display_order ASC, name COLLATE NOCASE ASC",
   club_members: "full_name COLLATE NOCASE ASC",
   matches: "starts_at ASC",
   match_participants: "match_id ASC, display_order ASC",
@@ -398,7 +398,7 @@ async function pageData(env: Env, url: URL) {
 
   if (page === "teams") {
     const rows = await env.DB.prepare(`SELECT
-      t.id,t.slug,t.name,t.category,t.group_name,t.level,t.gender,t.player_count,t.photo_key,
+      t.id,t.slug,t.name,t.category,t.group_name,t.level,t.gender,t.player_count,t.photo_key,t.display_order,
       (SELECT label FROM seasons WHERE active=1 ORDER BY id DESC LIMIT 1) AS season_label,
       CASE
         WHEN TRIM(COALESCE(t.photo_key,''))<>'' THEN '/media/' || t.photo_key
@@ -408,7 +408,8 @@ async function pageData(env: Env, url: URL) {
       CASE WHEN TRIM(COALESCE(t.photo_key,''))<>'' THEN 'Photo du groupe ' || t.name
         ELSE COALESCE(NULLIF(sm.alt_text,''),'Visuel par défaut du FC Escalquens') END AS photo_alt
       FROM teams t LEFT JOIN site_media sm ON sm.slot='team_default'
-      WHERE t.active=1 ORDER BY t.name COLLATE NOCASE ASC`).all<AnyRow>();
+      WHERE t.active=1
+      ORDER BY t.display_order ASC, t.name COLLATE NOCASE ASC`).all<AnyRow>();
     return publicJson({ teams: resultRows(rows) });
   }
 
@@ -773,6 +774,7 @@ async function pageData(env: Env, url: URL) {
 async function cachedPageData(request: Request, env: Env, url: URL, ctx: ExecutionContext) {
   if (
     url.pathname === "/api/page/team-profile"
+    || url.pathname === "/api/page/teams"
     || url.pathname === "/api/page/shop"
     || url.pathname === "/api/page/social-assets"
   ) {

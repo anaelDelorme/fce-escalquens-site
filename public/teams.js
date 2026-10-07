@@ -65,8 +65,11 @@ function draw(group=''){
   }).join('')||'<p>Aucune équipe dans cette section.</p>';
 }
 
-fetch('/api/page/teams?v=4').then(response=>response.json()).then(data=>{
-  teams=(data.teams||[]).sort((a,b)=>String(a.name).localeCompare(String(b.name),'fr',{numeric:true,sensitivity:'base'}));
+fetch('/api/page/teams?v=5').then(response=>response.json()).then(data=>{
+  teams=(data.teams||[]).sort((a,b)=>
+    Number(a.display_order||0)-Number(b.display_order||0)
+    ||String(a.name).localeCompare(String(b.name),'fr',{numeric:true,sensitivity:'base'})
+  );
   draw();
 });
 
