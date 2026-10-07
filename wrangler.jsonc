@@ -3,6 +3,16 @@
 	"name": "fce-escalquens",
 	"main": "src/worker.ts",
 	"compatibility_date": "2026-08-31",
+	"routes": [
+		{
+			"pattern": "fcescalquens.fr",
+			"custom_domain": true
+		},
+		{
+			"pattern": "www.fcescalquens.fr",
+			"custom_domain": true
+		}
+		],
 	"assets": {
 		"directory": "./dist",
 		"binding": "ASSETS",
