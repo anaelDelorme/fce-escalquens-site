@@ -417,7 +417,16 @@ async function save(event){
     values.layout=String(values.layout||'feature').trim()||'feature';
     values.display_order=Number.isFinite(Number(values.display_order))?Number(values.display_order):0;
   }
-  if(current==='teams'){const level=references.competition_levels.find(item=>String(item.id)===String(values.level_id));values.slug=editingRow.slug||slugify(values.name);values.category=editingRow.category||values.name;values.level=level?.name||'';values.player_count=values.player_count??0;values.display_order=editingRow.display_order??0;}
+  if(current==='teams'){
+    const level=references.competition_levels.find(item=>String(item.id)===String(values.level_id));
+    values.slug=editingRow.slug||slugify(values.name);
+    values.category=editingRow.category||values.name;
+    values.level=level?.name||'';
+    values.player_count=values.player_count??0;
+    values.display_order=Number.isFinite(Number(values.display_order))
+      ?Number(values.display_order)
+      :0;
+  }
   if(current==='training_sessions'){const team=references.teams.find(item=>String(item.id)===String(values.team_id));const venue=references.venues.find(item=>String(item.id)===String(values.venue_id));values.category=team?.category||team?.name||editingRow.category||'';values.venue=venue?.name||'';values.address=venue?.address||'';}
   if(current==='tournaments'){const venue=references.venues.find(item=>String(item.id)===String(values.venue_id));values.slug=editingRow.slug||slugify(values.name);values.venue=venue?.name||editingRow.venue||'';values.categories=JSON.stringify([...form.querySelectorAll('[data-category-choice]:checked')].map(input=>input.value));}
   if(current==='matches'){const team=references.teams.find(item=>String(item.id)===String(values.team_id));values.source=editingRow.source||'manual';values.source_id=editingRow.source_id||`manual-${Date.now()}`;values.category=team?.category||team?.name||'';values.event_type='friendly';values.manually_created=1;values.time_confirmed=1;values.raw_json='{}';}
