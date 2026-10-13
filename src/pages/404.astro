@@ -1,0 +1,281 @@
+---
+const title = "404 — Page introuvable";
+---
+
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title}</title>
+    <meta name="robots" content="noindex" />
+    <style>
+      :root {
+        --fce-bg: #f4efe7;
+        --fce-card: #fffaf5;
+        --fce-text: #221b1b;
+        --fce-red: #b51f1f;
+        --fce-dark-red: #7f1212;
+        --fce-yellow: #f0c400;
+        --fce-border: #e5d8c9;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: Inter, Arial, Helvetica, sans-serif;
+        color: var(--fce-text);
+        background:
+          radial-gradient(circle at top left, rgba(181,31,31,0.08), transparent 28%),
+          radial-gradient(circle at bottom right, rgba(240,196,0,0.10), transparent 22%),
+          var(--fce-bg);
+        min-height: 100vh;
+      }
+
+      .wrap {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 32px 20px;
+      }
+
+      .card {
+        width: 100%;
+        max-width: 920px;
+        background: var(--fce-card);
+        border: 1px solid var(--fce-border);
+        border-radius: 28px;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.08);
+        overflow: hidden;
+      }
+
+      .topbar {
+        height: 8px;
+        background: linear-gradient(90deg, var(--fce-yellow), var(--fce-red));
+      }
+
+      .content {
+        display: grid;
+        grid-template-columns: 1.05fr 0.95fr;
+        gap: 28px;
+        padding: 40px;
+        align-items: center;
+      }
+
+      .eyebrow {
+        margin: 0 0 12px;
+        color: var(--fce-red);
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        font-size: 0.8rem;
+        font-weight: 800;
+      }
+
+      .code404 {
+        margin: 0;
+        font-size: clamp(4.5rem, 10vw, 7rem);
+        line-height: 0.9;
+        font-weight: 900;
+        color: var(--fce-red);
+      }
+
+      h1 {
+        margin: 10px 0 14px;
+        font-size: clamp(2rem, 4vw, 3rem);
+        line-height: 1.02;
+        letter-spacing: -0.02em;
+      }
+
+      .lead {
+        margin: 0 0 18px;
+        font-size: 1.08rem;
+        line-height: 1.65;
+        color: #4b3f3f;
+      }
+
+      .fun {
+        display: inline-block;
+        margin-bottom: 22px;
+        padding: 10px 14px;
+        border-radius: 999px;
+        background: rgba(240,196,0,0.16);
+        color: #6a4d00;
+        font-weight: 700;
+        font-size: 0.95rem;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      .btn {
+        appearance: none;
+        text-decoration: none;
+        border-radius: 14px;
+        padding: 14px 18px;
+        font-weight: 800;
+        transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+      }
+
+      .btn:hover {
+        transform: translateY(-1px);
+      }
+
+      .btn-primary {
+        background: var(--fce-yellow);
+        color: #221b1b;
+        box-shadow: 6px 6px 0 var(--fce-red);
+      }
+
+      .btn-secondary {
+        background: white;
+        color: var(--fce-red);
+        border: 1px solid var(--fce-border);
+      }
+
+      .visual {
+        position: relative;
+        min-height: 360px;
+        border-radius: 24px;
+        background:
+          linear-gradient(145deg, rgba(181,31,31,0.95), rgba(52,10,10,0.98));
+        overflow: hidden;
+        display: grid;
+        place-items: center;
+        isolation: isolate;
+      }
+
+      .visual::before,
+      .visual::after {
+        content: "";
+        position: absolute;
+        border-radius: 50%;
+        opacity: 0.18;
+        z-index: 0;
+      }
+
+      .visual::before {
+        width: 280px;
+        height: 280px;
+        background: var(--fce-yellow);
+        top: -70px;
+        right: -70px;
+      }
+
+      .visual::after {
+        width: 180px;
+        height: 180px;
+        background: white;
+        left: -40px;
+        bottom: -40px;
+      }
+
+      .ball {
+        position: relative;
+        width: min(250px, 60vw);
+        aspect-ratio: 1;
+        border-radius: 50%;
+        background:
+          radial-gradient(circle at 35% 35%, #ffffff 0 32%, #ececec 32% 100%);
+        box-shadow:
+          inset -12px -12px 24px rgba(0,0,0,0.10),
+          0 24px 40px rgba(0,0,0,0.25);
+        z-index: 1;
+        display: grid;
+        place-items: center;
+      }
+
+      .ball::before {
+        content: "⚽";
+        font-size: clamp(4rem, 8vw, 5.6rem);
+        filter: drop-shadow(0 2px 0 rgba(0,0,0,0.15));
+      }
+
+      .stamp {
+        position: absolute;
+        bottom: 26px;
+        right: 26px;
+        background: rgba(255,255,255,0.16);
+        color: white;
+        border: 1px solid rgba(255,255,255,0.18);
+        padding: 10px 14px;
+        border-radius: 999px;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        backdrop-filter: blur(6px);
+        z-index: 1;
+      }
+
+      .shadow-text {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        font-size: clamp(5rem, 14vw, 9rem);
+        font-weight: 900;
+        color: rgba(255,255,255,0.06);
+        letter-spacing: 0.06em;
+        z-index: 0;
+        user-select: none;
+      }
+
+      @media (max-width: 860px) {
+        .content {
+          grid-template-columns: 1fr;
+          padding: 26px;
+        }
+
+        .visual {
+          order: -1;
+          min-height: 280px;
+        }
+
+        .actions {
+          flex-direction: column;
+        }
+
+        .btn {
+          text-align: center;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <section class="card">
+        <div class="topbar"></div>
+
+        <div class="content">
+          <div>
+            <p class="eyebrow">Erreur de match</p>
+            <p class="code404">404</p>
+            <h1>Oups… cette page est partie en touche&nbsp;!</h1>
+            <p class="lead">
+              Le ballon a roulé un peu trop loin :
+              la page que vous cherchez n’existe pas, ou a été déplacée.
+            </p>
+
+            <div class="fun">Carton rouge pour cette URL 😄</div>
+
+            <div class="actions">
+              <a class="btn btn-primary" href="/">Retour à l’accueil</a>
+              <a class="btn btn-secondary" href="/equipes/">Voir les équipes</a>
+              <a class="btn btn-secondary" href="/matchs-resultats/">Voir les matchs</a>
+            </div>
+          </div>
+
+          <div class="visual" aria-hidden="true">
+            <div class="shadow-text">FCE</div>
+            <div class="ball"></div>
+            <div class="stamp">On vous remet sur le terrain</div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
