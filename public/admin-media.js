@@ -29,6 +29,7 @@
   const zoomInput=dialog.querySelector('#cropper-zoom');
   const status=dialog.querySelector('#cropper-status');
   const formatLabel=dialog.querySelector('#cropper-format');
+  const help=dialog.querySelector('.cropper-help');
   const confirmButton=dialog.querySelector('#cropper-confirm');
   let state=null;
 
@@ -52,9 +53,9 @@
 
     if(current==='sponsors'&&field==='logo_key'){
       const tier=form?.querySelector('[name="tier"]')?.value||editingRow.tier||'partenaire';
-      if(tier==='majeur')return {width:1200,height:600,label:'Partenaire majeur · 1200 × 600 · 2:1',mode:'contain'};
-      if(tier==='premium')return {width:1200,height:480,label:'Partenaire premium · 1200 × 480 · 5:2',mode:'contain'};
-      return {width:1200,height:400,label:'Partenaire · 1200 × 400 · 3:1',mode:'contain'};
+      if(tier==='majeur')return {width:1200,height:600,label:'Partenaire majeur · maximum 1200 × 600',mode:'logo'};
+      if(tier==='premium')return {width:1200,height:480,label:'Partenaire premium · maximum 1200 × 480',mode:'logo'};
+      return {width:1200,height:400,label:'Partenaire · maximum 1200 × 400',mode:'logo'};
     }
 
     if(current==='site_media'&&field==='object_key'){
@@ -85,7 +86,10 @@
   const render=()=>{
     if(!state)return;
     ctx.clearRect(0,0,canvas.width,canvas.height);
-    ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
+    if(state.profile.mode!=='logo'){
+      ctx.fillStyle='#fff';
+      ctx.fillRect(0,0,canvas.width,canvas.height);
+    }
     ctx.drawImage(state.image,state.x,state.y,state.image.naturalWidth*state.scale,state.image.naturalHeight*state.scale);
   };
 
@@ -104,11 +108,19 @@
 
     image.onload=()=>{
       const p=profile(input);
-      canvas.width=p.width;canvas.height=p.height;
+      let baseScale;
 
-      const coverScale=Math.max(canvas.width/image.naturalWidth,canvas.height/image.naturalHeight);
-      const containScale=Math.min(canvas.width/image.naturalWidth,canvas.height/image.naturalHeight);
-      const baseScale=p.mode==='contain'?containScale:coverScale;
+      if(p.mode==='logo'){
+        baseScale=Math.min(p.width/image.naturalWidth,p.height/image.naturalHeight,1);
+        canvas.width=Math.max(1,Math.round(image.naturalWidth*baseScale));
+        canvas.height=Math.max(1,Math.round(image.naturalHeight*baseScale));
+      }else{
+        canvas.width=p.width;
+        canvas.height=p.height;
+        const coverScale=Math.max(canvas.width/image.naturalWidth,canvas.height/image.naturalHeight);
+        const containScale=Math.min(canvas.width/image.naturalWidth,canvas.height/image.naturalHeight);
+        baseScale=p.mode==='contain'?containScale:coverScale;
+      }
 
       state={
         input,file,objectUrl,image,profile:p,
@@ -120,6 +132,9 @@
 
       zoomInput.value='1';
       formatLabel.textContent=p.label;
+      help.textContent=p.mode==='logo'
+        ?'Le logo conserve son ratio et sa transparence, sans marges ajoutées. Le zoom reste disponible si vous souhaitez resserrer le cadrage.'
+        :'Déplacez l’image dans le cadre puis ajustez le zoom. L’image envoyée sera convertie en WebP aux dimensions du cadre.';
       status.textContent='';
       confirmButton.disabled=false;
       render();

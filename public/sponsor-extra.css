@@ -15,22 +15,22 @@
 .sponsor-card{min-width:0;display:grid;place-items:center;background:#fff;border:1px solid #e7ddd4;border-radius:18px;text-decoration:none;overflow:hidden;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
 a.sponsor-card:hover{transform:translateY(-3px);border-color:#d9c7b9;box-shadow:0 16px 36px rgba(43,28,22,.08)}
 .sponsor-logo-box{width:100%;height:100%;display:grid;place-items:center}
-.sponsor-card img{display:block;width:100%;object-fit:contain}
+.sponsor-card img{display:block;width:100%;max-width:100%;object-fit:contain}
 .sponsor-card strong{color:var(--ink);text-align:center}
 .sponsor-logos .sponsor-card--major{min-height:220px;padding:30px 34px;border-radius:22px;box-shadow:0 10px 30px rgba(43,28,22,.055)}
-.sponsor-logos .sponsor-card--major img{height:135px}
+.sponsor-logos .sponsor-card--major img{height:160px}
 .sponsor-logos .sponsor-card--major strong{font-size:24px}
 .sponsor-logos .sponsor-card--premium{min-height:160px;padding:24px}
-.sponsor-logos .sponsor-card--premium img{height:92px}
+.sponsor-logos .sponsor-card--premium img{height:112px}
 .sponsor-logos .sponsor-card--premium strong{font-size:19px}
 .sponsor-logos .sponsor-card--partner{min-height:122px;padding:18px 20px;border-radius:15px}
-.sponsor-logos .sponsor-card--partner img{height:65px}
+.sponsor-logos .sponsor-card--partner img{height:86px}
 .sponsor-logos .sponsor-card--partner strong{font-size:15px}
 
 @media(max-width:900px){
   .sponsor-grid--major{gap:12px}
   .sponsor-logos .sponsor-card--major{min-height:185px;padding:24px}
-  .sponsor-logos .sponsor-card--major img{height:110px}
+  .sponsor-logos .sponsor-card--major img{height:137px}
   .sponsor-grid--partner{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
 @media(max-width:700px){
@@ -40,10 +40,10 @@ a.sponsor-card:hover{transform:translateY(-3px);border-color:#d9c7b9;box-shadow:
   .sponsor-group__heading h3,.sponsor-group__heading--support h3{font-size:26px}
   .sponsor-grid--major{grid-template-columns:1fr}
   .sponsor-logos .sponsor-card--major{min-height:165px;padding:22px 28px}
-  .sponsor-logos .sponsor-card--major img{height:105px}
+  .sponsor-logos .sponsor-card--major img{height:121px}
   .sponsor-grid--premium,.sponsor-grid--partner{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
   .sponsor-logos .sponsor-card--premium{min-height:125px;padding:16px}
-  .sponsor-logos .sponsor-card--premium img{height:73px}
+  .sponsor-logos .sponsor-card--premium img{height:93px}
   .sponsor-logos .sponsor-card--partner{min-height:100px;padding:13px}
-  .sponsor-logos .sponsor-card--partner img{height:54px}
+  .sponsor-logos .sponsor-card--partner img{height:74px}
 }
