@@ -40,8 +40,8 @@
     if(current==='teams'&&field==='photo_key')return {width:1600,height:900,label:'Photo d’équipe · 1600 × 900 · 16:9',mode:'cover'};
     if(current==='club_members'&&field==='photo_key')return {width:900,height:900,label:'Portrait · 900 × 900 · 1:1',mode:'cover'};
     if(current==='contacts'&&field==='photo_key')return {width:900,height:900,label:'Portrait contact · 900 × 900 · 1:1',mode:'cover'};
-    if(current==='tournaments'&&field==='image_key')return {width:1600,height:900,label:'Photo tournoi · 1600 × 900 · 16:9',mode:'cover'};
-    if(current==='tournaments'&&field==='poster_key')return {width:1200,height:1697,label:'Affiche tournoi · 1200 × 1697 · A4',mode:'contain'};
+    if(current==='tournaments'&&field==='image_key')return {width:1600,height:1000,label:'Image tournoi · cadre 1600 × 1000 · image entière',mode:'contain',minZoom:.65};
+    if(current==='tournaments'&&field==='poster_key')return {width:1200,height:1697,label:'Affiche tournoi · 1200 × 1697 · image entière',mode:'contain',minZoom:.7};
     if(current==='home_slides'&&field==='object_key')return {width:1600,height:900,label:'Diaporama accueil · 1600 × 900 · 16:9',mode:'cover'};
     if(current==='shop_products'&&field==='image_key')return {width:1200,height:900,label:'Article boutique · 1200 × 900 · 4:3',mode:'cover'};
     if(current==='shop_settings'&&field==='maintenance_image_key')return {width:1500,height:1000,label:'Boutique fermée · 1500 × 1000 · 3:2',mode:'contain'};
@@ -133,11 +133,14 @@
         dragging:false,lastX:0,lastY:0
       };
 
+      zoomInput.min=String(p.minZoom||1);
       zoomInput.value='1';
       formatLabel.textContent=p.label;
       help.textContent=p.mode==='logo'
         ?'Le logo conserve son ratio et sa transparence, sans marges ajoutées. Le zoom reste disponible si vous souhaitez resserrer le cadrage.'
-        :'Déplacez l’image dans le cadre puis ajustez le zoom. L’image envoyée sera convertie en WebP aux dimensions du cadre.';
+        :p.mode==='contain'
+          ?'L’image reste entière. Vous pouvez dézoomer pour ajouter davantage de blanc autour, ou zoomer légèrement sans rogner par défaut.'
+          :'Déplacez l’image dans le cadre puis ajustez le zoom. L’image envoyée sera convertie en WebP aux dimensions du cadre.';
       status.textContent='';
       confirmButton.disabled=false;
       render();

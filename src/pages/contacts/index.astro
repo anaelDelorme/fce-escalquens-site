@@ -11,7 +11,7 @@ import Footer from '../../components/Footer.astro';
     <link rel="stylesheet" href="/styles.css">
     <link rel="stylesheet" href="/enhancements.css?v=6">
     <link rel="stylesheet" href="/brand-charter.css">
-    <link rel="stylesheet" href="/contacts-tournaments.css?v=1">
+    <link rel="stylesheet" href="/contacts-tournaments.css?v=2">
   </head>
   <body>
     <Header/>
@@ -23,13 +23,15 @@ import Footer from '../../components/Footer.astro';
       </section>
       <section class="content contacts-content">
         <div class="contact-routing">
-          <article>
-            <span aria-hidden="true">⚽</span>
-            <div><small>Demandes concernant le club</small><a href="mailto:fcescalquens@gmail.com">fcescalquens@gmail.com</a></div>
+          <article class="contact-route-card contact-route-card--club">
+            <div class="contact-route-mark" aria-hidden="true"><img src="/logo-fce.webp" alt=""></div>
+            <div class="contact-route-copy"><small>Une question sur le club ?</small><strong>On vous répond.</strong><a href="mailto:fcescalquens@gmail.com">fcescalquens@gmail.com</a></div>
+            <span class="contact-route-arrow" aria-hidden="true">→</span>
           </article>
-          <article>
-            <span aria-hidden="true">⌘</span>
-            <div><small>Problème technique sur le site</small><a href="mailto:fcescalquens.web@gmail.com">fcescalquens.web@gmail.com</a></div>
+          <article class="contact-route-card contact-route-card--web">
+            <div class="contact-route-mark contact-route-mark--web" aria-hidden="true"><b>WEB</b></div>
+            <div class="contact-route-copy"><small>Un souci avec le site ?</small><strong>Écrivez-nous.</strong><a href="mailto:fcescalquens.web@gmail.com">fcescalquens.web@gmail.com</a></div>
+            <span class="contact-route-arrow" aria-hidden="true">→</span>
           </article>
         </div>
         <div class="contact-section-head">

@@ -432,7 +432,7 @@ async function fetchZenRows(targetUrls){
     plateauDiscovery.savedFalTotal=savedFal.length;
     plateauDiscovery.savedFalOk=savedFal.filter(item=>item.status===200).length;
     plateauDiscovery.savedFalIds=savedFal.slice(0,12).map(
-      item=>`${item.id}:${item.status}:${typeof item.body}`
+      item=>\`\${item.id}:\${item.status}:\${typeof item.body}\`
     );
 
     for(const result of savedFal.filter(item=>item.status===200)){
@@ -514,7 +514,7 @@ async function fetchZenRows(targetUrls){
         }
       }catch(error){
         plateauDiscovery.payloadErrors.push(
-          `${result.id}: ${String(error?.message||error).slice(0,120)}`
+          \`\${result.id}: \${String(error?.message||error).slice(0,120)}\`
         );
       }
     }

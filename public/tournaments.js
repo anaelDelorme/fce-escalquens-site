@@ -8,7 +8,7 @@ function visual(row){
   const source=row.image_key||row.poster_key||'';
   const posterOnly=!row.image_key&&row.poster_key;
   const image=source
-    ?`<img class="tournament-cover${posterOnly?' tournament-cover--poster':''}" src="/media/${esc(source)}" alt="${posterOnly?'Affiche':'Visuel'} du tournoi ${esc(row.name)}" loading="lazy">`
+    ?`<img class="tournament-cover ${posterOnly?'tournament-cover--poster':'tournament-cover--image'}" src="/media/${esc(source)}" alt="${posterOnly?'Affiche':'Visuel'} du tournoi ${esc(row.name)}" loading="lazy">`
     :`<div class="tournament-cover-placeholder"><img src="/logo-fce.webp" alt=""><span>FC Escalquens</span></div>`;
   const poster=row.poster_key&&row.image_key
     ?`<a class="tournament-poster-peek" href="/media/${esc(row.poster_key)}" target="_blank" rel="noopener"><img src="/media/${esc(row.poster_key)}" alt=""><span>Voir l’affiche</span></a>`
