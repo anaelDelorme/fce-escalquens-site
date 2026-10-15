@@ -53,3 +53,12 @@
   .tournament-status{left:20px;top:20px}
   .tournament-poster-peek{right:20px;bottom:20px}
 }
+
+/* Tournois — description enrichie v3 */
+.tournament-summary-rich{display:grid;gap:10px;margin:0 0 18px!important;color:#655a57;line-height:1.6;flex:1}
+.tournament-summary-rich p{margin:0}
+.tournament-summary-rich strong{color:#352426;font-weight:900}
+.tournament-summary-rich em{color:#66514d}
+.tournament-summary-rich ul{display:grid;gap:6px;margin:2px 0 0;padding:0;list-style:none}
+.tournament-summary-rich li{position:relative;padding-left:18px}
+.tournament-summary-rich li::before{content:"";position:absolute;left:1px;top:.72em;width:7px;height:7px;border-radius:50%;background:var(--gold);box-shadow:0 0 0 2px rgba(103,16,29,.09)}

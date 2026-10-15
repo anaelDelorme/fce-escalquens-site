@@ -1,6 +1,33 @@
 const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char]));
 const date=value=>value?new Date(`${value}T12:00:00`).toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}):'';
 const statusLabels={open:'Inscriptions ouvertes',published:'À venir',finished:'Terminé'};
+
+const richInline=value=>{
+  let html=esc(value);
+  html=html.replace(/\*\*([^*]+?)\*\*/g,'<strong>$1</strong>');
+  html=html.replace(/(^|[^*])\*([^*\n]+?)\*/g,'$1<em>$2</em>');
+  return html;
+};
+
+const richText=value=>{
+  const source=String(value||'').replace(/\r/g,'').trim();
+  if(!source)return '';
+
+  return source
+    .split(/\n\s*\n/)
+    .map(block=>{
+      const lines=block.split('\n');
+      const isList=lines.length>0&&lines.every(line=>/^\s*-\s+/.test(line));
+
+      if(isList){
+        return `<ul>${lines.map(line=>`<li>${richInline(line.replace(/^\s*-\s+/,''))}</li>`).join('')}</ul>`;
+      }
+
+      return `<p>${lines.map(line=>richInline(line)).join('<br>')}</p>`;
+    })
+    .join('');
+};
+
 let tournaments=[],links=[],teams=[],venues=[];
 function categories(row){try{return Array.isArray(row.categories)?row.categories:JSON.parse(row.categories||'[]')}catch{return []}}
 function participatingTeams(id){const ids=links.filter(link=>link.tournament_id===id).map(link=>link.team_id);return teams.filter(team=>ids.includes(team.id))}
@@ -32,7 +59,7 @@ function draw(){
       <div class="tournament-card-body">
         <div class="tournament-kicker">${audience.length?audience.map(item=>`<span>${esc(item)}</span>`).join(''):'<span>Toutes les équipes</span>'}</div>
         <h2>${esc(row.name)}</h2>
-        ${row.summary?`<p class="tournament-summary">${esc(row.summary)}</p>`:''}
+        ${row.summary?`<div class="tournament-summary tournament-summary-rich">${richText(row.summary)}</div>`:''}
         <dl class="tournament-facts">
           <div><dt>Date</dt><dd>${esc(date(row.starts_on))}${row.ends_on&&row.ends_on!==row.starts_on?`<small>au ${esc(date(row.ends_on))}</small>`:''}</dd></div>
           <div><dt>Lieu</dt><dd>${esc(location)}</dd></div>

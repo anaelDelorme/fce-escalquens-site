@@ -1,5 +1,5 @@
 import { browserCollectStandings } from './standings-integrated.mjs';
-const SYNC_VERSION='2026.10.15-plateaux-diag-34',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+const SYNC_VERSION='2026.10.15-plateaux-snapshot-34',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 console.log(`Collecteur FCE ${SYNC_VERSION}`);
 const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
 const endpoint=siteUrl+'/internal/sync/matches';
@@ -166,6 +166,7 @@ async function fetchZenRows(targetUrls){
     const securityToken=entries.find(([key])=>key==='VLJAXE')?.[1]||entries.find(([key,value])=>key.includes('/api/app-security-token/')&&value?.body?.token)?.[1]?.body?.token;
     if(!securityToken){document.documentElement.setAttribute('data-fce-sync-error','token-X-Competition-introuvable');return}
     const saved=[];
+    const falSnapshot=[];
     const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
     const retryable=status=>[0,429,500,502,503,504].includes(Number(status));
 
@@ -215,6 +216,18 @@ async function fetchZenRows(targetUrls){
       });
 
       document.body.appendChild(output);
+
+      // Snapshot des réponses FAL au moment exact où elles sont reçues.
+      // On ne dépend ainsi plus de l'état de `saved` plus tard dans la session.
+      if(id.startsWith('fce-fal-')&&status===200){
+        try{
+          falSnapshot.push({
+            id,
+            payload:JSON.parse(body)
+          });
+        }catch{}
+      }
+
       saved.push({id,status,body,attempts:attempt});
     };
 
@@ -364,11 +377,8 @@ async function fetchZenRows(targetUrls){
     const plateauProbeIndex=${Number(targetUrls.probeIndex)};
     const plateauSites=new Map();
     const plateauDiscovery={
-      savedTotal:saved.length,
-      savedFalTotal:0,
-      savedFalOk:0,
-      savedFalIds:[],
-      parsedPayloads:0,
+      snapshotPayloads:falSnapshot.length,
+      snapshotIds:falSnapshot.slice(0,12).map(item=>item.id),
       rawSites:0,
       rawSitesWithoutDate:0,
       payloadErrors:[],
@@ -428,19 +438,12 @@ async function fetchZenRows(targetUrls){
       return Number.isFinite(parsed)?parsed:NaN;
     };
 
-    const savedFal=saved.filter(item=>item.id.startsWith('fce-fal-'));
-    plateauDiscovery.savedFalTotal=savedFal.length;
-    plateauDiscovery.savedFalOk=savedFal.filter(item=>item.status===200).length;
-    plateauDiscovery.savedFalIds=savedFal.slice(0,12).map(
-      item=>\`\${item.id}:\${item.status}:\${typeof item.body}\`
-    );
-
-    for(const result of savedFal.filter(item=>item.status===200)){
+    for(const result of falSnapshot){
       try{
-        const payload=JSON.parse(result.body);
-        plateauDiscovery.parsedPayloads++;
+        const payload=result.payload||{};
         plateauDiscovery.rawSites+=Array.isArray(payload?.sites)?payload.sites.length:0;
         plateauDiscovery.rawSitesWithoutDate+=Array.isArray(payload?.sitesWithoutDate)?payload.sitesWithoutDate.length:0;
+
         const monthIndex=Number(result.id.replace('fce-fal-',''));
         const usableMonth=
           Number.isInteger(monthIndex)
@@ -497,14 +500,11 @@ async function fetchZenRows(targetUrls){
           }else{
             plateauDiscovery.invalidDate++;
 
-            // Filet de sécurité : on ne charge que les mois proches du mois
-            // courant, jamais les douze mois de la saison.
             if(!usableMonth)continue;
 
             plateauDiscovery.monthFallback++;
           }
 
-          // Épreuve + journée + site identifient le plateau à rattacher.
           const key=[ep,jo,si].join(':');
 
           plateauSites.set(key,{
@@ -514,10 +514,11 @@ async function fetchZenRows(targetUrls){
         }
       }catch(error){
         plateauDiscovery.payloadErrors.push(
-          \`\${result.id}: \${String(error?.message||error).slice(0,120)}\`
+          result.id+': '+String(error?.message||error).slice(0,120)
         );
       }
     }
+
     const plateauResults=[];
 
     const fetchPlateau=async({key,url})=>{
@@ -700,15 +701,14 @@ async function fetchZenRows(targetUrls){
     `${Number(plateauDiscovery.monthFallback||0)} fallback(s) mensuel(s).`
   );
   console.log(
-    `FFF diagnostic plateaux — saved=${Number(plateauDiscovery.savedTotal||0)}, `+
-    `FAL=${Number(plateauDiscovery.savedFalTotal||0)}, `+
-    `FAL200=${Number(plateauDiscovery.savedFalOk||0)}, `+
-    `parsés=${Number(plateauDiscovery.parsedPayloads||0)}, `+
-    `sites=${Number(plateauDiscovery.rawSites||0)}, `+
-    `sansDate=${Number(plateauDiscovery.rawSitesWithoutDate||0)}.`
+    `FFF snapshot plateaux — ${Number(plateauDiscovery.snapshotPayloads||0)} payload(s) FAL, `+
+    `${Number(plateauDiscovery.rawSites||0)} site(s) daté(s), `+
+    `${Number(plateauDiscovery.rawSitesWithoutDate||0)} site(s) sans date.`
   );
-  if(Array.isArray(plateauDiscovery.savedFalIds)&&plateauDiscovery.savedFalIds.length){
-    console.log(`FFF diagnostic plateaux IDs — ${plateauDiscovery.savedFalIds.join(', ')}.`);
+  if(Array.isArray(plateauDiscovery.snapshotIds)&&plateauDiscovery.snapshotIds.length){
+    console.log(
+      `FFF snapshot plateaux IDs — ${plateauDiscovery.snapshotIds.join(', ')}.`
+    );
   }
   if(Array.isArray(plateauDiscovery.payloadErrors)&&plateauDiscovery.payloadErrors.length){
     console.log(`::warning title=Diagnostic payloads plateaux FFF::${plateauDiscovery.payloadErrors.join(' | ')}`);
