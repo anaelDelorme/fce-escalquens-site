@@ -1,5 +1,5 @@
 import { browserCollectStandings } from './standings-integrated.mjs';
-const SYNC_VERSION='2026.10.15-plateaux-snapshot-34',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+const SYNC_VERSION='2026.10.02-import-33',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 console.log(`Collecteur FCE ${SYNC_VERSION}`);
 const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
 const endpoint=siteUrl+'/internal/sync/matches';
@@ -166,7 +166,6 @@ async function fetchZenRows(targetUrls){
     const securityToken=entries.find(([key])=>key==='VLJAXE')?.[1]||entries.find(([key,value])=>key.includes('/api/app-security-token/')&&value?.body?.token)?.[1]?.body?.token;
     if(!securityToken){document.documentElement.setAttribute('data-fce-sync-error','token-X-Competition-introuvable');return}
     const saved=[];
-    const falSnapshot=[];
     const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
     const retryable=status=>[0,429,500,502,503,504].includes(Number(status));
 
@@ -216,18 +215,6 @@ async function fetchZenRows(targetUrls){
       });
 
       document.body.appendChild(output);
-
-      // Snapshot des réponses FAL au moment exact où elles sont reçues.
-      // On ne dépend ainsi plus de l'état de saved plus tard dans la session.
-      if(id.startsWith('fce-fal-')&&status===200){
-        try{
-          falSnapshot.push({
-            id,
-            payload:JSON.parse(body)
-          });
-        }catch{}
-      }
-
       saved.push({id,status,body,attempts:attempt});
     };
 
@@ -364,161 +351,25 @@ async function fetchZenRows(targetUrls){
     await Promise.all(
       [...details].map(([id,paths])=>fetchBestDetail(id,paths))
     );
-
     // Les mini-matchs d'un plateau sont chargés depuis la page SSR dédiée.
-    //
-    // La FFF ne sérialise pas toujours les dates et les identifiants de site
-    // de la même manière. On utilise la date lorsqu'elle est exploitable et,
-    // sinon, le mois de la requête FAL comme filet de sécurité borné.
-    //
-    // Fenêtre : J-14 à J+45.
-    const plateauMin=Date.now()-14*86400000;
-    const plateauMax=Date.now()+45*86400000;
-    const plateauProbeIndex=${Number(targetUrls.probeIndex)};
-    const plateauSites=new Map();
-    const plateauDiscovery={
-      snapshotPayloads:falSnapshot.length,
-      snapshotIds:falSnapshot.slice(0,12).map(item=>item.id),
-      rawSites:0,
-      rawSitesWithoutDate:0,
-      payloadErrors:[],
-      seen:0,
-      invalidDate:0,
-      outsideWindow:0,
-      missingIds:0,
-      monthFallback:0
-    };
-
-    const falDateMs=value=>{
-      if(value===undefined||value===null||value==='')return NaN;
-
-      if(typeof value==='number'){
-        return value<1e12?value*1000:value;
-      }
-
-      if(typeof value==='object'){
-        const candidates=[
-          value.date,
-          value.dateTime,
-          value.datetime,
-          value.value,
-          value.iso
-        ];
-
-        for(const candidate of candidates){
-          const parsed=falDateMs(candidate);
-          if(Number.isFinite(parsed))return parsed;
-        }
-
-        return NaN;
-      }
-
-      const raw=String(value).trim();
-
-      if(/^\\d{10,13}$/.test(raw)){
-        const numeric=Number(raw);
-        return raw.length===10?numeric*1000:numeric;
-      }
-
-      const french=raw.match(
-        /^(\\d{1,2})[\\/.-](\\d{1,2})[\\/.-](\\d{4})(?:[ T](\\d{1,2})[:h](\\d{2}))?/
-      );
-
-      if(french){
-        return Date.UTC(
-          Number(french[3]),
-          Number(french[2])-1,
-          Number(french[1]),
-          Number(french[4]||12),
-          Number(french[5]||0)
-        );
-      }
-
-      const parsed=Date.parse(raw);
-      return Number.isFinite(parsed)?parsed:NaN;
-    };
-
-    for(const result of falSnapshot){
+    // On ne cible que J-14 à J+21 : les résultats déjà importés restent en
+    // base, et on évite de recharger inutilement tous les plateaux de l'année.
+    const plateauMin=Date.now()-14*86400000,plateauMax=Date.now()+21*86400000,plateauSites=new Map();
+    for(const result of saved.filter(item=>item.id.startsWith('fce-fal-')&&item.status===200)){
       try{
-        const payload=result.payload||{};
-        plateauDiscovery.rawSites+=Array.isArray(payload?.sites)?payload.sites.length:0;
-        plateauDiscovery.rawSitesWithoutDate+=Array.isArray(payload?.sitesWithoutDate)?payload.sitesWithoutDate.length:0;
-
-        const monthIndex=Number(result.id.replace('fce-fal-',''));
-        const usableMonth=
-          Number.isInteger(monthIndex)
-          &&monthIndex>=Math.max(0,plateauProbeIndex-1)
-          &&monthIndex<=Math.min(11,plateauProbeIndex+2);
-
+        const payload=JSON.parse(result.body);
         for(const site of [...(payload.sites||[]),...(payload.sitesWithoutDate||[])]){
-          plateauDiscovery.seen++;
-
-          const ep=
-            site.epreuve?.epNo
-            ??site.epNo
-            ??site.faEpNo;
-
-          const po=
-            site.poNo
-            ??site.poule?.poNo
-            ??site.epreuve?.poNo
-            ??site.po?.poNo;
-
-          const jo=
-            site.joNo
-            ??site.journee?.joNo
-            ??site.faJoNo;
-
-          const si=
-            site.siNo
-            ??site.site?.siNo
-            ??site.faSiNo;
-
-          const missingIds=[ep,po,jo,si].some(
-            value=>value===undefined||value===null||value===''
-          );
-
-          if(missingIds){
-            plateauDiscovery.missingIds++;
-            continue;
-          }
-
-          const rawDate=
-            site.date
-            ??site.joDate
-            ??site.journee?.date
-            ??site.dateDebut
-            ??site.site?.date;
-
-          const when=falDateMs(rawDate);
-
-          if(Number.isFinite(when)){
-            if(when<plateauMin||when>plateauMax){
-              plateauDiscovery.outsideWindow++;
-              continue;
-            }
-          }else{
-            plateauDiscovery.invalidDate++;
-
-            if(!usableMonth)continue;
-
-            plateauDiscovery.monthFallback++;
-          }
-
+          const when=new Date(site.date||site.joDate).getTime();
+          const ep=site.epreuve?.epNo,po=site.poNo,jo=site.joNo,si=site.siNo;
+          if(when<plateauMin||when>plateauMax||!ep||!po||!jo||!si)continue;
+          // La phase n'est pas toujours exposée de la même façon entre la
+          // liste des sites et la page de détail. Épreuve + journée + site
+          // identifient déjà sans ambiguïté le plateau à rattacher.
           const key=[ep,jo,si].join(':');
-
-          plateauSites.set(key,{
-            key,
-            url:\`https://epreuves.fff.fr/animation-loisir/cdg/${DISTRICT_NO}/club/${CLUB_NO}/epreuve/\${ep}/poule/\${po}/journee/\${jo}/site/\${si}/matchs\`
-          });
+          plateauSites.set(key,{key,url:\`https://epreuves.fff.fr/animation-loisir/cdg/${DISTRICT_NO}/club/${CLUB_NO}/epreuve/\${ep}/poule/\${po}/journee/\${jo}/site/\${si}/matchs\`});
         }
-      }catch(error){
-        plateauDiscovery.payloadErrors.push(
-          result.id+': '+String(error?.message||error).slice(0,120)
-        );
-      }
+      }catch{}
     }
-
     const plateauResults=[];
 
     const fetchPlateau=async({key,url})=>{
@@ -646,8 +497,7 @@ async function fetchZenRows(targetUrls){
       body:{
         targeted:plateauItems.length,
         succeeded:plateauResults.filter(item=>item.status===200).length,
-        failed:plateauResults.filter(item=>item.status!==200),
-        discovery:plateauDiscovery
+        failed:plateauResults.filter(item=>item.status!==200)
       }
     });
     document.body.appendChild(plateauMetaOutput);
@@ -692,27 +542,6 @@ async function fetchZenRows(targetUrls){
     `${plateauDetailSucceeded} réussi(s), ${plateauGameCount} mini-match(s) trouvé(s), `+
     `sans crédit ZenRows supplémentaire.`
   );
-  const plateauDiscovery=payloads.falGameMeta?.discovery||{};
-  console.log(
-    `FFF : sélection détails plateau — ${Number(plateauDiscovery.seen||0)} site(s) vu(s), `+
-    `${Number(plateauDiscovery.invalidDate||0)} date(s) invalide(s), `+
-    `${Number(plateauDiscovery.outsideWindow||0)} hors fenêtre, `+
-    `${Number(plateauDiscovery.missingIds||0)} identifiant(s) incomplet(s), `+
-    `${Number(plateauDiscovery.monthFallback||0)} fallback(s) mensuel(s).`
-  );
-  console.log(
-    `FFF snapshot plateaux — ${Number(plateauDiscovery.snapshotPayloads||0)} payload(s) FAL, `+
-    `${Number(plateauDiscovery.rawSites||0)} site(s) daté(s), `+
-    `${Number(plateauDiscovery.rawSitesWithoutDate||0)} site(s) sans date.`
-  );
-  if(Array.isArray(plateauDiscovery.snapshotIds)&&plateauDiscovery.snapshotIds.length){
-    console.log(
-      `FFF snapshot plateaux IDs — ${plateauDiscovery.snapshotIds.join(', ')}.`
-    );
-  }
-  if(Array.isArray(plateauDiscovery.payloadErrors)&&plateauDiscovery.payloadErrors.length){
-    console.log(`::warning title=Diagnostic payloads plateaux FFF::${plateauDiscovery.payloadErrors.join(' | ')}`);
-  }
   if(Array.isArray(payloads.falGameMeta?.failed)&&payloads.falGameMeta.failed.length){
     console.log(
       `::warning title=Détails plateaux FFF::`+
