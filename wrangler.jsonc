@@ -15,9 +15,10 @@
 			"/admin-api/*",
 			"/admin",
 			"/admin/*",
+			"/internal/*",
 			"/media/*"
 		]
-	},
+		},
 	"d1_databases": [
 		{
 			"binding": "DB",

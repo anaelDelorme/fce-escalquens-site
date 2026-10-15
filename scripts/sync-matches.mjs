@@ -1,5 +1,5 @@
 import { browserCollectStandings } from './standings-integrated.mjs';
-const SYNC_VERSION='2026.10.14-plateaux-34',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+const SYNC_VERSION='2026.10.14-plateaux-35',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 console.log(`Collecteur FCE ${SYNC_VERSION}`);
 const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
 const endpoint=siteUrl+'/internal/sync/matches';
@@ -364,6 +364,8 @@ async function fetchZenRows(targetUrls){
     const plateauProbeIndex=${Number(targetUrls.probeIndex)};
     const plateauSites=new Map();
     const plateauDiscovery={
+      payloads:0,
+      payloadErrors:0,
       seen:0,
       invalidDate:0,
       outsideWindow:0,
@@ -420,16 +422,38 @@ async function fetchZenRows(targetUrls){
       return Number.isFinite(parsed)?parsed:NaN;
     };
 
-    for(const result of saved.filter(item=>item.id.startsWith('fce-fal-')&&item.status===200)){
+    const falPayloadNodes=[
+      ...document.querySelectorAll('script[id^="fce-fal-"]')
+    ].filter(node=>/^fce-fal-\d+$/.test(node.id));
+
+    plateauDiscovery.payloads=falPayloadNodes.length;
+
+    for(const node of falPayloadNodes){
       try{
-        const payload=JSON.parse(result.body);
-        const monthIndex=Number(result.id.replace('fce-fal-',''));
+        const envelope=JSON.parse(node.textContent||'{}');
+
+        if(Number(envelope.status)!==200){
+          continue;
+        }
+
+        const payload=
+          typeof envelope.body==='string'
+            ?JSON.parse(envelope.body)
+            :envelope.body||{};
+
+        const monthIndex=Number(
+          node.id.replace('fce-fal-','')
+        );
+
         const usableMonth=
           Number.isInteger(monthIndex)
           &&monthIndex>=Math.max(0,plateauProbeIndex-1)
           &&monthIndex<=Math.min(11,plateauProbeIndex+2);
 
-        for(const site of [...(payload.sites||[]),...(payload.sitesWithoutDate||[])]){
+        for(const site of [
+          ...(payload.sites||[]),
+          ...(payload.sitesWithoutDate||[])
+        ]){
           plateauDiscovery.seen++;
 
           const ep=
@@ -479,14 +503,13 @@ async function fetchZenRows(targetUrls){
           }else{
             plateauDiscovery.invalidDate++;
 
-            // Filet de sécurité : on ne charge que les mois proches du mois
-            // courant, jamais les douze mois de la saison.
-            if(!usableMonth)continue;
+            if(!usableMonth){
+              continue;
+            }
 
             plateauDiscovery.monthFallback++;
           }
 
-          // Épreuve + journée + site identifient le plateau à rattacher.
           const key=[ep,jo,si].join(':');
 
           plateauSites.set(key,{
@@ -494,7 +517,10 @@ async function fetchZenRows(targetUrls){
             url:\`https://epreuves.fff.fr/animation-loisir/cdg/${DISTRICT_NO}/club/${CLUB_NO}/epreuve/\${ep}/poule/\${po}/journee/\${jo}/site/\${si}/matchs\`
           });
         }
-      }catch{}
+
+      }catch(error){
+        plateauDiscovery.payloadErrors++;
+      }
     }
     const plateauResults=[];
 
@@ -671,11 +697,13 @@ async function fetchZenRows(targetUrls){
   );
   const plateauDiscovery=payloads.falGameMeta?.discovery||{};
   console.log(
-    `FFF : sélection détails plateau — ${Number(plateauDiscovery.seen||0)} site(s) vu(s), `+
+    `FFF : sélection détails plateau — ${Number(plateauDiscovery.payloads||0)} payload(s), `+
+    `${Number(plateauDiscovery.seen||0)} site(s) vu(s), `+
     `${Number(plateauDiscovery.invalidDate||0)} date(s) invalide(s), `+
     `${Number(plateauDiscovery.outsideWindow||0)} hors fenêtre, `+
     `${Number(plateauDiscovery.missingIds||0)} identifiant(s) incomplet(s), `+
-    `${Number(plateauDiscovery.monthFallback||0)} fallback(s) mensuel(s).`
+    `${Number(plateauDiscovery.monthFallback||0)} fallback(s) mensuel(s), `+
+    `${Number(plateauDiscovery.payloadErrors||0)} payload(s) illisible(s).`
   );
   if(Array.isArray(payloads.falGameMeta?.failed)&&payloads.falGameMeta.failed.length){
     console.log(
