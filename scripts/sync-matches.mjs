@@ -218,7 +218,7 @@ async function fetchZenRows(targetUrls){
       document.body.appendChild(output);
 
       // Snapshot des réponses FAL au moment exact où elles sont reçues.
-      // On ne dépend ainsi plus de l'état de `saved` plus tard dans la session.
+      // On ne dépend ainsi plus de l'état de saved plus tard dans la session.
       if(id.startsWith('fce-fal-')&&status===200){
         try{
           falSnapshot.push({
