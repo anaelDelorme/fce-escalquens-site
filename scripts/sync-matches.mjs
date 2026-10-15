@@ -1,5 +1,5 @@
 import { browserCollectStandings } from './standings-integrated.mjs';
-const SYNC_VERSION='2026.10.14-plateaux-34',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+const SYNC_VERSION='2026.10.15-plateaux-diag-34',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 console.log(`Collecteur FCE ${SYNC_VERSION}`);
 const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
 const endpoint=siteUrl+'/internal/sync/matches';
@@ -364,6 +364,14 @@ async function fetchZenRows(targetUrls){
     const plateauProbeIndex=${Number(targetUrls.probeIndex)};
     const plateauSites=new Map();
     const plateauDiscovery={
+      savedTotal:saved.length,
+      savedFalTotal:0,
+      savedFalOk:0,
+      savedFalIds:[],
+      parsedPayloads:0,
+      rawSites:0,
+      rawSitesWithoutDate:0,
+      payloadErrors:[],
       seen:0,
       invalidDate:0,
       outsideWindow:0,
@@ -420,9 +428,19 @@ async function fetchZenRows(targetUrls){
       return Number.isFinite(parsed)?parsed:NaN;
     };
 
-    for(const result of saved.filter(item=>item.id.startsWith('fce-fal-')&&item.status===200)){
+    const savedFal=saved.filter(item=>item.id.startsWith('fce-fal-'));
+    plateauDiscovery.savedFalTotal=savedFal.length;
+    plateauDiscovery.savedFalOk=savedFal.filter(item=>item.status===200).length;
+    plateauDiscovery.savedFalIds=savedFal.slice(0,12).map(
+      item=>`${item.id}:${item.status}:${typeof item.body}`
+    );
+
+    for(const result of savedFal.filter(item=>item.status===200)){
       try{
         const payload=JSON.parse(result.body);
+        plateauDiscovery.parsedPayloads++;
+        plateauDiscovery.rawSites+=Array.isArray(payload?.sites)?payload.sites.length:0;
+        plateauDiscovery.rawSitesWithoutDate+=Array.isArray(payload?.sitesWithoutDate)?payload.sitesWithoutDate.length:0;
         const monthIndex=Number(result.id.replace('fce-fal-',''));
         const usableMonth=
           Number.isInteger(monthIndex)
@@ -494,7 +512,11 @@ async function fetchZenRows(targetUrls){
             url:\`https://epreuves.fff.fr/animation-loisir/cdg/${DISTRICT_NO}/club/${CLUB_NO}/epreuve/\${ep}/poule/\${po}/journee/\${jo}/site/\${si}/matchs\`
           });
         }
-      }catch{}
+      }catch(error){
+        plateauDiscovery.payloadErrors.push(
+          `${result.id}: ${String(error?.message||error).slice(0,120)}`
+        );
+      }
     }
     const plateauResults=[];
 
@@ -677,6 +699,20 @@ async function fetchZenRows(targetUrls){
     `${Number(plateauDiscovery.missingIds||0)} identifiant(s) incomplet(s), `+
     `${Number(plateauDiscovery.monthFallback||0)} fallback(s) mensuel(s).`
   );
+  console.log(
+    `FFF diagnostic plateaux — saved=${Number(plateauDiscovery.savedTotal||0)}, `+
+    `FAL=${Number(plateauDiscovery.savedFalTotal||0)}, `+
+    `FAL200=${Number(plateauDiscovery.savedFalOk||0)}, `+
+    `parsés=${Number(plateauDiscovery.parsedPayloads||0)}, `+
+    `sites=${Number(plateauDiscovery.rawSites||0)}, `+
+    `sansDate=${Number(plateauDiscovery.rawSitesWithoutDate||0)}.`
+  );
+  if(Array.isArray(plateauDiscovery.savedFalIds)&&plateauDiscovery.savedFalIds.length){
+    console.log(`FFF diagnostic plateaux IDs — ${plateauDiscovery.savedFalIds.join(', ')}.`);
+  }
+  if(Array.isArray(plateauDiscovery.payloadErrors)&&plateauDiscovery.payloadErrors.length){
+    console.log(`::warning title=Diagnostic payloads plateaux FFF::${plateauDiscovery.payloadErrors.join(' | ')}`);
+  }
   if(Array.isArray(payloads.falGameMeta?.failed)&&payloads.falGameMeta.failed.length){
     console.log(
       `::warning title=Détails plateaux FFF::`+

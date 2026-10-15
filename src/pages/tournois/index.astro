@@ -1,4 +1,35 @@
 ---
-import Header from '../../components/Header.astro';import Footer from '../../components/Footer.astro';
+import Header from '../../components/Header.astro';
+import Footer from '../../components/Footer.astro';
 ---
-<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Tournois du club - FC Escalquens</title><meta name="description" content="Retrouvez les tournois organisés ou disputés par les équipes du FC Escalquens."><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/enhancements.css?v=6"><link rel="stylesheet" href="/brand-charter.css"></head><body><Header/><main><section class="page-hero wine tournament-hero"><p class="eyebrow">Temps forts du club</p><h1>Nos tournois.<br>Nos aventures.</h1><p>Les dates, les catégories concernées, les inscriptions et les règlements réunis au même endroit.</p></section><section class="content tournaments-content"><div id="tournament-filters" class="filter-bar"></div><div id="tournaments-list" class="tournament-grid"><p>Chargement des tournois…</p></div></section></main><Footer/><script is:inline src="/tournaments.js"></script></body></html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width">
+    <title>Tournois du club - FC Escalquens</title>
+    <meta name="description" content="Retrouvez les tournois du FC Escalquens : dates, équipes, tarifs, inscriptions, affiches et règlements.">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/enhancements.css?v=6">
+    <link rel="stylesheet" href="/brand-charter.css">
+    <link rel="stylesheet" href="/contacts-tournaments.css?v=1">
+  </head>
+  <body>
+    <Header/>
+    <main>
+      <section class="page-hero wine tournament-hero">
+        <p class="eyebrow">Temps forts du club</p>
+        <h1>Nos tournois.<br>Nos aventures.</h1>
+        <p>Trois rendez-vous maximum, toutes les informations utiles : dates, lieu, tarif, inscription, affiche et règlement.</p>
+      </section>
+      <section class="content tournaments-content">
+        <div class="tournaments-intro">
+          <div><p class="eyebrow">À vos agendas</p><h2>Les rendez-vous à ne pas manquer.</h2></div>
+          <p>Chaque tournoi rassemble ici l’essentiel, sans chercher l’information ailleurs.</p>
+        </div>
+        <div id="tournaments-list" class="tournament-grid" aria-live="polite"><p>Chargement des tournois…</p></div>
+      </section>
+    </main>
+    <Footer/>
+    <script is:inline src="/tournaments.js?v=2"></script>
+  </body>
+</html>
