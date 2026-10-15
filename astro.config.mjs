@@ -1,2 +1,7 @@
 import { defineConfig } from "astro/config";
-export default defineConfig({ output: "static", site: "https://www.fcescalquens.fr" });
+import sitemap from "@astrojs/sitemap";
+export default defineConfig({
+  output: "static",
+  site: "https://www.fcescalquens.fr",
+  integrations: [sitemap()]
+});
