@@ -28,7 +28,7 @@ const editable: Record<string, string[]> = {
   team_competitions: ["team_id", "season_id", "name", "team_number", "fff_team_id", "category_code", "competition_name", "division", "pool", "level_id", "active", "display_order", "discovered_automatically", "last_seen_at"],
   training_sessions: ["team_id", "season_id", "category", "weekday", "starts_at", "ends_at", "venue", "venue_id", "address", "notes", "active"],
   contacts: ["name", "role", "category", "email", "phone", "published", "display_order", "responsibilities", "availability", "photo_key"],
-  tournaments: ["slug", "name", "summary", "starts_on", "ends_on", "venue", "venue_id", "organizer", "categories", "registration_url", "tournify_url", "rules_key", "status", "season_id"],
+  tournaments: ["slug", "name", "summary", "starts_on", "ends_on", "venue", "venue_id", "organizer", "categories", "registration_price", "registration_url", "tournify_url", "image_key", "poster_key", "rules_key", "status", "season_id"],
   tournament_teams: ["tournament_id", "team_id", "notes"],
   matches: ["source", "source_id", "team_id", "competition_team_id", "season_id", "category", "competition", "starts_at", "venue", "venue_address", "latitude", "longitude", "home_team", "away_team", "home_score", "away_score", "status", "event_type", "source_url", "external_updated_at", "home_logo_url", "away_logo_url", "time_confirmed", "manually_created", "raw_json"],
   standings: ["source", "phase_id", "season_id", "team_id", "team_name", "position", "played", "won", "drawn", "lost", "goals_for", "goals_against", "points", "raw_json"],
@@ -668,7 +668,8 @@ async function pageData(env: Env, url: URL) {
 
   if (page === "tournaments") {
     const [tournaments, links, teams, venues] = await env.DB.batch<AnyRow>([
-      env.DB.prepare(`SELECT id,slug,name,summary,starts_on,ends_on,venue,categories,registration_url,rules_key,
+      env.DB.prepare(`SELECT id,slug,name,summary,starts_on,ends_on,venue,categories,
+        registration_price,registration_url,rules_key,image_key,poster_key,
         status,season_id,venue_id,tournify_url,organizer
         FROM tournaments WHERE status IN ('published','open','finished')
         AND (season_id IS NULL OR season_id=${activeSeason}) ORDER BY starts_on`),
@@ -764,7 +765,23 @@ async function pageData(env: Env, url: URL) {
   }
 
   if (page === "contacts") {
-    const rows = await env.DB.prepare("SELECT name,role,category,email,phone,responsibilities,availability,display_order FROM contacts WHERE published=1 ORDER BY display_order,name COLLATE NOCASE").all<AnyRow>();
+    const rows = await env.DB.prepare(`SELECT
+      c.name,c.role,c.category,c.email,c.phone,c.responsibilities,c.availability,
+      COALESCE(
+        NULLIF(TRIM(c.photo_key),''),
+        (
+          SELECT cm.photo_key
+          FROM club_members cm
+          WHERE cm.active=1
+            AND TRIM(cm.full_name)=TRIM(c.name) COLLATE NOCASE
+            AND TRIM(COALESCE(cm.photo_key,''))<>''
+          LIMIT 1
+        )
+      ) AS photo_key,
+      c.display_order
+      FROM contacts c
+      WHERE c.published=1
+      ORDER BY c.display_order,c.name COLLATE NOCASE`).all<AnyRow>();
     return publicJson({ contacts: resultRows(rows) });
   }
 

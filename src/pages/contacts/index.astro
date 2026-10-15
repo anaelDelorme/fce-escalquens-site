@@ -1,4 +1,48 @@
 ---
-import Header from '../../components/Header.astro';import Footer from '../../components/Footer.astro';
+import Header from '../../components/Header.astro';
+import Footer from '../../components/Footer.astro';
 ---
-<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Contacts - FC Escalquens</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/enhancements.css?v=6"><link rel="stylesheet" href="/brand-charter.css"></head><body><Header/><main><section class="page-hero practical-hero"><p class="eyebrow">Le bon interlocuteur</p><h1>Parlons-nous.</h1><p>Choisissez une section pour contacter directement la bonne personne.</p></section><section class="content"><div class="contact-routing"><article><small>Demandes concernant le club</small><a href="mailto:fcescalquens@gmail.com">fcescalquens@gmail.com</a></article><article><small>Problème technique sur le site</small><a href="mailto:fcescalquens.web@gmail.com">fcescalquens.web@gmail.com</a></article></div><div class="filter-bar" id="contact-filters"></div><div id="contact-list" class="contact-grid"></div></section></main><Footer/><script is:inline src="/contacts.js"></script></body></html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width">
+    <title>Contacts - FC Escalquens</title>
+    <meta name="description" content="Retrouvez les bons interlocuteurs du FC Escalquens et contactez directement les responsables du club.">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/enhancements.css?v=6">
+    <link rel="stylesheet" href="/brand-charter.css">
+    <link rel="stylesheet" href="/contacts-tournaments.css?v=2">
+  </head>
+  <body>
+    <Header/>
+    <main>
+      <section class="page-hero practical-hero contact-hero">
+        <p class="eyebrow">Le bon interlocuteur</p>
+        <h1>Parlons-nous.</h1>
+        <p>Une question sportive, administrative ou pratique ? Retrouvez directement la personne qui peut vous répondre.</p>
+      </section>
+      <section class="content contacts-content">
+        <div class="contact-routing">
+          <article class="contact-route-card contact-route-card--club">
+            <div class="contact-route-mark" aria-hidden="true"><img src="/logo-fce.webp" alt=""></div>
+            <div class="contact-route-copy"><small>Une question sur le club ?</small><strong>On vous répond.</strong><a href="mailto:fcescalquens@gmail.com">fcescalquens@gmail.com</a></div>
+            <span class="contact-route-arrow" aria-hidden="true">→</span>
+          </article>
+          <article class="contact-route-card contact-route-card--web">
+            <div class="contact-route-mark contact-route-mark--web" aria-hidden="true"><b>WEB</b></div>
+            <div class="contact-route-copy"><small>Un souci avec le site ?</small><strong>Écrivez-nous.</strong><a href="mailto:fcescalquens.web@gmail.com">fcescalquens.web@gmail.com</a></div>
+            <span class="contact-route-arrow" aria-hidden="true">→</span>
+          </article>
+        </div>
+        <div class="contact-section-head">
+          <div><p class="eyebrow">Qui contacter ?</p><h2>Trouvez le bon interlocuteur.</h2></div>
+          <p>Filtrez par domaine, puis contactez directement la personne concernée.</p>
+        </div>
+        <div class="filter-bar" id="contact-filters" aria-label="Filtrer les contacts"></div>
+        <div id="contact-list" class="contact-grid" aria-live="polite"><p>Chargement des contacts…</p></div>
+      </section>
+    </main>
+    <Footer/>
+    <script is:inline src="/contacts.js?v=2"></script>
+  </body>
+</html>
