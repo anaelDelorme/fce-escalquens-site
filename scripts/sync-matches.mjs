@@ -1,5 +1,5 @@
 import { browserCollectStandings } from './standings-integrated.mjs';
-const SYNC_VERSION='2026.10.02-import-33',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+const SYNC_VERSION='2026.10.15-plateaux-isoles-34',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 console.log(`Collecteur FCE ${SYNC_VERSION}`);
 const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
 const endpoint=siteUrl+'/internal/sync/matches';
@@ -108,6 +108,176 @@ const mergeFalPayloads=payloads=>{
   const sample=payloads.find(Boolean)||{};
   return {...sample,epreuves:[...epreuves.values()],sites:[...sites.values()],sitesWithoutDate:[...sitesWithoutDate.values()]};
 };
+
+const falDateMs=value=>{
+  if(value===undefined||value===null||value==='')return NaN;
+  if(typeof value==='number')return value<1e12?value*1000:value;
+  if(typeof value==='object'){
+    for(const candidate of [value.date,value.dateTime,value.datetime,value.value,value.iso]){
+      const parsed=falDateMs(candidate);
+      if(Number.isFinite(parsed))return parsed;
+    }
+    return NaN;
+  }
+  const raw=String(value).trim();
+  const parsed=Date.parse(raw);
+  return Number.isFinite(parsed)?parsed:NaN;
+};
+
+function plateauDetailTargets(falPayload){
+  const min=Date.now()-14*86400000,max=Date.now()+45*86400000;
+  const targets=new Map();
+  const stats={seen:0,invalidDate:0,outsideWindow:0,missingIds:0};
+
+  for(const site of [...(falPayload?.sites||[]),...(falPayload?.sitesWithoutDate||[])]){
+    stats.seen++;
+    const ep=site.epreuve?.epNo??site.epNo??site.faEpNo;
+    const po=site.poNo??site.poule?.poNo??site.epreuve?.poNo??site.po?.poNo;
+    const jo=site.joNo??site.journee?.joNo??site.faJoNo;
+    const si=site.siNo??site.site?.siNo??site.faSiNo;
+
+    if([ep,po,jo,si].some(value=>value===undefined||value===null||value==='')){
+      stats.missingIds++;continue;
+    }
+
+    const when=falDateMs(site.date??site.joDate??site.journee?.date??site.dateDebut??site.site?.date);
+    if(!Number.isFinite(when)){stats.invalidDate++;continue}
+    if(when<min||when>max){stats.outsideWindow++;continue}
+
+    const key=[ep,jo,si].join(':');
+    targets.set(key,{
+      key,
+      url:`https://epreuves.fff.fr/animation-loisir/cdg/${DISTRICT_NO}/club/${CLUB_NO}/epreuve/${ep}/poule/${po}/journee/${jo}/site/${si}/matchs`
+    });
+  }
+
+  return {targets:[...targets.values()],stats};
+}
+
+async function browserCollectPlateauDetails(targets){
+  const results=[];
+  let cursor=0;
+
+  const append=(id,status,body)=>{
+    const output=document.createElement('script');
+    output.type='application/json';
+    output.id=id;
+    output.textContent=JSON.stringify({status,body});
+    document.body.appendChild(output);
+  };
+
+  const collectOne=async target=>{
+    let status=0,payload={site_key:target.key,api_payloads:[]};
+    try{
+      const response=await fetch(target.url,{credentials:'include',headers:{Accept:'text/html,application/xhtml+xml'}});
+      status=response.status;
+      const html=await response.text();
+
+      if(response.ok){
+        const stateText=html.match(/<script[^>]+id=["']ng-state["'][^>]*>([\s\S]*?)<\/script>/i)?.[1]||'';
+        let state=[];
+        try{state=stateText?JSON.parse(stateText):[]}catch{}
+        const entries=(Array.isArray(state)?state:[state]).flatMap(item=>Object.entries(item||{}));
+        payload={
+          site_key:target.key,
+          api_payloads:entries
+            .filter(([name,value])=>name.includes('/api/fal/')&&value?.status===200&&value?.body)
+            .map(([name,value])=>({name,body:value.body}))
+        };
+      }else{
+        payload={site_key:target.key,fce_error:'HTTP '+status};
+      }
+    }catch(error){
+      payload={site_key:target.key,fce_error:String(error)};
+    }
+
+    append('fce-fal-games-'+target.key.replaceAll(':','-'),status,payload);
+    results.push({key:target.key,status,api_payloads:Array.isArray(payload.api_payloads)?payload.api_payloads.length:0});
+  };
+
+  const worker=async()=>{
+    while(cursor<targets.length){
+      const index=cursor++;
+      await collectOne(targets[index]);
+    }
+  };
+
+  await Promise.all(Array.from({length:Math.min(4,targets.length)},()=>worker()));
+
+  append('fce-plateau-detail-meta',200,{
+    targeted:targets.length,
+    succeeded:results.filter(item=>item.status===200).length,
+    with_api_payloads:results.filter(item=>item.api_payloads>0).length
+  });
+
+  const payloads=[...document.querySelectorAll('script[id^="fce-"]')];
+  document.head.replaceChildren();
+  document.body.replaceChildren(...payloads);
+  document.documentElement.setAttribute('data-fce-plateau-done','1');
+}
+
+async function fetchPlateauDetailsZenRows(falPayload,existingEntries=[]){
+  const {targets,stats}=plateauDetailTargets(falPayload);
+  const existingKeys=new Set((existingEntries||[]).map(entry=>String(entry?.payload?.site_key||'')).filter(Boolean));
+  const missingTargets=targets.filter(target=>!existingKeys.has(target.key));
+
+  console.log(
+    `FFF : sélection détails plateau isolée — ${stats.seen} site(s) vu(s), `+
+    `${stats.invalidDate} date(s) invalide(s), ${stats.outsideWindow} hors fenêtre, `+
+    `${stats.missingIds} identifiant(s) incomplet(s), ${targets.length} ciblé(s).`
+  );
+
+  if(!missingTargets.length){
+    return {entries:existingEntries||[],meta:{targeted:targets.length,succeeded:(existingEntries||[]).length,reused:(existingEntries||[]).length}};
+  }
+
+  const apiKey=process.env.ZENROWS_API_KEY;
+  if(!apiKey)throw new Error('ZENROWS_API_KEY absent pour les détails de plateaux');
+
+  const evaluate=`(${browserCollectPlateauDetails.toString()})(${JSON.stringify(missingTargets)})`;
+  const instructions=[
+    {wait:350},
+    {evaluate},
+    {wait_for:'html[data-fce-plateau-done="1"]'},
+    {wait:250}
+  ];
+
+  const url=new URL('https://api.zenrows.com/v1/');
+  url.searchParams.set('apikey',apiKey);
+  url.searchParams.set('url',missingTargets[0].url);
+  url.searchParams.set('js_render','true');
+  url.searchParams.set('premium_proxy','true');
+  url.searchParams.set('proxy_country','fr');
+  url.searchParams.set('json_response','false');
+  url.searchParams.set('js_instructions',JSON.stringify(instructions));
+
+  const response=await fetch(url,{headers:{accept:'application/json'},redirect:'follow'});
+  const body=await response.text();
+  if(!response.ok)throw new Error(`ZenRows plateaux HTTP ${response.status}`);
+
+  const credits=response.headers.get('x-request-credits');
+  const cost=response.headers.get('x-request-cost');
+  if(credits)console.log(`ZenRows plateaux : ${credits} crédit(s) consommé(s).`);
+  if(cost)console.log(`ZenRows plateaux : coût indiqué ${cost}.`);
+
+  let result;
+  try{result=JSON.parse(body)}catch{result={html:body}}
+  const html=result?.html||body;
+  const isolatedEntries=embeddedEntriesByPrefix(html,'fce-fal-games-');
+  const isolatedMeta=embeddedPayloadFromHtml(html,'fce-plateau-detail-meta')||{};
+
+  console.log(
+    `FFF : détails de plateau isolés — ${Number(isolatedMeta.targeted||missingTargets.length)} ciblé(s), `+
+    `${Number(isolatedMeta.succeeded||isolatedEntries.length)} réussi(s), `+
+    `${Number(isolatedMeta.with_api_payloads||0)} avec payload(s) FAL.`
+  );
+
+  return {
+    entries:[...(existingEntries||[]),...isolatedEntries],
+    meta:{...isolatedMeta,targeted:targets.length,reused:(existingEntries||[]).length}
+  };
+}
+
 const epreuvesPayloadFromZenRows=body=>{
   let result;
   try{result=JSON.parse(body)}catch{result={html:body}}
@@ -534,13 +704,22 @@ async function fetchZenRows(targetUrls){
   const payloads=epreuvesPayloadFromZenRows(body);
   console.log(`FFF : ${payloads.matchMonths}/12 mois de matchs et ${payloads.falMonths}/12 mois de plateaux capturés.`);
   console.log(`FFF : ${payloads.detailCount} détail(s) de match reçu(s), dont ${payloads.venueDetailCount} avec un terrain.`);
+
+  try{
+    const isolated=await fetchPlateauDetailsZenRows(payloads.fal,payloads.falGamePayloads);
+    payloads.falGamePayloads=isolated.entries;
+    payloads.falGameMeta={...(payloads.falGameMeta||{}),...(isolated.meta||{})};
+  }catch(error){
+    console.log(`::warning title=Détails plateaux isolés::${String(error?.message||error).split('\n').join(' ').split('\r').join(' ').slice(0,800)}`);
+  }
+
   const plateauGameCount=payloads.falGamePayloads.reduce((total,entry)=>total+normalizeFalGames(entry.payload).length,0);
   const plateauDetailTargeted=Number(payloads.falGameMeta?.targeted||payloads.falGamePayloads.length);
   const plateauDetailSucceeded=Number(payloads.falGameMeta?.succeeded||payloads.falGamePayloads.length);
   console.log(
     `FFF : détails de plateau — ${plateauDetailTargeted} ciblé(s), `+
     `${plateauDetailSucceeded} réussi(s), ${plateauGameCount} mini-match(s) trouvé(s), `+
-    `sans crédit ZenRows supplémentaire.`
+    `collecte isolée activée si nécessaire.`
   );
   if(Array.isArray(payloads.falGameMeta?.failed)&&payloads.falGameMeta.failed.length){
     console.log(
