@@ -329,6 +329,7 @@ async function api(request: Request, env: Env, url: URL) {
           caches.default.delete(new Request(`${url.origin}/api/page/matches?v=20`)),
           caches.default.delete(new Request(`${url.origin}/api/page/matches?v=21`)),
           caches.default.delete(new Request(`${url.origin}/api/page/matches?v=22`)),
+          caches.default.delete(new Request(`${url.origin}/api/page/matches?v=23`)),
           caches.default.delete(new Request(`${url.origin}/api/page/home`))
         ]);
       }
@@ -466,17 +467,38 @@ async function pageData(env: Env, url: URL) {
         home_team,away_team,home_logo_url,away_logo_url,home_score,away_score,source_url,raw_json,
         (SELECT COUNT(*) FROM plateau_games pg WHERE pg.plateau_match_id=matches.id) AS plateau_game_count
         FROM matches WHERE team_id=? AND (season_id IS NULL OR season_id=${activeSeason})
+        AND (
+          competition_team_id IS NULL
+          OR EXISTS (
+            SELECT 1 FROM team_competitions tc
+            WHERE tc.id=matches.competition_team_id AND tc.active=1
+          )
+        )
         AND status<>'finished' AND (home_score IS NULL OR away_score IS NULL) AND starts_at>=?
         ORDER BY starts_at ASC LIMIT 5`).bind(team.id, now),
       env.DB.prepare(`SELECT id,starts_at,competition,event_type,time_confirmed,status,venue,venue_address,latitude,longitude,
         home_team,away_team,home_logo_url,away_logo_url,home_score,away_score,source_url,raw_json,
         (SELECT COUNT(*) FROM plateau_games pg WHERE pg.plateau_match_id=matches.id) AS plateau_game_count
         FROM matches WHERE team_id=? AND (season_id IS NULL OR season_id=${activeSeason})
+        AND (
+          competition_team_id IS NULL
+          OR EXISTS (
+            SELECT 1 FROM team_competitions tc
+            WHERE tc.id=matches.competition_team_id AND tc.active=1
+          )
+        )
         AND (status='finished' OR (home_score IS NOT NULL AND away_score IS NOT NULL)
           OR (event_type IN ('plateau','animation') AND starts_at<?))
         ORDER BY starts_at DESC LIMIT 5`).bind(team.id, now),
       env.DB.prepare(`SELECT p.* FROM match_participants p JOIN matches m ON m.id=p.match_id
         WHERE m.team_id=? AND (m.season_id IS NULL OR m.season_id=${activeSeason})
+        AND (
+          m.competition_team_id IS NULL
+          OR EXISTS (
+            SELECT 1 FROM team_competitions tc
+            WHERE tc.id=m.competition_team_id AND tc.active=1
+          )
+        )
         ORDER BY p.match_id,p.display_order`).bind(team.id),
 
       env.DB.prepare(`SELECT
@@ -506,6 +528,13 @@ async function pageData(env: Env, url: URL) {
           AND (
             season_id IS NULL
             OR season_id=${activeSeason}
+          )
+          AND (
+            competition_team_id IS NULL
+            OR EXISTS (
+              SELECT 1 FROM team_competitions tc
+              WHERE tc.id=standings.competition_team_id AND tc.active=1
+            )
           )
 
         ORDER BY
@@ -600,9 +629,23 @@ async function pageData(env: Env, url: URL) {
         WHERE active=1 ORDER BY name COLLATE NOCASE ASC`),
       env.DB.prepare(`SELECT id,starts_at,category,competition,venue,venue_address,latitude,longitude,home_team,away_team,home_score,away_score,status FROM matches
         WHERE (season_id IS NULL OR season_id=${activeSeason}) AND starts_at>=?
+        AND (
+          competition_team_id IS NULL
+          OR EXISTS (
+            SELECT 1 FROM team_competitions tc
+            WHERE tc.id=matches.competition_team_id AND tc.active=1
+          )
+        )
         AND status NOT IN ('finished','cancelled') ORDER BY starts_at ASC LIMIT 3`).bind(now),
       env.DB.prepare(`SELECT id,starts_at,category,competition,venue,venue_address,latitude,longitude,home_team,away_team,home_score,away_score,status FROM matches
         WHERE (season_id IS NULL OR season_id=${activeSeason})
+        AND (
+          competition_team_id IS NULL
+          OR EXISTS (
+            SELECT 1 FROM team_competitions tc
+            WHERE tc.id=matches.competition_team_id AND tc.active=1
+          )
+        )
         AND (status='finished' OR (home_score IS NOT NULL AND away_score IS NOT NULL))
         ORDER BY starts_at DESC LIMIT 3`),
       env.DB.prepare("SELECT name,logo_key,website_url,tier FROM sponsors WHERE active=1 ORDER BY display_order,name COLLATE NOCASE"),
@@ -846,7 +889,15 @@ async function cachedPageData(request: Request, env: Env, url: URL, ctx: Executi
   }
 
   const cache = caches.default;
-  const key = new Request(url.toString(), { method: "GET" });
+  const cacheUrl = new URL(url.toString());
+
+  // Les données de /api/page/matches ne dépendent d'aucun paramètre.
+  // Toutes les variantes (?v=23, etc.) utilisent donc la même clé.
+  if (cacheUrl.pathname === "/api/page/matches") {
+    cacheUrl.search = "";
+  }
+
+  const key = new Request(cacheUrl.toString(), { method: "GET" });
   const cached = await cache.match(key);
   if (cached) return cached;
   const response = await pageData(env, url);
