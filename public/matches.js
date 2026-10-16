@@ -277,10 +277,23 @@ const teamForMatch=row=>{
   return teams.find(item=>String(item.id)===String(row.team_id||entry?.team_id));
 };
 const filtered=row=>{
+  const competitionEntryId=String(row.competition_team_id||'');
+  const competitionEntry=
+    competitionEntryId
+      ?entries.find(item=>String(item.id)===competitionEntryId)
+      :null;
+
+  // L'API publique ne renvoie que les team_competitions actives.
+  // Si un match possède encore un competition_team_id qui n'est plus
+  // présent dans cette liste, l'équipe a été désactivée : on masque
+  // immédiatement la rencontre, même si une ancienne réponse API est
+  // encore présente dans le cache Cloudflare.
+  if(competitionEntryId&&!competitionEntry)return false;
+
   const team=teamForMatch(row);
   return (!filters.section||team?.group_name===filters.section)
     &&(!filters.group||String(team?.id)===filters.group)
-    &&(!filters.entry||String(row.competition_team_id)===filters.entry);
+    &&(!filters.entry||competitionEntryId===filters.entry);
 };
 const entryLabel=row=>{
   const number=row.team_number?` n°${row.team_number}`:'';
