@@ -1351,8 +1351,7 @@ async function ingestStandings(
         FROM team_competitions
 
         WHERE
-          active=1
-          AND season_id=?
+          season_id=?
       `)
       .bind(
         seasonId
