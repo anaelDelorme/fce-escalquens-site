@@ -322,6 +322,16 @@ async function api(request: Request, env: Env, url: URL) {
         await env.DB.prepare("UPDATE matches SET team_id=?,updated_at=CURRENT_TIMESTAMP WHERE competition_team_id=?")
           .bind(body.team_id || null, id).run();
       }
+      if (table === "team_competitions") {
+        await Promise.allSettled([
+          caches.default.delete(new Request(`${url.origin}/api/page/matches`)),
+          caches.default.delete(new Request(`${url.origin}/api/page/matches?v=19`)),
+          caches.default.delete(new Request(`${url.origin}/api/page/matches?v=20`)),
+          caches.default.delete(new Request(`${url.origin}/api/page/matches?v=21`)),
+          caches.default.delete(new Request(`${url.origin}/api/page/matches?v=22`)),
+          caches.default.delete(new Request(`${url.origin}/api/page/home`))
+        ]);
+      }
       if (table === "shop_products" && Number(body.featured) === 1) {
         await env.DB.prepare("UPDATE shop_products SET featured=0,updated_at=CURRENT_TIMESTAMP WHERE id<>?")
           .bind(id).run();
@@ -610,9 +620,28 @@ async function pageData(env: Env, url: URL) {
         m.venue,m.venue_address,m.latitude,m.longitude,m.home_team,m.away_team,m.home_score,m.away_score,m.status,
         m.event_type,m.source_url,m.home_logo_url,m.away_logo_url,m.time_confirmed,m.raw_json,
         (SELECT COUNT(*) FROM plateau_games pg WHERE pg.plateau_match_id=m.id) AS plateau_game_count
-        FROM matches m WHERE m.season_id IS NULL OR m.season_id=${activeSeason} ORDER BY m.starts_at ASC`),
+        FROM matches m
+        WHERE (m.season_id IS NULL OR m.season_id=${activeSeason})
+        AND (
+          m.competition_team_id IS NULL
+          OR EXISTS (
+            SELECT 1
+            FROM team_competitions tc
+            WHERE tc.id=m.competition_team_id AND tc.active=1
+          )
+        )
+        ORDER BY m.starts_at ASC`),
       env.DB.prepare(`SELECT p.* FROM match_participants p JOIN matches m ON m.id=p.match_id
-        WHERE m.season_id IS NULL OR m.season_id=${activeSeason} ORDER BY p.match_id,p.display_order`),
+        WHERE (m.season_id IS NULL OR m.season_id=${activeSeason})
+        AND (
+          m.competition_team_id IS NULL
+          OR EXISTS (
+            SELECT 1
+            FROM team_competitions tc
+            WHERE tc.id=m.competition_team_id AND tc.active=1
+          )
+        )
+        ORDER BY p.match_id,p.display_order`),
       env.DB.prepare(`SELECT
         id,
         source,
@@ -636,8 +665,18 @@ async function pageData(env: Env, url: URL) {
         FROM standings
 
         WHERE
-          season_id IS NULL
-          OR season_id=${activeSeason}
+          (
+            season_id IS NULL
+            OR season_id=${activeSeason}
+          )
+          AND (
+            competition_team_id IS NULL
+            OR EXISTS (
+              SELECT 1
+              FROM team_competitions tc
+              WHERE tc.id=standings.competition_team_id AND tc.active=1
+            )
+          )
 
         ORDER BY
           competition_team_id,
