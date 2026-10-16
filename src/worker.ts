@@ -1141,7 +1141,7 @@ async function ingestMatches(request: Request, env: Env) {
     env.DB.prepare("SELECT id FROM teams WHERE slug='fff-equipes-a-affecter' LIMIT 1").first<{ id: number }>()
   ]);
   if (!seasonId || !unassigned?.id) return json({ error: "Saison active ou groupe technique FFF manquant : appliquez les migrations D1." }, 409);
-  const loadedEntries = await env.DB.prepare("SELECT id,team_id,fff_team_id,category_code FROM team_competitions WHERE active=1 AND season_id=?")
+  const loadedEntries = await env.DB.prepare("SELECT id,team_id,fff_team_id,category_code,active FROM team_competitions WHERE season_id=?")
     .bind(seasonId).all<AnyRow>();
   const entries = new Map((loadedEntries.results || []).map(entry => [String(entry.fff_team_id || ""), entry]));
   const refreshedEntries = new Set<string>();
@@ -1155,7 +1155,7 @@ async function ingestMatches(request: Request, env: Env) {
     const official = row.official_team || {};
     let entry = fffTeamId ? entries.get(fffTeamId) : null;
     if (fffTeamId && !entry) {
-      const inserted = await env.DB.prepare(`INSERT INTO team_competitions(
+      const inserted = await env.DB.prepare(`INSERT OR IGNORE INTO team_competitions(
         team_id,season_id,name,team_number,fff_team_id,category_code,
         competition_name,division,pool,active,display_order,
         discovered_automatically,last_seen_at
@@ -1167,9 +1167,20 @@ async function ingestMatches(request: Request, env: Env) {
         official.competition_name || row.competition || "",
         official.division || "", official.pool || ""
       ).run();
-      entry = { id: Number(inserted.meta.last_row_id), team_id: unassigned.id, fff_team_id: fffTeamId };
+
+      entry = await env.DB.prepare(
+        "SELECT id,team_id,fff_team_id,category_code,active FROM team_competitions WHERE season_id=? AND fff_team_id=? LIMIT 1"
+      ).bind(seasonId, fffTeamId).first<AnyRow>();
+
+      if (!entry) {
+        throw new Error(`Équipe FFF ${fffTeamId} introuvable après INSERT OR IGNORE`);
+      }
+
       entries.set(fffTeamId, entry);
-      discovered++;
+
+      if (Number(inserted.meta.changes || 0) > 0) {
+        discovered++;
+      }
     } else if (entry && !refreshedEntries.has(fffTeamId)) {
       await env.DB.prepare(`UPDATE team_competitions SET
         name=?,team_number=?,category_code=?,competition_name=?,division=?,pool=?,
