@@ -90,6 +90,26 @@ export async function rateLimit(
       "Trop de tentatives. Patientez quelques minutes avant de réessayer.",
     );
 }
+export function accessConfiguration(env: ShopEnv) {
+  const issuer = (env.CF_ACCESS_ISSUER || "").trim().replace(/\/+$/, "");
+  const audiences = (env.CF_ACCESS_SHOP_AUD || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const missing: string[] = [];
+  if (!issuer) missing.push("CF_ACCESS_ISSUER");
+  else if (!/^https:\/\/[a-z0-9-]+\.cloudflareaccess\.com$/.test(issuer))
+    missing.push("CF_ACCESS_ISSUER (domaine d’équipe invalide)");
+  if (!audiences.length) missing.push("CF_ACCESS_SHOP_AUD");
+  if (missing.length)
+    fail(
+      "ACCESS_CONFIG",
+      503,
+      `Configuration Cloudflare Access manquante ou invalide : ${missing.join(", ")}. Renseignez ces variables sur le Worker de cet environnement, puis redéployez. L’AUD est celui de l’application boutique, pas l’identifiant de sa règle e-mail/PIN.`,
+    );
+  return { issuer, audiences };
+}
+
 export async function staff(request: Request, env: ShopEnv) {
   const url = new URL(request.url);
   if (
@@ -99,16 +119,7 @@ export async function staff(request: Request, env: ShopEnv) {
     request.headers.get("x-admin-token") === env.DEV_ADMIN_TOKEN
   )
     return "local-admin";
-  const issuer = env.CF_ACCESS_ISSUER || "";
-  if (
-    !/^https:\/\/[a-z0-9-]+\.cloudflareaccess\.com$/.test(issuer) ||
-    !env.CF_ACCESS_SHOP_AUD
-  )
-    fail(
-      "ACCESS_CONFIG",
-      503,
-      "Cloudflare Access doit être configuré pour la gestion boutique.",
-    );
+  const { issuer, audiences } = accessConfiguration(env);
   const token = request.headers.get("cf-access-jwt-assertion");
   if (!token)
     fail("ACCESS_REQUIRED", 401, "Authentification Cloudflare Access requise.");
@@ -120,7 +131,7 @@ export async function staff(request: Request, env: ShopEnv) {
       );
     const { payload } = await jwtVerify(token, jwks.get(issuer)!, {
       issuer,
-      audience: env.CF_ACCESS_SHOP_AUD.split(",").map((x) => x.trim()),
+      audience: audiences,
       algorithms: ["RS256"],
     });
     if (typeof payload.email !== "string") throw new Error();

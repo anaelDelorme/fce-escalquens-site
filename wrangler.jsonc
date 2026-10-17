@@ -48,7 +48,10 @@
       "vars": {
         "APP_ENV": "staging",
         "GITHUB_REPOSITORY": "anaelDelorme/fce-escalquens-site",
-        "STAGING_WORKFLOW_REF": "staging"
+        "STAGING_WORKFLOW_REF": "staging",
+        "CF_ACCESS_ISSUER": "https://cold-flower-98c5.cloudflareaccess.com",
+        "CF_ACCESS_SHOP_AUD": "cbe8e9e32519dc9eb7c136a7e858326480881777f7359720d771e42f34973d7a",
+        "SHOP_ORIGIN": "https://fce-escalquens-staging.fcescalquens.workers.dev"
       },
       "d1_databases": [
         {

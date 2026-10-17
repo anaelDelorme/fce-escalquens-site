@@ -1,0 +1,508 @@
+diff --git a/docs/CORRECTIF-ACCES-ET-AFFICHAGE.md b/docs/CORRECTIF-ACCES-ET-AFFICHAGE.md
+new file mode 100644
+index 0000000..0aae0b2
+--- /dev/null
++++ b/docs/CORRECTIF-ACCES-ET-AFFICHAGE.md
+@@ -0,0 +1,130 @@
++# Correctif d’accès boutique, confidentialité et pied de page
++
++Ce correctif est basé sur votre branche `staging`, commit `0c947ec` (« Corrige les bindings D1 du staging »). Il ne modifie aucune référence D1 ou R2, ne crée aucune base et ne nécessite pas de compte HelloAsso.
++
++## Diagnostic des captures
++
++L’erreur `ACCESS_CONFIG` vient du Worker : `CF_ACCESS_ISSUER` et/ou `CF_ACCESS_SHOP_AUD` sont absents ou invalides. La création de l’application Access et de sa politique e-mail/PIN ne renseigne pas automatiquement ces variables dans le Worker. Votre fichier de configuration staging publié sur GitHub ne les contient pas.
++
++Le correctif rend le message plus précis et tolère les espaces et le slash final lors de la copie du domaine d’équipe. Il conserve toutes les vérifications de signature, d’émetteur, d’audience, d’expiration et d’habilitation.
++
++## 1. Appliquer le correctif dans Codespaces
++
++Télécharger `fce-correctif-acces-affichage.patch`, puis adapter son chemin :
++
++```bash
++git switch staging
++git status
++git pull --ff-only origin staging
++git apply --check ../fce-correctif-acces-affichage.patch
++git apply ../fce-correctif-acces-affichage.patch
++```
++
++Si des modifications locales sont en cours ou si `--check` signale un conflit, ne pas écraser les fichiers : enregistrer le travail et adapter le correctif avant de continuer.
++
++## 2. Retrouver les deux valeurs Access
++
++Dans Cloudflare Zero Trust :
++
++- **Domaine d’équipe** : `https://VOTRE-EQUIPE.cloudflareaccess.com`. Ce n’est pas l’adresse `workers.dev` du site ni `fcescalquens.fr`.
++- **Application Audience (AUD)** de l’application **fce-escalquens boutique Staging**. Ouvrir l’application, puis ses informations/configurations d’audience. Copier la valeur AUD de l’application, généralement une chaîne de 64 caractères hexadécimaux.
++
++Le `Policy ID` de la règle « Login Boutique » visible dans la capture est un UUID : **il ne convient pas** comme audience. La règle peut être partagée par deux applications, mais les audiences de l’application staging et de l’application production restent distinctes.
++
++Ces valeurs ne sont pas des clés secrètes, mais elles doivent être exactes.
++
++## 3. Renseigner les variables staging sans modifier les bases
++
++Remplacer les deux valeurs d’exemple ci-dessous, puis lancer :
++
++```bash
++node scripts/configure-shop-access.mjs \
++  --env staging \
++  --issuer https://VOTRE-EQUIPE.cloudflareaccess.com \
++  --aud AUD_DE_L_APPLICATION_BOUTIQUE_STAGING \
++  --origin https://fce-escalquens-staging.fcescalquens.workers.dev
++```
++
++Le script met à jour uniquement ces trois variables dans `env.staging.vars` de `wrangler.jsonc` :
++
++```text
++CF_ACCESS_ISSUER
++CF_ACCESS_SHOP_AUD
++SHOP_ORIGIN
++```
++
++Les bases DB/ORDERS, leurs UUID et les buckets restent inchangés. Vérifier :
++
++```bash
++node scripts/configure-shop-access.mjs --env staging --check
++node scripts/configure-orders.mjs --check staging
++git diff -- wrangler.jsonc
++```
++
++Les valeurs sont enregistrées dans la configuration du dépôt pour être présentes au prochain déploiement. Ne pas simplement les ajouter dans le tableau de bord puis les perdre lors d’un push ultérieur.
++
++## 4. Ajuster les destinations des applications Access
++
++Dans l’application **boutique Staging**, pour le même hôte `fce-escalquens-staging.fcescalquens.workers.dev`, garder :
++
++```text
++/admin-boutique
++/admin-boutique/*
++```
++
++L’API est située sous `/admin-boutique/api/*`, donc déjà couverte. Les destinations `/admin-boutique-api` et `/admin-boutique-api/*` visibles dans la capture ne correspondent à aucune API de cette version : les retirer pour éviter la confusion.
++
++Dans l’application **du site staging**, remplacer le motif trop large `/admin*` par :
++
++```text
++/admin
++/admin/*
++/admin-api/*
++```
++
++Cela évite que la règle du site englobe également `/admin-boutique`. La politique « Login Boutique » de la capture combine une liste d’e-mails avec le PIN obligatoire : ce principe est correct ; aucun élargissement de la liste n’est nécessaire pour résoudre `ACCESS_CONFIG`.
++
++Ne pas changer les règles de production pour corriger le staging. Ne pas protéger le site public entier ni le webhook HelloAsso avec l’application boutique.
++
++## 5. Vérifier l’habilitation boutique D1
++
++```bash
++npx wrangler d1 execute ORDERS --remote --env staging \
++  --command "SELECT email,name,active FROM shop_admins;"
++```
++
++L’adresse utilisée pour recevoir le PIN doit être active dans cette liste. Si elle n’y figure pas, ajouter votre adresse explicite :
++
++```bash
++npx wrangler d1 execute ORDERS --remote --env staging \
++  --command "INSERT INTO shop_admins(email,name,active) VALUES('vous@example.org','Responsable boutique',1) ON CONFLICT(email) DO UPDATE SET active=1;"
++```
++
++Remplacer `vous@example.org` avant exécution. Être administrateur du site ne donne pas automatiquement les droits boutique.
++
++## 6. Construire puis pousser
++
++```bash
++npm ci
++npm test
++npm run typecheck:shop
++npm run build
++git add src/components/Footer.astro src/components/LegalPage.astro public/legal.css src/shop/security.ts scripts/configure-shop-access.mjs tests/access-configuration.test.ts docs/CORRECTIF-ACCES-ET-AFFICHAGE.md wrangler.jsonc
++git commit -m "Corrige l’accès boutique et la lisibilité des pages légales"
++git push origin staging
++```
++
++Attendre la réussite du workflow de déploiement. Un build seul ne met pas le site en ligne.
++
++## 7. Recette après déploiement
++
++- Ouvrir `/confidentialite/` : les intertitres utilisent une police de lecture, sans Impact ni capitales forcées ; paragraphes et listes sont espacés et lisibles sur mobile.
++- En bas de page, rubrique « Le club » : présence des liens « Administration du site » et « Administration boutique ».
++- Ouvrir `/admin-boutique/` dans une fenêtre privée et demander un nouveau PIN si nécessaire.
++- Si `ACCESS_CONFIG` persiste, le Worker indique maintenant les noms des variables manquantes/invalides : vérifier le déploiement et les variables du Worker **staging**, pas celles de production.
++- Si le message devient « session invalide », vérifier l’AUD de la bonne application et le domaine d’équipe.
++- Si le message devient « adresse sans droits », vérifier `shop_admins` et l’adresse réellement utilisée.
++
++Le rendu en navigateur et l’authentification sur votre compte Cloudflare restent à vérifier après déploiement ; les captures ne contiennent pas le domaine d’équipe ni l’AUD permettant de compléter votre configuration à votre place.
++
++Référence officielle : https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/
+diff --git a/public/legal.css b/public/legal.css
+index 2937fa7..37a2c1c 100644
+--- a/public/legal.css
++++ b/public/legal.css
+@@ -1,2 +1,70 @@
+-.legal-content{max-width:900px;background:#fff;margin:60px auto;padding:50px}.legal-content h2{font-size:34px;margin-top:42px}.legal-content h2:first-child{margin-top:0}.legal-content p{line-height:1.75;color:#4f4643}.legal-content a{color:var(--wine);font-weight:800;text-decoration:underline}
+-@media(max-width:600px){.legal-content{margin:25px 14px;padding:25px}.legal-content h2{font-size:28px}}
++/* Pages d’information : conserver le thème, sans la police d’affiche des titres sportifs. */
++.legal-content {
++  box-sizing: border-box;
++  width: min(940px, calc(100% - 48px));
++  margin: 40px auto 64px;
++  padding: clamp(24px, 5vw, 48px);
++  border: 1px solid #e4d9d1;
++  border-radius: 8px;
++  background: #fff;
++  color: var(--ink, #291d1d);
++  font-family: Arial, Helvetica, sans-serif;
++  font-size: 17px;
++  font-weight: 400;
++  line-height: 1.75;
++  overflow-wrap: anywhere;
++}
++.legal-content h2,
++.legal-content h3 {
++  font-family: Arial, Helvetica, sans-serif;
++  font-weight: 700;
++  font-style: normal;
++  text-transform: none;
++  letter-spacing: normal;
++  line-height: 1.35;
++  color: var(--wine-dark, #58181c);
++  margin: 2em 0 0.7em;
++}
++.legal-content h2 {
++  font-size: clamp(22px, 2.5vw, 28px);
++}
++.legal-content h3 {
++  font-size: 20px;
++}
++.legal-content > h2:first-child {
++  margin-top: 0;
++}
++.legal-content p {
++  margin: 0 0 1.1em;
++  color: #4f4643;
++}
++.legal-content ul,
++.legal-content ol {
++  padding-left: 1.4em;
++  margin: 0.8em 0 1.5em;
++}
++.legal-content li {
++  margin: 0.65em 0;
++  padding-left: 0.2em;
++}
++.legal-content strong {
++  font-weight: 700;
++}
++.legal-content a {
++  color: var(--wine, #9f1a1a);
++  font-weight: 600;
++  text-decoration: underline;
++  text-underline-offset: 0.15em;
++}
++.legal-content pre {
++  font: inherit;
++  white-space: pre-wrap;
++}
++@media (max-width: 600px) {
++  .legal-content {
++    width: calc(100% - 28px);
++    margin: 24px auto 40px;
++    padding: 22px 20px;
++    font-size: 16px;
++  }
++}
+diff --git a/scripts/configure-shop-access.mjs b/scripts/configure-shop-access.mjs
+new file mode 100644
+index 0000000..7787ed6
+--- /dev/null
++++ b/scripts/configure-shop-access.mjs
+@@ -0,0 +1,68 @@
++import { readFileSync, writeFileSync } from "node:fs";
++import { resolve } from "node:path";
++const args = process.argv.slice(2);
++const get = (name, fallback) => {
++  const index = args.indexOf(name);
++  if (index < 0) return fallback;
++  if (!args[index + 1] || args[index + 1].startsWith("--"))
++    throw new Error(`Valeur manquante pour ${name}`);
++  return args[index + 1];
++};
++const target = get("--env", "staging");
++if (!["staging", "production"].includes(target))
++  throw new Error("--env doit valoir staging ou production.");
++const file = resolve(
++  get("--config", new URL("../wrangler.jsonc", import.meta.url).pathname),
++);
++const config = JSON.parse(readFileSync(file, "utf8"));
++const section = target === "staging" ? config.env?.staging : config;
++if (!section) throw new Error("Configuration staging absente.");
++const previous = section.vars || {};
++const values = {
++  CF_ACCESS_ISSUER: String(get("--issuer", previous.CF_ACCESS_ISSUER || ""))
++    .trim()
++    .replace(/\/+$/, ""),
++  CF_ACCESS_SHOP_AUD: String(
++    get("--aud", previous.CF_ACCESS_SHOP_AUD || ""),
++  ).trim(),
++  SHOP_ORIGIN: String(get("--origin", previous.SHOP_ORIGIN || ""))
++    .trim()
++    .replace(/\/+$/, ""),
++};
++if (
++  !/^https:\/\/[a-z0-9-]+\.cloudflareaccess\.com$/.test(values.CF_ACCESS_ISSUER)
++)
++  throw new Error(
++    "CF_ACCESS_ISSUER : renseignez https://VOTRE-EQUIPE.cloudflareaccess.com (domaine Zero Trust, pas celui du site).",
++  );
++if (
++  !values.CF_ACCESS_SHOP_AUD.split(",").every((a) =>
++    /^[a-f0-9]{64}$/i.test(a.trim()),
++  )
++)
++  throw new Error(
++    "CF_ACCESS_SHOP_AUD : copiez le champ Application Audience (AUD) de l’application boutique. Le Policy ID de la règle Login Boutique ne convient pas.",
++  );
++let origin;
++try {
++  origin = new URL(values.SHOP_ORIGIN);
++} catch {}
++if (
++  !origin ||
++  origin.protocol !== "https:" ||
++  origin.origin !== values.SHOP_ORIGIN
++)
++  throw new Error(
++    "SHOP_ORIGIN : renseignez l’origine HTTPS exacte du site, sans chemin.",
++  );
++if (args.includes("--check"))
++  console.log(
++    `Configuration Access boutique ${target} vérifiée : domaine, audience et origine présents.`,
++  );
++else {
++  section.vars = { ...previous, ...values };
++  writeFileSync(file, JSON.stringify(config, null, 2) + "\n");
++  console.log(
++    `Variables Access boutique ${target} enregistrées. Les bindings D1/R2 sont inchangés. Faites un commit/push pour les déployer.`,
++  );
++}
+diff --git a/src/components/Footer.astro b/src/components/Footer.astro
+index a6e9721..b61e3c8 100644
+--- a/src/components/Footer.astro
++++ b/src/components/Footer.astro
+@@ -25,7 +25,7 @@
+   </div>
+ </div>
+  <div class="footer-links"><strong>Le terrain</strong><a href="/equipes/">Équipes</a><a href="/planning/">Planning</a><a href="/matchs/">Matchs & résultats</a><a href="/tournois/">Tournois</a><a href="/boutique/">Boutique</a></div>
+-  <div class="footer-links"><strong>Le club</strong><a href="/mecenat/">Mécénat</a><a href="/contacts/">Contacts</a><a href="/admin/">Administration</a><a href="/mentions-legales/">Mentions légales</a><a href="/cgv/">CGV boutique</a><a href="/confidentialite/">Confidentialité</a><a href="/cookies/">Cookies</a><a href="/accessibilite/">Accessibilité</a></div>
++  <div class="footer-links"><strong>Le club</strong><a href="/mecenat/">Mécénat</a><a href="/contacts/">Contacts</a><a href="/admin/">Administration du site</a><a href="/admin-boutique/">Administration boutique</a><a href="/mentions-legales/">Mentions légales</a><a href="/cgv/">CGV boutique</a><a href="/confidentialite/">Confidentialité</a><a href="/cookies/">Cookies</a><a href="/accessibilite/">Accessibilité</a></div>
+   <div class="footer-support"><strong>Nous contacter</strong><span>Toute demande concernant le club</span><a href="mailto:fcescalquens@gmail.com">fcescalquens@gmail.com</a><span>Un problème avec le site ?</span><a href="mailto:fcescalquens.web@gmail.com">fcescalquens.web@gmail.com</a></div>
+ </footer>
+ <style is:global>
+diff --git a/src/components/LegalPage.astro b/src/components/LegalPage.astro
+index f92caa5..c14bfb1 100644
+--- a/src/components/LegalPage.astro
++++ b/src/components/LegalPage.astro
+@@ -4,6 +4,6 @@ import Footer from './Footer.astro';
+ const {title,eyebrow='Informations'}=Astro.props;
+ ---
+ <html lang="fr">
+-  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>{title} - FC Escalquens</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/enhancements.css?v=6"><link rel="stylesheet" href="/brand-charter.css"><link rel="stylesheet" href="/legal.css"></head>
+-  <body><Header/><main><section class="page-hero dark"><p class="eyebrow">{eyebrow}</p><h1>{title}</h1></section><article class="legal-content content"><slot/></article></main><Footer/></body>
++  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>{title} - FC Escalquens</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/enhancements.css?v=6"><link rel="stylesheet" href="/brand-charter.css"><link rel="stylesheet" href="/legal.css?v=2"></head>
++  <body><Header/><main><section class="page-hero dark"><p class="eyebrow">{eyebrow}</p><h1>{title}</h1></section><article class="legal-content"><slot/></article></main><Footer/></body>
+ </html>
+diff --git a/src/shop/security.ts b/src/shop/security.ts
+index 1e5a074..4d9494c 100644
+--- a/src/shop/security.ts
++++ b/src/shop/security.ts
+@@ -90,6 +90,26 @@ export async function rateLimit(
+       "Trop de tentatives. Patientez quelques minutes avant de réessayer.",
+     );
+ }
++export function accessConfiguration(env: ShopEnv) {
++  const issuer = (env.CF_ACCESS_ISSUER || "").trim().replace(/\/+$/, "");
++  const audiences = (env.CF_ACCESS_SHOP_AUD || "")
++    .split(",")
++    .map((value) => value.trim())
++    .filter(Boolean);
++  const missing: string[] = [];
++  if (!issuer) missing.push("CF_ACCESS_ISSUER");
++  else if (!/^https:\/\/[a-z0-9-]+\.cloudflareaccess\.com$/.test(issuer))
++    missing.push("CF_ACCESS_ISSUER (domaine d’équipe invalide)");
++  if (!audiences.length) missing.push("CF_ACCESS_SHOP_AUD");
++  if (missing.length)
++    fail(
++      "ACCESS_CONFIG",
++      503,
++      `Configuration Cloudflare Access manquante ou invalide : ${missing.join(", ")}. Renseignez ces variables sur le Worker de cet environnement, puis redéployez. L’AUD est celui de l’application boutique, pas l’identifiant de sa règle e-mail/PIN.`,
++    );
++  return { issuer, audiences };
++}
++
+ export async function staff(request: Request, env: ShopEnv) {
+   const url = new URL(request.url);
+   if (
+@@ -99,16 +119,7 @@ export async function staff(request: Request, env: ShopEnv) {
+     request.headers.get("x-admin-token") === env.DEV_ADMIN_TOKEN
+   )
+     return "local-admin";
+-  const issuer = env.CF_ACCESS_ISSUER || "";
+-  if (
+-    !/^https:\/\/[a-z0-9-]+\.cloudflareaccess\.com$/.test(issuer) ||
+-    !env.CF_ACCESS_SHOP_AUD
+-  )
+-    fail(
+-      "ACCESS_CONFIG",
+-      503,
+-      "Cloudflare Access doit être configuré pour la gestion boutique.",
+-    );
++  const { issuer, audiences } = accessConfiguration(env);
+   const token = request.headers.get("cf-access-jwt-assertion");
+   if (!token)
+     fail("ACCESS_REQUIRED", 401, "Authentification Cloudflare Access requise.");
+@@ -120,7 +131,7 @@ export async function staff(request: Request, env: ShopEnv) {
+       );
+     const { payload } = await jwtVerify(token, jwks.get(issuer)!, {
+       issuer,
+-      audience: env.CF_ACCESS_SHOP_AUD.split(",").map((x) => x.trim()),
++      audience: audiences,
+       algorithms: ["RS256"],
+     });
+     if (typeof payload.email !== "string") throw new Error();
+diff --git a/tests/access-configuration.test.ts b/tests/access-configuration.test.ts
+new file mode 100644
+index 0000000..8d08352
+--- /dev/null
++++ b/tests/access-configuration.test.ts
+@@ -0,0 +1,131 @@
++import { test } from "node:test";
++import assert from "node:assert/strict";
++import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
++import { join } from "node:path";
++import { spawnSync } from "node:child_process";
++import { accessConfiguration } from "../src/shop/security";
++import type { ShopEnv } from "../src/shop/service";
++
++test("diagnostic Access : indique précisément les variables manquantes", () => {
++  assert.throws(
++    () => accessConfiguration({} as ShopEnv),
++    (error: any) =>
++      error.code === "ACCESS_CONFIG" &&
++      error.message.includes("CF_ACCESS_ISSUER") &&
++      error.message.includes("CF_ACCESS_SHOP_AUD"),
++  );
++  assert.throws(
++    () =>
++      accessConfiguration({
++        CF_ACCESS_ISSUER: "https://test.cloudflareaccess.com",
++      } as ShopEnv),
++    (error: any) => error.message.includes("CF_ACCESS_SHOP_AUD"),
++  );
++});
++test("normalisation Access : espaces et slash final tolérés sans relâcher la vérification JWT", () => {
++  assert.deepEqual(
++    accessConfiguration({
++      CF_ACCESS_ISSUER: " https://test.cloudflareaccess.com/ ",
++      CF_ACCESS_SHOP_AUD: " app-one, ,app-two ",
++    } as ShopEnv),
++    {
++      issuer: "https://test.cloudflareaccess.com",
++      audiences: ["app-one", "app-two"],
++    },
++  );
++  assert.throws(
++    () =>
++      accessConfiguration({
++        CF_ACCESS_ISSUER: "https://attacker.example",
++        CF_ACCESS_SHOP_AUD: "test",
++      } as ShopEnv),
++    /domaine d’équipe invalide/,
++  );
++  assert.throws(
++    () =>
++      accessConfiguration({
++        CF_ACCESS_ISSUER: "https://test.cloudflareaccess.com",
++        CF_ACCESS_SHOP_AUD: " , ",
++      } as ShopEnv),
++    /CF_ACCESS_SHOP_AUD/,
++  );
++});
++test("configuration CLI : préserve toutes les bases et ne modifie que les variables de staging", () => {
++  const folder = mkdtempSync(join(process.cwd(), ".access-test-"));
++  try {
++    const file = join(folder, "wrangler.jsonc");
++    const config = {
++      vars: { APP_ENV: "production" },
++      d1_databases: [{ binding: "DB", database_id: "prod-site" }],
++      env: {
++        staging: {
++          vars: { APP_ENV: "staging", STAGING_WORKFLOW_REF: "staging" },
++          d1_databases: [
++            { binding: "DB", database_id: "stage-site" },
++            {
++              binding: "ORDERS",
++              database_id: "3149647e-9a2f-403a-9591-b7d161bbc98a",
++            },
++          ],
++        },
++      },
++    };
++    writeFileSync(file, JSON.stringify(config));
++    const args = [
++      "scripts/configure-shop-access.mjs",
++      "--config",
++      file,
++      "--env",
++      "staging",
++      "--issuer",
++      "https://club.cloudflareaccess.com/",
++      "--aud",
++      "a".repeat(64),
++      "--origin",
++      "https://staging.example.org/",
++    ];
++    let result = spawnSync(process.execPath, args, { encoding: "utf8" });
++    assert.equal(result.status, 0, result.stderr);
++    const updated = JSON.parse(readFileSync(file, "utf8"));
++    assert.deepEqual(updated.d1_databases, config.d1_databases);
++    assert.deepEqual(
++      updated.env.staging.d1_databases,
++      config.env.staging.d1_databases,
++    );
++    assert.deepEqual(updated.vars, config.vars);
++    assert.equal(
++      updated.env.staging.vars.SHOP_ORIGIN,
++      "https://staging.example.org",
++    );
++    assert.equal(updated.env.staging.vars.STAGING_WORKFLOW_REF, "staging");
++    result = spawnSync(
++      process.execPath,
++      [
++        "scripts/configure-shop-access.mjs",
++        "--config",
++        file,
++        "--env",
++        "staging",
++        "--check",
++      ],
++      { encoding: "utf8" },
++    );
++    assert.equal(result.status, 0, result.stderr);
++    const before = readFileSync(file, "utf8");
++    result = spawnSync(
++      process.execPath,
++      [
++        ...args.slice(0, -4),
++        "--aud",
++        "11111111-1111-4111-8111-111111111111",
++        "--origin",
++        "https://staging.example.org",
++      ],
++      { encoding: "utf8" },
++    );
++    assert.notEqual(result.status, 0);
++    assert.equal(readFileSync(file, "utf8"), before);
++  } finally {
++    rmSync(folder, { recursive: true, force: true });
++  }
++});

@@ -1,2 +1,70 @@
-.legal-content{max-width:900px;background:#fff;margin:60px auto;padding:50px}.legal-content h2{font-size:34px;margin-top:42px}.legal-content h2:first-child{margin-top:0}.legal-content p{line-height:1.75;color:#4f4643}.legal-content a{color:var(--wine);font-weight:800;text-decoration:underline}
-@media(max-width:600px){.legal-content{margin:25px 14px;padding:25px}.legal-content h2{font-size:28px}}
+/* Pages d’information : conserver le thème, sans la police d’affiche des titres sportifs. */
+.legal-content {
+  box-sizing: border-box;
+  width: min(940px, calc(100% - 48px));
+  margin: 40px auto 64px;
+  padding: clamp(24px, 5vw, 48px);
+  border: 1px solid #e4d9d1;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink, #291d1d);
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+.legal-content h2,
+.legal-content h3 {
+  font-family: Arial, Helvetica, sans-serif;
+  font-weight: 700;
+  font-style: normal;
+  text-transform: none;
+  letter-spacing: normal;
+  line-height: 1.35;
+  color: var(--wine-dark, #58181c);
+  margin: 2em 0 0.7em;
+}
+.legal-content h2 {
+  font-size: clamp(22px, 2.5vw, 28px);
+}
+.legal-content h3 {
+  font-size: 20px;
+}
+.legal-content > h2:first-child {
+  margin-top: 0;
+}
+.legal-content p {
+  margin: 0 0 1.1em;
+  color: #4f4643;
+}
+.legal-content ul,
+.legal-content ol {
+  padding-left: 1.4em;
+  margin: 0.8em 0 1.5em;
+}
+.legal-content li {
+  margin: 0.65em 0;
+  padding-left: 0.2em;
+}
+.legal-content strong {
+  font-weight: 700;
+}
+.legal-content a {
+  color: var(--wine, #9f1a1a);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+.legal-content pre {
+  font: inherit;
+  white-space: pre-wrap;
+}
+@media (max-width: 600px) {
+  .legal-content {
+    width: calc(100% - 28px);
+    margin: 24px auto 40px;
+    padding: 22px 20px;
+    font-size: 16px;
+  }
+}
