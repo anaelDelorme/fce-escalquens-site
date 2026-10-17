@@ -189,9 +189,7 @@ before(async () => {
   await DB.exec(
     "CREATE TABLE admins(email TEXT,active INTEGER);CREATE TABLE shop_products(id INTEGER PRIMARY KEY,name TEXT,image_key TEXT,active INTEGER,price_label TEXT,sizes TEXT,options TEXT);CREATE TABLE shop_settings(id INTEGER PRIMARY KEY,shop_enabled INTEGER);INSERT INTO shop_settings VALUES(1,1);INSERT INTO shop_products VALUES(1,'Castolo','test.webp',1,'Dès 20 €','','');",
   );
-  await DB.exec(
-    "ALTER TABLE shop_products ADD COLUMN display_order INTEGER NOT NULL DEFAULT 0",
-  );
+  await DB.exec("ALTER TABLE shop_products ADD COLUMN display_order INTEGER NOT NULL DEFAULT 0;ALTER TABLE shop_products ADD COLUMN short_description TEXT DEFAULT '';ALTER TABLE shop_products ADD COLUMN description TEXT DEFAULT '';ALTER TABLE shop_products ADD COLUMN delivery_delay TEXT DEFAULT '';");
   // D1 exec accepts individual statements; migrations contain no triggers or embedded semicolons.
   for (const stmt of readFileSync(
     new URL("../migrations/0029_shop_checkout.sql", import.meta.url),
@@ -1159,4 +1157,35 @@ test("les catégories et les visuels restent modifiables via les API boutique se
     ).alt_text,
     "Nouvelle couverture",
   );
+});
+
+test("récupération sans référence : réponse générique et mail uniquement à l’adresse de commande", async () => {
+  await ORDERS.prepare("DELETE FROM rate_limits").run();
+  const before = await ORDERS.prepare("SELECT COUNT(*) AS n FROM outbox WHERE kind='tracking'").first<any>();
+  const good=await route(request('/api/shop/recover',{email:'client@example.org'}));
+  const bad=await route(request('/api/shop/recover',{email:'nobody@example.org'}));
+  assert.equal(good.status,200);assert.equal(bad.status,200);assert.equal(good.body.message,bad.body.message);
+  const after=await ORDERS.prepare("SELECT COUNT(*) AS n FROM outbox WHERE kind='tracking'").first<any>();
+  assert.ok(after.n>before.n);
+  const missing=await route(request('/api/shop/recover',{}));assert.equal(missing.status,400);
+});
+test("gestion des responsables : JWT obligatoire, ajout, désactivation et protection de son propre accès", async () => {
+  const target={...env, APP_ENV:'staging',SHOP_ORIGIN:'https://example.org',CF_ACCESS_ISSUER:'https://test.cloudflareaccess.com',CF_ACCESS_SHOP_AUD:'aud'};
+  const token=await new SignJWT({email:'admin@example.org'}).setProtectedHeader({alg:'RS256',kid:'test-key'}).setIssuer(target.CF_ACCESS_ISSUER).setAudience('aud').setExpirationTime(now()+600).sign(accessPair.privateKey);
+  const req=(data?:any,jwt=token)=>new Request('https://example.org/admin-boutique/api/admins',{method:data?'PUT':'GET',headers:{'cf-access-jwt-assertion':jwt,'content-type':'application/json',origin:'https://example.org'},...(data?{body:JSON.stringify(data)}:{})});
+  assert.equal((await shopRoute(req(undefined,'forged'),target,ctx))?.status,401);
+  assert.equal((await shopRoute(req({email:'new@example.org',name:'Bénévole',active:true}),target,ctx))?.status,200);
+  assert.equal((await ORDERS.prepare("SELECT active FROM shop_admins WHERE email='new@example.org'").first<any>()).active,1);
+  assert.equal((await shopRoute(req({email:'admin@example.org',name:'Admin',active:false}),target,ctx))?.status,409);
+  assert.equal((await shopRoute(req({email:'new@example.org',name:'Bénévole',active:false}),target,ctx))?.status,200);
+  const other=await new SignJWT({email:'new@example.org'}).setProtectedHeader({alg:'RS256',kid:'test-key'}).setIssuer(target.CF_ACCESS_ISSUER).setAudience('aud').setExpirationTime(now()+600).sign(accessPair.privateKey);
+  assert.equal((await shopRoute(req(undefined,other),target,ctx))?.status,403);
+  const cross=new Request(req({email:'x@example.org',name:'X',active:true}),{headers:{'cf-access-jwt-assertion':token,'content-type':'application/json',origin:'https://evil.org'}});
+  assert.equal((await shopRoute(cross,target,ctx))?.status,403);
+});
+test('CGV structurées et téléchargement du catalogue au format PDF', async()=>{
+  const config=await route(request('/api/shop/config'));
+  assert.equal(config.status,200);assert.ok(config.body.terms_sections.length>=8);assert.equal(config.body.terms_sections[0][0],'Vendeur et contact');
+  const pdf=await shopRoute(request('/api/shop/catalogue.pdf'),env,ctx);
+  assert.equal(pdf?.status,200);assert.equal(pdf?.headers.get('content-type'),'application/pdf');assert.match(pdf?.headers.get('content-disposition')||'',/attachment/);assert.equal(new TextDecoder().decode((await pdf!.arrayBuffer()).slice(0,5)),'%PDF-');
 });

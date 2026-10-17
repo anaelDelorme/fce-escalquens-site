@@ -10,7 +10,7 @@ import { TERMS_VERSION } from '../../shop/domain';
   <p><a href="/confidentialite/">Politique de confidentialité et exercice de vos droits</a> · <a href="/boutique/">Retour à la boutique</a></p>
   <script is:inline type="module">
     import {api} from '/shop-common.js';
-    try{const data=await api('/api/shop/config');const node=document.querySelector('#terms-body');node.textContent=data.terms_snapshot;node.style.whiteSpace='pre-line';node.style.lineHeight='1.8';document.querySelector('#terms-status').textContent='Conditions applicables aux nouvelles commandes. Vous retrouverez celles de votre achat dans son suivi.';}
+    try{const data=await api('/api/shop/config');const node=document.querySelector('#terms-body');node.replaceChildren(...data.terms_sections.map(([title,body])=>{const section=document.createElement('section');const h=document.createElement('h2');h.textContent=title;const p=document.createElement('p');p.textContent=body;p.style.whiteSpace='pre-line';section.append(h,p);return section;}));document.querySelector('#terms-status').textContent='Conditions applicables aux nouvelles commandes. Vous retrouverez celles de votre achat dans son suivi.';}
     catch{document.querySelector('#terms-status').textContent='Les conditions complètes ne peuvent pas être actualisées. Les ventes restent fermées tant que les informations obligatoires ne sont pas configurées. Contactez le club pour obtenir les conditions applicables.';}
   </script>
 </LegalPage>

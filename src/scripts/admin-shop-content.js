@@ -1,4 +1,4 @@
-import { esc, api, showError, readStorage } from "./shop-common.js";
+import { esc, api, showError, readStorage } from "../../public/shop-common.js";
 const schemas = {
   shop_categories: [
     ["name", "Nom", "text", true],
@@ -25,8 +25,6 @@ const schemas = {
   shop_settings: [
     ["shop_enabled", "Afficher la boutique publique", "checkbox"],
     ["maintenance_image_key", "Visuel de fermeture", "image"],
-    ["catalogue_title", "Titre du catalogue PDF", "text"],
-    ["catalogue_key", "Catalogue PDF", "pdf"],
   ],
   site_media: [
     ["object_key", "Couverture de la boutique", "image"],

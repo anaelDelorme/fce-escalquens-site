@@ -40,3 +40,6 @@ ordre_affichage_equipes.py
 # Secrets propres à chaque environnement local
 .dev.vars.*
 !.dev.vars.example
+
+# Sauvegardes locales des imports catalogue
+backups/boutique-*/

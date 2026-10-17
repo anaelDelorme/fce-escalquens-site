@@ -15,7 +15,7 @@ import {
   euros,
   type Row,
 } from "./domain";
-import { defaultSettings, termsSnapshot, type Settings } from "./terms";
+import { defaultSettings, termsSnapshot, termsSections, type Settings } from "./terms";
 import {
   body,
   environment,
@@ -28,6 +28,7 @@ import {
 } from "./security";
 import { api, safeRedirect, verifiedPayments } from "./helloasso";
 import { drainMail, queueMail } from "./mail";
+import { cataloguePdf } from "./catalogue-pdf";
 export interface ShopEnv {
   DB: D1Database;
   ORDERS: D1Database;
@@ -71,7 +72,7 @@ export async function settings(
 async function catalogue(env: ShopEnv) {
   const result = await env.DB.batch<Row>([
     env.DB.prepare(
-      "SELECT id,name,price_label,sizes,options,image_key,active FROM shop_products WHERE active=1 AND image_key<>''",
+      "SELECT id,name,short_description,description,price_label,sizes,options,delivery_delay,image_key,active FROM shop_products WHERE active=1 AND image_key<>''",
     ),
     env.DB.prepare(
       "SELECT * FROM shop_variants WHERE active=1 ORDER BY product_id,label",
@@ -1089,6 +1090,22 @@ export async function shopRoute(
     if (!["GET", "HEAD"].includes(request.method)) sameOrigin(request, env);
     if (isAdmin) {
       const actor = await staff(request, env);
+      if (path === "/admin-boutique/api/admins") {
+        if (request.method === "GET") {
+          const rows = await env.ORDERS.prepare("SELECT email,name,active FROM shop_admins ORDER BY active DESC,email").all<Row>();
+          return response({admins: rows.results, actor});
+        }
+        if (request.method === "PUT") {
+          const data = await body(request), address = email(data.email);
+          const name = text(data.name, 120, true);
+          if (typeof data.active !== "boolean") fail("INVALID_FIELD",400,"Indiquez si cet accès est actif.");
+          if (address.toLowerCase() === actor.toLowerCase() && !data.active)
+            fail("OWN_ACCESS",409,"Vous ne pouvez pas désactiver votre propre accès. Demandez à un autre responsable.");
+          await env.ORDERS.prepare("INSERT INTO shop_admins(email,name,active) VALUES(?,?,?) ON CONFLICT(email) DO UPDATE SET name=excluded.name,active=excluded.active")
+            .bind(address, name, data.active ? 1 : 0).run();
+          return response({ok:true});
+        }
+      }
       if (path === "/admin-boutique/api/settings") {
         if (request.method === "GET")
           return response({
@@ -1321,7 +1338,16 @@ export async function shopRoute(
           mediator_url: s.mediator_url,
         },
         terms_snapshot: termsSnapshot(s),
+        terms_sections: termsSections(s),
       });
+    }
+    if (path === "/api/shop/catalogue.pdf" && request.method === "GET") {
+      await rateLimit(env, `pdf:${request.headers.get("cf-connecting-ip") || "local"}`, 15);
+      const bytes = await cataloguePdf(await catalogue(env));
+      return new Response(bytes as BodyInit, {headers: {
+        ...secureHeaders(), "content-type": "application/pdf",
+        "content-disposition": 'attachment; filename="catalogue-fce.pdf"',
+      }});
     }
     if (path === "/api/shop/catalogue" && request.method === "GET") {
       const cat = await catalogue(env);
@@ -1354,30 +1380,22 @@ export async function shopRoute(
       );
       const data = await body(request),
         address = email(data.email),
-        reference = text(data.reference, 60, true);
+        reference = text(data.reference ?? "", 60);
       await rateLimit(env, `recover-email:${address}`, 3, 3600);
-      const order = await env.ORDERS.prepare(
-        "SELECT id FROM orders WHERE reference=? COLLATE NOCASE AND email=? COLLATE NOCASE",
-      )
-        .bind(reference, address)
-        .first<Row>();
-      if (order) {
+      // Generic response for unknown addresses too; no order data leaves this endpoint.
+      const orders = await env.ORDERS.prepare(
+        "SELECT id FROM orders WHERE email=? COLLATE NOCASE AND (?='' OR reference=? COLLATE NOCASE) ORDER BY created_at DESC LIMIT 10",
+      ).bind(address, reference, reference).all<Row>();
+      for (const order of orders.results) {
         await env.ORDERS.prepare(
           "UPDATE orders SET token_expires=MAX(token_expires,?) WHERE id=?",
-        )
-          .bind(now() + 90 * 86400, order.id)
-          .run();
-        await queueMail(
-          env,
-          `recover:${crypto.randomUUID()}`,
-          order.id,
-          "tracking",
-        );
-        ctx.waitUntil(drainMail(env, s));
+        ).bind(now() + 90 * 86400, order.id).run();
+        await queueMail(env, `recover:${crypto.randomUUID()}`, order.id, "tracking");
       }
+      if (orders.results.length) ctx.waitUntil(drainMail(env, s));
       return response({
         message:
-          "Si ces informations correspondent à une commande, un lien de suivi sera envoyé à son adresse e-mail.",
+          "Si des commandes correspondent à ces informations, leurs liens de suivi seront envoyés à cette adresse e-mail. Vérifiez aussi les courriers indésirables.",
       });
     }
     const match = path.match(

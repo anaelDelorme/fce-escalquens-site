@@ -9,9 +9,10 @@ import {
   paymentLabels,
   fulfillmentLabels,
   readStorage,
-} from "./shop-common.js";
+} from "../../public/shop-common.js";
 const root = document.querySelector("#admin-shop-content"),
   message = document.querySelector("#admin-shop-message");
+let catalogueProductId = null;
 let tab = "orders",
   selected = null,
   config = null,
@@ -208,11 +209,13 @@ async function settingsView() {
 }
 async function catalogueView() {
   const cat = await call("catalogue");
-  root.innerHTML = `<section class="commerce-card"><h2>Les articles restent ceux du site.</h2><p>Configurez ici les variantes vendables et leurs prix exacts. Les descriptions, catégories et photos sont gérées dans l’onglet Catalogue et visuels. Un article sans variante active ne peut pas être commandé. Les textes historiques « dès… » ne sont jamais convertis en tarifs de paiement.</p><label>Choisir un article<select id="catalogue-product">${cat.products.map((p) => `<option value="${p.id}">${esc(p.name)}${p.active ? "" : " (masqué)"}</option>`).join("")}</select></label><div id="catalogue-editor"></div></section>`;
+  root.innerHTML = `<section class="commerce-card"><h2>Les articles restent ceux du site.</h2><p>Configurez ici les variantes vendables et leurs prix exacts. Les descriptions, catégories et photos sont gérées dans l’onglet Catalogue et visuels. Un article sans variante active ne peut pas être commandé. Créez une variante par taille et indiquez son prix en euros (ex. 6 ans : 20 €, M : 25 €). La boutique affiche automatiquement « À partir de » si les prix diffèrent. Les textes historiques « dès… » ne sont jamais convertis en tarifs de paiement.</p><label>Choisir un article<select id="catalogue-product">${cat.products.map((p) => `<option value="${p.id}">${esc(p.name)}${p.active ? "" : " (masqué)"}</option>`).join("")}</select></label><div id="catalogue-editor"></div></section>`;
+  if(catalogueProductId && cat.products.some(p=>p.id===catalogueProductId))document.querySelector("#catalogue-product").value=catalogueProductId;
   const render = () => {
     const id = Number(document.querySelector("#catalogue-product").value),
       variants = cat.variants.filter((v) => v.product_id === id),
       options = cat.options.filter((o) => o.product_id === id);
+    catalogueProductId=id;
     document.querySelector("#catalogue-editor").innerHTML =
       `<div class="commerce-split"><section><h3>Tailles / modèles</h3><label>Modifier une variante<select id="variant-select"><option value="">+ Nouvelle variante</option>${variants.map((v) => `<option value="${esc(v.id)}">${esc(v.label)} · ${money(v.price_cents)} ${v.active ? "" : "(inactive)"}</option>`).join("")}</select></label><form id="variant-form" class="commerce-form-grid" style="margin-top:20px"></form></section><section><h3>Options et personnalisation</h3><label>Modifier une option<select id="option-select"><option value="">+ Nouvelle option</option>${options.map((o) => `<option value="${esc(o.id)}">${esc(o.label)} · ${money(o.price_cents)} ${o.active ? "" : "(inactive)"}</option>`).join("")}</select></label><form id="option-form" class="commerce-form-grid" style="margin-top:20px"></form></section></div>`;
     const variantForm = () => {
@@ -291,6 +294,14 @@ async function catalogueView() {
   document.querySelector("#catalogue-product").onchange = render;
   if (cat.products.length) render();
 }
+async function adminsView() {
+  const data=await call("admins");
+  root.innerHTML=`<section class="commerce-card"><h2>Les responsables de la boutique</h2><p>Ces droits sont indépendants de l’administration du site. Chaque adresse doit aussi être autorisée dans votre application Cloudflare Access boutique (règle e-mail + PIN).</p><div class="commerce-table-wrap"><table><thead><tr><th>Responsable</th><th>E-mail</th><th>Accès</th><th>Action</th></tr></thead><tbody>${data.admins.map(a=>`<tr><td>${esc(a.name)}</td><td>${esc(a.email)}${a.email.toLowerCase()===data.actor.toLowerCase()?' (vous)':''}</td><td>${a.active?'Actif':'Désactivé'}</td><td><button type="button" class="commerce-secondary" data-admin="${esc(a.email)}">Modifier</button></td></tr>`).join('')}</tbody></table></div><h3 id="admin-editor-title">Ajouter un responsable</h3><form id="shop-admin-form" class="commerce-form-grid"><label>Adresse e-mail<input name="email" type="email" autocomplete="off" maxlength="254" required></label><label>Nom du responsable<input name="name" maxlength="120" required></label><label class="commerce-check wide"><input name="active" type="checkbox" checked><span>Autoriser la gestion boutique</span></label><div class="wide"><button type="submit">Enregistrer l’accès</button> <button type="button" id="new-shop-admin" class="commerce-secondary">Nouvel administrateur</button></div></form><p class="commerce-help">Désactiver un responsable bloque ses prochaines actions même si sa session Cloudflare est encore ouverte. Votre propre accès ne peut pas être désactivé depuis cette session.</p></section>`;
+  const form=document.querySelector('#shop-admin-form');
+  document.querySelectorAll('[data-admin]').forEach(button=>button.onclick=()=>{const a=data.admins.find(a=>a.email===button.dataset.admin);form.elements.email.value=a.email;form.elements.email.readOnly=true;form.elements.name.value=a.name;form.elements.active.checked=!!a.active;document.querySelector('#admin-editor-title').textContent='Modifier un responsable';form.elements.name.focus();});
+  document.querySelector('#new-shop-admin').onclick=()=>{form.reset();form.elements.email.readOnly=false;document.querySelector('#admin-editor-title').textContent='Ajouter un responsable';form.elements.email.focus();};
+  form.onsubmit=event=>{event.preventDefault();if(!form.reportValidity())return;action(form.querySelector('[type=submit]'),async()=>{await call('admins',{method:'PUT',data:{email:form.elements.email.value,name:form.elements.name.value,active:form.elements.active.checked}});await adminsView();notice('Droits enregistrés. Vérifiez aussi la règle Cloudflare Access pour cette adresse.');});};
+}
 async function surveys() {
   const data = await call("surveys"),
     a = data.aggregate;
@@ -316,6 +327,7 @@ async function render() {
       catalogue: catalogueView,
       settings: settingsView,
       surveys,
+      admins: adminsView,
     }[tab]();
     message.textContent = "";
   } catch (error) {
@@ -337,9 +349,7 @@ if (local && !readStorage("fce-shop-local-token")) {
   if (value)
     sessionStorage.setItem("fce-shop-local-token", JSON.stringify(value));
 }
-try {
-  await loadConfig();
-  await render();
-} catch (error) {
-  showError(message, error);
-}
+(async () => {
+  try { await loadConfig(); await render(); }
+  catch (error) { showError(message, error); }
+})();

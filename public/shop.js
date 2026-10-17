@@ -32,7 +32,7 @@ const productMeta=product=>{
     ${delay?`<div class="product-delay"><small>Délai indicatif</small><span>${shopEsc(delay)}</span></div>`:''}
   </div>`;
 };
-const orderButton=product=>`<button class="product-order" type="button" data-order-product="${product.id}">Choisir mes options →</button>`;
+const orderButton=product=>`<div class="product-actions"><button class="product-order" type="button" data-order-product="${product.id}" ${product.sellable?'':'disabled'}>${shopEsc(product.orderLabel||'Commande bientôt disponible')} →</button><button class="product-detail" type="button" data-product-detail="${product.id}">Détails de l’article</button></div>`;
 const productCard=product=>`<article class="shop-product-card">
   <div class="product-card-visual">${productVisual(product)}</div>
   <div class="product-card-copy"><small>${shopEsc(product.price_label||'Prix à confirmer')}</small><h3>${shopEsc(product.name)}</h3>${productDescriptions(product)}${productMeta(product)}${orderButton(product)}</div>
@@ -66,7 +66,8 @@ const showShopMaintenance=settings=>{
 async function loadShop(){
   const featuredNode=document.querySelector('#shop-featured'),categoriesNode=document.querySelector('#shop-categories');
   try{
-    const response=await fetch('/api/page/shop?v=3'),data=await response.json();
+    const [response,commerceResponse]=await Promise.all([fetch('/api/page/shop?v=3'),fetch('/api/shop/catalogue')]);const data=await response.json();const commerce=commerceResponse.ok?await commerceResponse.json():null;
+    for(const p of data.products||[]){const variants=commerce?.variants.filter(v=>v.product_id===p.id)||[],options=commerce?.options.filter(o=>o.product_id===p.id)||[];p.sellable=variants.length>0;p.orderLabel=variants.length>1?(options.length?'Choisir ma taille et personnaliser':'Choisir ma taille'):options.length?'Personnaliser mon article':'Ajouter au panier';if(variants.length){const prices=variants.map(v=>v.price_cents),min=Math.min(...prices),max=Math.max(...prices);p.price_label=(min!==max?'À partir de ':'')+new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(min/100);p.price_details=min!==max?'Le prix dépend de la taille choisie.':'';}}
     if(!response.ok)throw new Error(data.error||'Boutique indisponible');
     const products=data.products||[],categories=data.categories||[],featured=products.find(product=>Number(product.featured)===1)||products[0];
     window.shopSettings=data.settings||{};
@@ -81,8 +82,6 @@ async function loadShop(){
       if(!visible.length)return '';
       return `<section class="shop-category"><header><span>${String(categoryIndex+1).padStart(2,'0')}</span><div><h3>${shopEsc(category.name)}</h3><p>${shopEsc(category.description||'')}</p></div></header><div class="shop-product-grid">${visible.map(productCard).join('')}</div></section>`;
     }).join('')||'<p class="shop-empty">La sélection de la boutique arrive bientôt.</p>';
-    const catalogue=document.querySelector('#shop-catalogue');
-    if(data.settings?.catalogue_key){catalogue.href=`/media/${encodeURIComponent(data.settings.catalogue_key).replace(/%2F/g,'/')}`;catalogue.textContent=`${data.settings.catalogue_title||'Catalogue complet'} →`;catalogue.target='_blank';catalogue.rel='noopener';catalogue.removeAttribute('aria-disabled')}
     document.dispatchEvent(new Event('shop-loaded'));
   }catch(error){document.querySelector('#shop-page')?.classList.remove('is-loading');revealShopHero(null);featuredNode.innerHTML='<p class="shop-empty">L’article à la une est momentanément indisponible.</p>';categoriesNode.innerHTML='<p class="shop-empty">La boutique ne peut pas être chargée pour le moment.</p>'}
 }

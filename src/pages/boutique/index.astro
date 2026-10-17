@@ -12,7 +12,7 @@ import Footer from '../../components/Footer.astro';
     <link rel="stylesheet" href="/enhancements.css?v=6">
     <link rel="stylesheet" href="/brand-charter.css">
     <link rel="stylesheet" href="/shop.css?v=3">
-    <link rel="stylesheet" href="/shop-commerce.css">
+    <link rel="stylesheet" href="/shop-commerce.css?v=3">
   </head>
   <body>
     <Header/>
@@ -61,8 +61,8 @@ import Footer from '../../components/Footer.astro';
       </section>
 
       <section class="catalogue-band">
-        <div><p class="eyebrow">Toutes les références</p><h2>La collection complète.</h2><p>Tailles, coloris, tarifs et options : consultez le catalogue préparé par le club.</p></div>
-        <a id="shop-catalogue" class="catalogue-button" aria-disabled="true">Catalogue bientôt disponible</a>
+        <div><p class="eyebrow">Toutes les références</p><h2>La collection complète.</h2><p>Téléchargez le catalogue à jour : tous les articles visibles, leurs tailles, leurs tarifs et leurs options.</p></div>
+        <a id="shop-catalogue" class="catalogue-button" href="/api/shop/catalogue.pdf" download="catalogue-fce.pdf">Télécharger le catalogue PDF ↓</a>
       </section>
 
       <section class="order-process" aria-labelledby="order-title">
@@ -78,15 +78,16 @@ import Footer from '../../components/Footer.astro';
         <p class="eyebrow">À vous de jouer</p><h2>Votre sélection, vos couleurs.</h2>
         <p>Ajoutez les articles de votre choix au panier. La remise est gratuite, par le coach ou sur rendez-vous au club.</p>
         <button id="show-cart" type="button">Voir mon panier →</button>
-        <p><a href="/cgv/">Conditions générales de vente</a> · <a href="/confidentialite/">Vos données personnelles</a></p>
+        <nav class="commerce-support" aria-label="Informations boutique"><a href="/boutique/suivi/">Retrouver ou suivre ma commande →</a><a href="/cgv/">Lire les conditions de vente →</a><a href="/confidentialite/">Comprendre l’utilisation de mes données →</a></nav>
       </section>
       <noscript><p>Activez JavaScript pour configurer les articles et utiliser le panier. Pour une aide, contactez le club.</p></noscript>
     </main>
     <Footer/>
+    <dialog id="detail-dialog" class="commerce-dialog" aria-labelledby="detail-title"><button class="commerce-close" type="button" data-close aria-label="Fermer les détails">×</button><div id="detail-content"></div></dialog>
     <dialog id="product-dialog" class="commerce-dialog" aria-labelledby="product-title"><button class="commerce-close" type="button" data-close aria-label="Fermer">×</button><div id="product-content"></div></dialog>
     <dialog id="cart-dialog" class="commerce-dialog commerce-cart" aria-labelledby="cart-title"><button class="commerce-close" type="button" data-close aria-label="Fermer">×</button><p class="eyebrow">Boutique FC Escalquens</p><h2 id="cart-title">Mon panier.</h2><div id="cart-content"></div></dialog>
     <div id="commerce-notice" class="commerce-toast" role="status" aria-live="polite" hidden></div>
-    <script is:inline src="/shop.js?v=4"></script>
-    <script is:inline type="module" src="/shop-commerce.js"></script>
+    <script is:inline src="/shop.js?v=5"></script>
+    <script is:inline type="module" src="/shop-commerce.js?v=3"></script>
   </body>
 </html>

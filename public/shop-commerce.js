@@ -31,13 +31,13 @@ const toast = (message) => {
 };
 const persist = () => {
   saveStorage("fce-cart-v1", cart);
-  document.querySelector("#cart-count").textContent = cart.reduce(
-    (n, i) => n + i.quantity,
-    0,
-  );
+  const count = cart.reduce((n, i) => n + i.quantity, 0);
+  document.querySelector("#cart-count").textContent = count;
+  document.querySelector("#open-cart").setAttribute("aria-label", `Ouvrir mon panier, ${count} article(s)`);
+  document.querySelector("#show-cart").textContent = count ? `Voir mes ${count} article(s) →` : "Découvrir mon panier →";
 };
 persist();
-for (const dialog of [productDialog, cartDialog])
+for (const dialog of [productDialog, cartDialog, document.querySelector("#detail-dialog")])
   dialog
     .querySelector("[data-close]")
     .addEventListener("click", () => dialog.close());
@@ -84,14 +84,14 @@ function openProduct(id, editIndex = null) {
   }
   const existing = editIndex === null ? null : cart[editIndex];
   document.querySelector("#product-content").innerHTML =
-    `<form id="product-form"><p class="eyebrow">Votre équipement, vos détails</p><div class="commerce-product-summary"><img src="/media/${encodeURIComponent(product.image_key).replace(/%2F/g, "/")}" alt=""><h2 id="product-title">${esc(product.name)}</h2></div><label>Taille et modèle<select name="variant" required><option value="" disabled ${existing ? "" : "selected"}>Choisissez une taille et un modèle</option>${variants.map((v) => `<option value="${esc(v.id)}" ${existing?.variant_id === v.id ? "selected" : ""}>${esc(v.label)}${v.color ? ` — ${esc(v.color)}` : ""} · ${money(v.price_cents)}</option>`).join("")}</select></label><label style="margin-top:18px">Quantité<input name="quantity" type="number" min="1" max="30" value="${existing?.quantity || 1}" required></label>${options.length ? "<h3>Les petits détails qui comptent</h3>" : ""}${options
+    `<form id="product-form"><p class="eyebrow">Votre équipement, vos détails</p><div class="commerce-product-summary"><img src="/media/${encodeURIComponent(product.image_key).replace(/%2F/g, "/")}" alt=""><h2 id="product-title">${esc(product.name)}</h2></div><p class="commerce-help">Chaque taille affiche son prix exact, hors options. Le total se met à jour avant l’ajout au panier.</p><label>Taille et modèle<select name="variant" required><option value="" disabled ${existing || variants.length === 1 ? "" : "selected"}>Choisissez une taille et un modèle</option>${variants.map((v) => `<option value="${esc(v.id)}" ${existing?.variant_id === v.id || (!existing && variants.length === 1) ? "selected" : ""}>${esc(v.label)}${v.color ? ` — ${esc(v.color)}` : ""} · ${money(v.price_cents)}</option>`).join("")}</select></label><label style="margin-top:18px">Quantité<input name="quantity" type="number" min="1" max="30" value="${existing?.quantity || 1}" required></label>${options.length ? "<h3>Les petits détails qui comptent</h3>" : ""}${options
       .map((o) => {
         const selected = existing?.options.find((x) => x.id === o.id);
         return `<div class="commerce-option"><label class="commerce-check"><input type="checkbox" name="option:${esc(o.id)}" ${selected ? "checked" : ""}><span>${esc(o.label)} <strong>${o.price_cents ? `+ ${money(o.price_cents)}` : "Inclus"}</strong></span></label>${o.requires_text ? `<label data-text-for="${esc(o.id)}" ${selected ? "" : "hidden"}><span>Texte exact à appliquer</span><input name="text:${esc(o.id)}" type="text" maxlength="${o.max_length}" value="${esc(selected?.text || "")}" ${selected ? "required" : "disabled"} autocomplete="off"><small class="commerce-muted">${o.max_length} caractères maximum. Vérifiez les majuscules et l’orthographe.</small></label>` : ""}</div>`;
       })
       .join(
         "",
-      )}<p class="commerce-product-price" id="product-price" aria-live="polite"></p><p class="commerce-help">Les articles personnalisés ne bénéficient pas du droit de rétractation. Les garanties légales restent applicables.</p><p id="product-error" class="commerce-message" role="alert" hidden></p><button type="submit">${existing ? "Enregistrer les modifications" : "Ajouter au panier"} →</button></form>`;
+      )}<p class="commerce-product-price" id="product-price" aria-live="polite"></p>${options.some(o=>o.requires_text) ? '<p class="commerce-help">Les articles personnalisés ne bénéficient pas du droit de rétractation. Les garanties légales restent applicables.</p>' : ""}<p id="product-error" class="commerce-message" role="alert" hidden></p><button type="submit">${existing ? "Enregistrer les modifications" : "Ajouter au panier"} →</button></form>`;
   const form = document.querySelector("#product-form");
   const update = () => {
     for (const o of options.filter((o) => o.requires_text)) {
@@ -160,7 +160,7 @@ function openProduct(id, editIndex = null) {
     persist();
     productDialog.close();
     if (cartDialog.open) renderCart();
-    else toast("Article ajouté. Retrouvez-le dans votre panier.");
+    else toast("Ajouté au panier — continuez votre sélection ou ouvrez Mon panier.");
   });
   productDialog.showModal();
 }
@@ -169,7 +169,15 @@ document.addEventListener("click", async (event) => {
   if (!button) return;
   try {
     await loadCatalogue();
-    openProduct(button.dataset.orderProduct);
+    const id = Number(button.dataset.orderProduct);
+    const variants = catalogue.variants.filter(v=>v.product_id===id);
+    const options = catalogue.options.filter(o=>o.product_id===id);
+    if (variants.length === 1 && !options.length) {
+      const same=cart.find(i=>i.variant_id===variants[0].id && !i.options.length);
+      if(same && same.quantity>=30) throw new Error("Maximum 30 exemplaires par article.");
+      if(same) same.quantity++; else cart.push({variant_id:variants[0].id,quantity:1,options:[]});
+      persist(); toast("Article ajouté à votre panier.");
+    } else openProduct(id);
   } catch (error) {
     toast(error.message);
   }
@@ -306,3 +314,17 @@ async function showCart() {
 }
 document.querySelector("#open-cart").onclick = showCart;
 document.querySelector("#show-cart").onclick = showCart;
+
+document.addEventListener("click", async event => {
+  const button=event.target.closest("[data-product-detail]"); if(!button)return;
+  const dialog=document.querySelector("#detail-dialog"), content=document.querySelector("#detail-content");
+  content.textContent="Chargement de la fiche article…"; dialog.showModal();
+  try {
+    await loadCatalogue();const p=catalogue.products.find(p=>p.id===Number(button.dataset.productDetail));
+    if(!p)throw new Error("Cet article n’est plus disponible.");
+    const variants=catalogue.variants.filter(v=>v.product_id===p.id),options=catalogue.options.filter(o=>o.product_id===p.id);
+    const plain=value=>String(value||'').replace(/\[\/?(?:bordeaux|or)\]/gi,'').replace(/\*\*/g,'');
+    content.innerHTML=`<p class="eyebrow">La fiche de votre équipement</p><h2 id="detail-title">${esc(p.name)}</h2><img class="detail-image" src="/media/${encodeURIComponent(p.image_key).replace(/%2F/g,'/')}" alt="${esc(p.name)}"><p class="detail-description">${esc(plain(p.description||p.short_description||'Le club vous renseignera sur la composition et l’entretien de cet article.'))}</p><h3>Tailles et tarifs</h3><ul>${variants.map(v=>`<li>${esc(v.label)} ${esc(v.color)} <strong>${money(v.price_cents)}</strong></li>`).join('')||'<li>Tarifs de commande à venir.</li>'}</ul>${options.length?`<h3>Options disponibles</h3><ul>${options.map(o=>`<li>${esc(o.label)} : ${o.price_cents?'+ '+money(o.price_cents):'inclus'}</li>`).join('')}</ul>`:''}${p.delivery_delay?`<p>Délai indicatif : ${esc(p.delivery_delay)}</p>`:''}<button type="button" id="detail-order" ${variants.length?'':'disabled'}>Choisir cet article →</button>`;
+    document.querySelector("#detail-order").onclick=()=>{dialog.close();openProduct(p.id);};
+  }catch(error){content.textContent=error.message;}
+});
