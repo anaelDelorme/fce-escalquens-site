@@ -1,4 +1,5 @@
-import { esc, api, showError, readStorage } from "../../public/shop-common.js";
+import { renderVariants } from "./admin-shop-variants.js";
+import { esc, showError, readStorage } from "../../public/shop-common.js";
 const schemas = {
   shop_categories: [
     ["name", "Nom", "text", true],
@@ -9,8 +10,8 @@ const schemas = {
   shop_products: [
     ["shop_category_id", "Catégorie", "category", true],
     ["name", "Nom", "text", true],
-    ["short_description", "Accroche", "textarea"],
-    ["description", "Description", "textarea"],
+    ["short_description", "Texte court — uniquement sur la carte boutique", "textarea"],
+    ["description", "Détails de l’article — composition, entretien, précisions (fenêtre Détails)", "textarea"],
     ["price_label", "Prix indicatif affiché", "text"],
     ["price_details", "Détail des prix affichés", "textarea"],
     ["sizes", "Présentation des tailles", "textarea"],
@@ -34,7 +35,7 @@ const schemas = {
 const labels = {
   shop_categories: "Catégories",
   shop_products: "Articles et photos",
-  shop_settings: "Affichage et PDF",
+  shop_settings: "Ouverture et visuel de fermeture",
   site_media: "Couverture de la boutique",
 };
 const slug = (value) =>
@@ -44,20 +45,12 @@ const slug = (value) =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
-export async function renderContent(root, call, notice) {
-  let collection = "shop_products",
+export async function renderContent(root, call, notice, collection = "shop_products") {
+  let
     rows = [],
     categories = [];
-  root.innerHTML = `<section class="commerce-card"><h2>Catalogue et présentation de la boutique</h2><p>Les articles et visuels sont gérés ici. Les tarifs d’encaissement exacts sont définis dans « Tailles et options ». L’affichage du catalogue peut être ouvert pendant que les paiements restent fermés.</p><div class="commerce-filters"><label>Gérer<select id="content-collection">${Object.entries(
-    labels,
-  )
-    .map(
-      ([key, label]) =>
-        `<option value="${key}" ${key === collection ? "selected" : ""}>${label}</option>`,
-    )
-    .join(
-      "",
-    )}</select></label><button type="button" id="content-add">+ Ajouter</button></div><div id="content-list"></div><div id="content-editor"></div></section>`;
+  let categoryFilter="", visibilityFilter="", commerce={variants:[],options:[]};
+  root.innerHTML = `<section class="commerce-card"><h2>${labels[collection]}</h2><p>${collection==='shop_products'?'Une fiche rassemble la photo, les textes, les tailles, les tarifs et les personnalisations. Les textes courts et les détails ont chacun leur emplacement.':collection==='shop_categories'?'Classez votre collection. Masquer une catégorie masque aussi ses articles dans la boutique et le catalogue PDF.':'Gérez la présentation générale de la boutique.'}</p><div class="commerce-filters">${collection==='shop_products'?'<label>Catégorie<select id="content-category"><option value="">Toutes les catégories</option></select></label>':''}${['shop_categories','shop_products'].includes(collection)?'<label>Visibilité<select id="content-visibility"><option value="">Tous</option><option value="1">Visibles</option><option value="0">Masqués</option></select></label>':''}<button type="button" id="content-add">+ Ajouter ${collection==='shop_products'?'un article':'une catégorie'}</button></div><div id="content-list"></div><div id="content-editor"></div></section>`;
   const list = root.querySelector("#content-list"),
     editor = root.querySelector("#content-editor");
   const errorNode = document.querySelector("#admin-shop-message");
@@ -78,17 +71,30 @@ export async function renderContent(root, call, notice) {
       call(`content/${collection}`),
       call("content/shop_categories"),
     ]);
-    document.querySelector("#content-add").hidden = [
+    root.querySelector("#content-add").hidden = [
       "shop_settings",
       "site_media",
     ].includes(collection);
-    list.innerHTML =
-      rows
-        .map(
-          (row) =>
-            `<article class="commerce-cart-line"><div><strong>${esc(row.name || row.label || labels[collection])}</strong><small>${esc(row.price_label || row.description || row.alt_text || "")}${row.active === 0 ? " · Masqué" : ""}</small>${row.image_key ? `<img src="/media/${encodeURIComponent(row.image_key).replace(/%2F/g, "/")}" width="80" height="80" style="object-fit:contain" alt="">` : ""}</div><div class="commerce-actions"><button type="button" class="commerce-secondary" data-edit-content="${row.id}">Modifier</button>${["shop_categories", "shop_products"].includes(collection) ? `<button type="button" class="commerce-secondary" data-delete-content="${row.id}">Supprimer</button>` : ""}</div></article>`,
-        )
-        .join("") || "<p>Aucun élément. Ajoutez le premier.</p>";
+    if(collection==='shop_products') {
+      commerce=await call('catalogue');
+      root.querySelector('#content-category').innerHTML='<option value="">Toutes les catégories</option>'+categories.map(c=>`<option value="${c.id}">${esc(c.name)}${c.active?'':' (masquée)'}</option>`).join('');
+      root.querySelector('#content-category').value=categoryFilter;
+    }
+    renderList();
+  }
+  function renderList() {
+    const visible=row=>Boolean(row.active && (collection!=='shop_products' || (row.image_key && (!row.shop_category_id || categories.find(c=>c.id===row.shop_category_id)?.active))));
+    const filtered=rows.filter(row=>(!categoryFilter || String(row.shop_category_id)===categoryFilter) && (!visibilityFilter || Number(visible(row))===Number(visibilityFilter)));
+    list.innerHTML=filtered.map(row=>{
+      const category=categories.find(c=>c.id===row.shop_category_id), variants=commerce.variants.filter(v=>v.product_id===row.id && v.active);
+      return `<article class="commerce-catalogue-row"><div>${row.image_key?`<img src="/media/${encodeURIComponent(row.image_key).replace(/%2F/g,'/')}" width="88" height="88" alt="">`:''}</div><div><strong>${esc(row.name||labels[collection])}</strong>${category?`<small>${esc(category.name)}</small>`:''}<p class="commerce-row-badges">${["shop_products","shop_categories"].includes(collection)?`<span class="commerce-badge">${visible(row)?'Visible':'Masqué'}</span>`:""}${collection==='shop_products'?`<span class="commerce-badge">${variants.length?variants.length+' taille(s) configurée(s)':'Tarifs à configurer'}</span>`:''}</p>${row.active && collection==='shop_products' && category?.active===0?'<small>La catégorie est masquée.</small>':''}</div><div class="commerce-actions"><button type="button" class="commerce-secondary" data-edit-content="${row.id}">Modifier la fiche</button>${['shop_categories','shop_products'].includes(collection)?`<button type="button" class="commerce-secondary" data-toggle-content="${row.id}">${row.active?'Masquer':'Rendre visible'}</button><button type="button" class="commerce-secondary" data-delete-content="${row.id}">Supprimer</button>`:''}</div></article>`;
+    }).join('')||'<p>Aucun élément pour ces filtres.</p>';
+    list.querySelectorAll('[data-toggle-content]').forEach(button=>button.onclick=()=>run(button,async()=>{
+      const row=rows.find(r=>r.id===Number(button.dataset.toggleContent));
+      if(collection==='shop_products' && !row.active && !row.image_key)throw new Error('Ajoutez une photo avant de rendre cet article visible.');
+      await call(`content/${collection}/${row.id}`,{method:'PUT',data:{active:row.active?0:1,...(collection==='shop_products'?{image_key:row.image_key}:{})}});
+      notice(row.active?'Élément masqué.':'Élément rendu visible.');await load();
+    }));
     list
       .querySelectorAll("[data-edit-content]")
       .forEach(
@@ -118,8 +124,7 @@ export async function renderContent(root, call, notice) {
     );
   }
   function edit(row = {}) {
-    const fields = schemas[collection]
-      .map(([name, label, type, required]) => {
+    const renderField = ([name, label, type, required]) => {
         const value =
           row[name] ?? (type === "checkbox" ? 1 : type === "number" ? 0 : "");
         if (type === "checkbox")
@@ -131,10 +136,21 @@ export async function renderContent(root, call, notice) {
         if (["image", "pdf"].includes(type))
           return `<label class="wide">${label}<input name="${name}" value="${esc(value)}" maxlength="500" placeholder="Clé du fichier, ou chargez un nouveau fichier"><input type="file" data-content-upload="${name}" accept="${type === "pdf" ? "application/pdf" : "image/jpeg,image/png,image/webp,image/avif,image/gif"}"><small class="commerce-help">${type === "pdf" ? "PDF" : "Image JPG, PNG, WebP, AVIF ou GIF"} · 15 Mo maximum</small><span data-upload-status="${name}" role="status"></span></label>`;
         return `<label>${label}<input name="${name}" type="${type}" value="${esc(value)}" ${required ? "required" : ""} ${type === "number" ? 'min="0" step="1"' : 'maxlength="1000"'}></label>`;
-      })
-      .join("");
-    editor.innerHTML = `<form id="content-form" class="commerce-form-grid commerce-card"><h3 class="wide">${row.id ? "Modifier" : "Ajouter"} — ${labels[collection]}</h3>${fields}${collection === "shop_products" ? '<p class="commerce-help wide">Une photo est nécessaire pour publier l’article. Les tarifs et choix vendables doivent aussi être configurés dans Tailles et options. Mise en forme des descriptions : **gras**, *italique*, [bordeaux]texte[/bordeaux], [or]texte[/or].</p>' : ""}<div class="commerce-actions wide"><button type="submit">Enregistrer</button><button type="button" class="commerce-secondary" id="content-cancel">Annuler</button></div></form>`;
+      };
+    const groups=[
+      ['Article et photo',['name','shop_category_id','image_key']],
+      ['Sur la carte de la boutique',['short_description','price_label','price_details','sizes','options','delivery_delay']],
+      ['Dans la fenêtre Détails uniquement',['description']],
+      ['Publication et mise en avant',['featured','highlighted','display_order','active']],
+    ];
+    const fields=collection==='shop_products'?groups.map(([title,names])=>`<fieldset class="commerce-editor-group wide"><legend>${title}</legend>${schemas[collection].filter(([name])=>names.includes(name)).map(renderField).join('')}</fieldset>`).join(''):schemas[collection].map(renderField).join('');
+    editor.innerHTML = `<form id="content-form" class="commerce-form-grid commerce-card"><h3 class="wide">${row.id ? "Modifier" : "Ajouter"} — ${labels[collection]}</h3>${fields}${collection === "shop_products" ? '<p class="commerce-help wide">Une photo est nécessaire pour publier l’article. Les tailles, prix et options se règlent juste en dessous de cette fiche. Le texte court apparaît sur la carte ; la description complète est réservée aux détails. Mise en forme des descriptions : **gras**, *italique*, [bordeaux]texte[/bordeaux], [or]texte[/or].</p>' : ""}<div class="commerce-actions wide"><button type="submit">Enregistrer</button><button type="button" class="commerce-secondary" id="content-cancel">Annuler</button></div></form>${collection === "shop_products" ? '<div id="product-pricing"></div>' : ""}`;
     const form = editor.querySelector("form");
+    if(collection==='shop_products') {
+      const target=editor.querySelector('#product-pricing');
+      if(row.id)renderVariants(target,call,notice,row.id).catch(error=>showError(errorNode,error));
+      else target.innerHTML='<p class="commerce-message">Enregistrez d’abord l’article pour ajouter ses tailles, tarifs et options.</p>';
+    }
     let uploading = 0;
     editor.querySelector("#content-cancel").onclick = () => {
       if (!uploading) editor.innerHTML = "";
@@ -209,20 +225,19 @@ export async function renderContent(root, call, notice) {
           values.featured = 0;
           values.highlighted = 0;
         }
-        await call(`content/${collection}${row.id ? `/${row.id}` : ""}`, {
+        const saved=await call(`content/${collection}${row.id ? `/${row.id}` : ""}`, {
           method: row.id ? "PUT" : "POST",
           data: values,
         });
         notice("Catalogue enregistré.");
         await load();
+        if(collection==='shop_products') {const current=rows.find(r=>r.id===(row.id||Number(saved.id)));if(current)edit(current);}
       });
     };
     editor.scrollIntoView({ behavior: "smooth", block: "start" });
   }
-  document.querySelector("#content-collection").onchange = (event) => {
-    collection = event.target.value;
-    run(null, load);
-  };
-  document.querySelector("#content-add").onclick = () => edit();
+  root.querySelector('#content-category')?.addEventListener('change',event=>{categoryFilter=event.target.value;renderList();});
+  root.querySelector('#content-visibility')?.addEventListener('change',event=>{visibilityFilter=event.target.value;renderList();});
+  root.querySelector('#content-add').onclick=()=>edit();
   await load();
 }

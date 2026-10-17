@@ -518,9 +518,6 @@ button:disabled {
   background: transparent;
 }
 
-/* Repères boutique toujours accessibles, y compris sous le menu mobile. */
-.commerce-toolbar {position:fixed;top:auto;bottom:0;left:0;right:0;z-index:60;justify-content:space-between;border-top:3px solid var(--gold);box-shadow:0 -5px 25px #291d1d25;padding:12px max(5vw,16px) calc(12px + env(safe-area-inset-bottom));}
-body:has(.commerce-toolbar) {padding-bottom:95px;}
 .commerce-toolbar a {text-decoration:underline;text-underline-offset:4px;font-weight:700;}
 .commerce-toolbar button {box-shadow:0 2px 8px #0003;}
 .commerce-support {display:flex;flex-wrap:wrap;gap:12px;margin:24px 0 0;}
@@ -537,3 +534,26 @@ body:has(.commerce-toolbar) {padding-bottom:95px;}
 .commerce-privacy a,.commerce-help a {text-decoration:underline;text-underline-offset:3px;}
 .commerce-dialog button:focus-visible,.product-actions button:focus-visible {outline:3px solid var(--gold);outline-offset:3px;}
 @media(max-width:600px) {.commerce-toolbar {gap:12px;}.commerce-toolbar a{font-size:13px;max-width:130px;}.commerce-toolbar button{padding:13px 16px;}.commerce-support{display:grid;}.commerce-dialog{max-height:94dvh;padding:44px 20px 24px;}.commerce-dialog h2{font:700 25px/1.2 Arial,sans-serif;text-transform:none;}.product-actions{margin-top:20px;}}
+
+/* A single cart landmark below the club navigation, with no footer overlay. */
+.commerce-toolbar {position:sticky;top:84px;bottom:auto;left:auto;right:auto;width:100%;max-width:100%;min-height:64px;z-index:25;background:#fffaf3;color:var(--wine-dark);border-top:0;border-bottom:1px solid var(--line);box-shadow:0 4px 12px #291d1d12;padding:10px max(20px,calc((100% - 1180px)/2));gap:16px;}
+body:has(.commerce-toolbar) {padding-bottom:0;}
+.commerce-toolbar a {color:var(--wine-dark);}
+.commerce-toolbar button {flex-shrink:0;}
+.commerce-admin-brand {display:flex;align-items:center;gap:16px;}
+.commerce-tabs {height:auto;display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 24px;padding:14px 0;border-block:1px solid var(--line);}
+.commerce-tabs a {display:block;border:1px solid var(--line);border-radius:6px;padding:14px 18px;background:white;color:var(--wine);font-size:15px;font-weight:700;}
+.commerce-tabs a[aria-current="page"] {background:var(--wine-dark);color:white;border-color:var(--wine-dark);}
+.commerce-catalogue-row {display:grid;grid-template-columns:88px minmax(0,1fr) auto;gap:18px;align-items:center;border-bottom:1px solid var(--line);padding:18px 0;}
+.commerce-catalogue-row img {width:88px;height:88px;object-fit:contain;border-radius:6px;background:var(--paper);}
+.commerce-catalogue-row strong {display:block;font-size:17px;}
+.commerce-catalogue-row small {display:block;margin-top:6px;color:#6e605b;}
+.commerce-row-badges {display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 0;}
+#content-form {margin-top:28px;border-top:5px solid var(--wine);}
+#product-pricing .commerce-card {border-top:5px solid var(--gold);}
+#product-pricing h3 {font:700 22px/1.35 Arial,sans-serif;color:var(--wine-dark);}
+.catalogue-status {grid-column:1/-1;font-size:14px;line-height:1.5;margin:0;}
+@media(max-width:760px){.commerce-toolbar {padding:10px 16px;}.commerce-toolbar a{max-width:none;}.commerce-catalogue-row{grid-template-columns:64px minmax(0,1fr);gap:12px;}.commerce-catalogue-row img{width:64px;height:64px;}.commerce-catalogue-row .commerce-actions{grid-column:1/-1;flex-wrap:wrap;}.commerce-tabs a{padding:12px;font-size:14px;}.commerce-admin-brand img{width:56px;}.commerce-admin-brand h1{font-size:24px;}}
+.commerce-editor-group {min-width:0;border:1px solid var(--line);padding:20px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin:8px 0;}
+.commerce-editor-group legend {padding:0 8px;font:700 18px/1.4 Arial,sans-serif;color:var(--wine-dark);}
+@media(max-width:600px){.commerce-editor-group {grid-template-columns:minmax(0,1fr);padding:16px;}.commerce-editor-group label {grid-column:1/-1;}}

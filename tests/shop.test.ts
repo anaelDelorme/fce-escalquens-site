@@ -190,6 +190,7 @@ before(async () => {
     "CREATE TABLE admins(email TEXT,active INTEGER);CREATE TABLE shop_products(id INTEGER PRIMARY KEY,name TEXT,image_key TEXT,active INTEGER,price_label TEXT,sizes TEXT,options TEXT);CREATE TABLE shop_settings(id INTEGER PRIMARY KEY,shop_enabled INTEGER);INSERT INTO shop_settings VALUES(1,1);INSERT INTO shop_products VALUES(1,'Castolo','test.webp',1,'Dès 20 €','','');",
   );
   await DB.exec("ALTER TABLE shop_products ADD COLUMN display_order INTEGER NOT NULL DEFAULT 0;ALTER TABLE shop_products ADD COLUMN short_description TEXT DEFAULT '';ALTER TABLE shop_products ADD COLUMN description TEXT DEFAULT '';ALTER TABLE shop_products ADD COLUMN delivery_delay TEXT DEFAULT '';");
+  await DB.exec("CREATE TABLE shop_categories(id INTEGER PRIMARY KEY,slug TEXT UNIQUE,name TEXT,description TEXT,display_order INTEGER DEFAULT 0,active INTEGER DEFAULT 1,updated_at TEXT);INSERT INTO shop_categories(id,slug,name,display_order,active) VALUES(1,'textile','Textile',0,1);ALTER TABLE shop_products ADD COLUMN shop_category_id INTEGER REFERENCES shop_categories(id);ALTER TABLE shop_products ADD COLUMN price_details TEXT DEFAULT '';UPDATE shop_products SET shop_category_id=1;");
   // D1 exec accepts individual statements; migrations contain no triggers or embedded semicolons.
   for (const stmt of readFileSync(
     new URL("../migrations/0029_shop_checkout.sql", import.meta.url),
@@ -1115,9 +1116,6 @@ test("avant HelloAsso : catalogue et administration utilisables, paiement fermé
 
 test("les catégories et les visuels restent modifiables via les API boutique seules", async () => {
   (globalThis as any).caches = { default: { delete: async () => true } };
-  await env.DB.exec(
-    "CREATE TABLE shop_categories(id INTEGER PRIMARY KEY AUTOINCREMENT,slug TEXT UNIQUE,name TEXT,description TEXT,display_order INTEGER,active INTEGER,updated_at TEXT)",
-  );
   const fetch = async (req: Request) => worker.fetch(req, env as any, ctx);
   const create = await fetch(
     request(
@@ -1140,7 +1138,7 @@ test("les catégories et les visuels restent modifiables via les API boutique se
       }),
     )
   ).json()) as any[];
-  assert.equal(rows[0].name, "Test");
+  assert.ok(rows.some((r:any)=>r.name==="Test"));
   const update = await fetch(
     request(
       "/admin-boutique/api/content/site_media/1",
@@ -1183,9 +1181,16 @@ test("gestion des responsables : JWT obligatoire, ajout, désactivation et prote
   const cross=new Request(req({email:'x@example.org',name:'X',active:true}),{headers:{'cf-access-jwt-assertion':token,'content-type':'application/json',origin:'https://evil.org'}});
   assert.equal((await shopRoute(cross,target,ctx))?.status,403);
 });
-test('CGV structurées et téléchargement du catalogue au format PDF', async()=>{
+test('CGV structurées et redirection vers le catalogue illustré', async()=>{
   const config=await route(request('/api/shop/config'));
   assert.equal(config.status,200);assert.ok(config.body.terms_sections.length>=8);assert.equal(config.body.terms_sections[0][0],'Vendeur et contact');
   const pdf=await shopRoute(request('/api/shop/catalogue.pdf'),env,ctx);
-  assert.equal(pdf?.status,200);assert.equal(pdf?.headers.get('content-type'),'application/pdf');assert.match(pdf?.headers.get('content-disposition')||'',/attachment/);assert.equal(new TextDecoder().decode((await pdf!.arrayBuffer()).slice(0,5)),'%PDF-');
+  assert.equal(pdf?.status,302);assert.equal(pdf?.headers.get('location'),'/boutique/catalogue/');
+});
+
+test('catégorie masquée : articles exclus du catalogue et des variantes vendables',async()=>{
+ await DB.prepare('UPDATE shop_categories SET active=0 WHERE id=1').run();
+ const cat=await route(request('/api/shop/catalogue'));assert.equal(cat.status,200);assert.equal(cat.body.products.length,0);assert.equal(cat.body.variants.length,0);
+ await DB.prepare('UPDATE shop_categories SET active=1 WHERE id=1').run();
+ const visible=await route(request('/api/shop/catalogue'));assert.ok(visible.body.products.length>0);assert.ok(visible.body.categories.length>0);
 });

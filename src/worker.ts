@@ -802,6 +802,7 @@ async function pageData(env: Env, url: URL) {
         WHERE
           active=1
           AND TRIM(COALESCE(image_key,''))<>''
+          AND (shop_category_id IS NULL OR EXISTS(SELECT 1 FROM shop_categories c WHERE c.id=shop_products.shop_category_id AND c.active=1))
         ORDER BY featured DESC,display_order,name COLLATE NOCASE`),
       env.DB.prepare(`SELECT shop_enabled,maintenance_image_key,contact_email,catalogue_title,catalogue_key,order_subject,updated_at
         FROM shop_settings WHERE id=1 LIMIT 1`),

@@ -15,3 +15,9 @@ test('import catalogue : rapprochement par slug, catégories remappées, tailles
  for(const statement of sql.trim().split(';').filter(Boolean))await db.prepare(statement).run();
  const row=await db.prepare("SELECT * FROM shop_products WHERE slug='maillot'").first<any>();assert.equal(row.id,42);assert.equal(row.shop_category_id,99);assert.equal(row.name,"Maillot d'été");assert.equal(row.image_key,'imports/pic.webp');assert.equal((await db.prepare('SELECT * FROM variants').first<any>()).product_id,42);db.close();
 });
+test('PDF illustré : images embarquées et deux articles par page même entre catégories',async()=>{
+ const {readFileSync}=await import('node:fs');const {PDFName,PDFDict}=await import('pdf-lib');
+ const logo=new Uint8Array(readFileSync(new URL('../public/logo-fce.png',import.meta.url)));
+ const bytes=await cataloguePdf({products:[{id:1,name:'Maillot',shop_category_id:1,price_label:'25 €'},{id:2,name:'Sac',shop_category_id:2}],categories:[{id:1,name:'Textile'},{id:2,name:'Accessoires'}],variants:[],options:[]},new Date(),{logo,products:new Map([['1',logo]])});
+ const pdf=await PDFDocument.load(bytes);assert.equal(pdf.getPageCount(),1);const resources=pdf.getPage(0).node.Resources()!;const images=resources.lookup(PDFName.of('XObject'),PDFDict);assert.ok(images.keys().length>0);
+});

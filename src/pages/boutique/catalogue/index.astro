@@ -1,0 +1,5 @@
+---
+import Header from '../../../components/Header.astro';
+import Footer from '../../../components/Footer.astro';
+---
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Catalogue boutique — FC Escalquens</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/enhancements.css?v=6"><link rel="stylesheet" href="/brand-charter.css"><link rel="stylesheet" href="/shop-commerce.css?v=4"></head><body><Header/><main class="commerce-layout"><section class="commerce-card"><img src="/logo-fce.webp" width="80" alt="FC Escalquens"><h1>La collection du club, à emporter.</h1><p>Un catalogue PDF illustré, généré avec les articles et les tarifs visibles aujourd’hui.</p><button type="button" id="shop-catalogue">Télécharger le catalogue PDF ↓</button><p id="catalogue-status" role="status" aria-live="polite"></p><p><a href="/boutique/">← Retour à la boutique</a></p><noscript>Activez JavaScript pour générer le catalogue illustré.</noscript></section></main><Footer/><script src="../../../scripts/catalogue-download.js"></script></body></html>

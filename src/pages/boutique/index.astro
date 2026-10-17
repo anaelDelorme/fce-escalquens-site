@@ -11,8 +11,8 @@ import Footer from '../../components/Footer.astro';
     <link rel="stylesheet" href="/styles.css">
     <link rel="stylesheet" href="/enhancements.css?v=6">
     <link rel="stylesheet" href="/brand-charter.css">
-    <link rel="stylesheet" href="/shop.css?v=3">
-    <link rel="stylesheet" href="/shop-commerce.css?v=3">
+    <link rel="stylesheet" href="/shop.css?v=4">
+    <link rel="stylesheet" href="/shop-commerce.css?v=4">
   </head>
   <body>
     <Header/>
@@ -32,15 +32,13 @@ import Footer from '../../components/Footer.astro';
       <section class="shop-hero">
         <div class="shop-hero-copy">
           <p class="eyebrow">Boutique du club</p>
-          <h1>Portez les couleurs<br><em>du FCE.</em></h1>
-          <p>Du terrain aux tribunes, retrouvez les tenues et accessoires qui rassemblent toute la famille FCE.</p>
-          <a href="#selection">Découvrir la sélection <span>↓</span></a>
+          <h1>Votre club.<br>Vos couleurs.<br><em>Votre équipement.</em></h1>
+          <p>Sur le terrain, à l’entraînement ou dans les tribunes : trouvez votre prochain essentiel aux couleurs du FC Escalquens.</p>
+          <div class="shop-hero-actions"><a href="#selection">Trouver mon équipement <span>↓</span></a><a href="/boutique/suivi/">Suivre ma commande →</a></div><ul class="shop-promises"><li>Remise gratuite au club ou par le coach</li><li>Paiement sécurisé HelloAsso</li><li>Sans compte à créer</li></ul>
         </div>
         <div class="shop-hero-visual">
           <img id="shop-hero-image" data-fallback-src="/hero-foot.webp" alt="Joueuses du FC Escalquens sur le terrain">
-          <div class="shop-hero-mark" aria-hidden="true">
-            <span>FCE</span>
-          </div>
+          <span class="shop-hero-caption">La sélection du club<br><strong>Une équipe. Une famille.</strong></span>
         </div>
       </section>
 
@@ -62,7 +60,7 @@ import Footer from '../../components/Footer.astro';
 
       <section class="catalogue-band">
         <div><p class="eyebrow">Toutes les références</p><h2>La collection complète.</h2><p>Téléchargez le catalogue à jour : tous les articles visibles, leurs tailles, leurs tarifs et leurs options.</p></div>
-        <a id="shop-catalogue" class="catalogue-button" href="/api/shop/catalogue.pdf" download="catalogue-fce.pdf">Télécharger le catalogue PDF ↓</a>
+        <button id="shop-catalogue" class="catalogue-button" type="button">Télécharger le catalogue PDF ↓</button><p id="catalogue-status" class="catalogue-status" role="status" aria-live="polite"></p>
       </section>
 
       <section class="order-process" aria-labelledby="order-title">
@@ -87,7 +85,6 @@ import Footer from '../../components/Footer.astro';
     <dialog id="product-dialog" class="commerce-dialog" aria-labelledby="product-title"><button class="commerce-close" type="button" data-close aria-label="Fermer">×</button><div id="product-content"></div></dialog>
     <dialog id="cart-dialog" class="commerce-dialog commerce-cart" aria-labelledby="cart-title"><button class="commerce-close" type="button" data-close aria-label="Fermer">×</button><p class="eyebrow">Boutique FC Escalquens</p><h2 id="cart-title">Mon panier.</h2><div id="cart-content"></div></dialog>
     <div id="commerce-notice" class="commerce-toast" role="status" aria-live="polite" hidden></div>
-    <script is:inline src="/shop.js?v=5"></script>
-    <script is:inline type="module" src="/shop-commerce.js?v=3"></script>
+    <script src="../../scripts/shop-entry.js"></script>
   </body>
 </html>

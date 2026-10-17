@@ -12,8 +12,7 @@ import {
 } from "../../public/shop-common.js";
 const root = document.querySelector("#admin-shop-content"),
   message = document.querySelector("#admin-shop-message");
-let catalogueProductId = null;
-let tab = "orders",
+let tab = document.querySelector(".commerce-admin").dataset.page || "orders",
   selected = null,
   config = null,
   page = 0,
@@ -207,93 +206,6 @@ async function settingsView() {
     });
   };
 }
-async function catalogueView() {
-  const cat = await call("catalogue");
-  root.innerHTML = `<section class="commerce-card"><h2>Les articles restent ceux du site.</h2><p>Configurez ici les variantes vendables et leurs prix exacts. Les descriptions, catégories et photos sont gérées dans l’onglet Catalogue et visuels. Un article sans variante active ne peut pas être commandé. Créez une variante par taille et indiquez son prix en euros (ex. 6 ans : 20 €, M : 25 €). La boutique affiche automatiquement « À partir de » si les prix diffèrent. Les textes historiques « dès… » ne sont jamais convertis en tarifs de paiement.</p><label>Choisir un article<select id="catalogue-product">${cat.products.map((p) => `<option value="${p.id}">${esc(p.name)}${p.active ? "" : " (masqué)"}</option>`).join("")}</select></label><div id="catalogue-editor"></div></section>`;
-  if(catalogueProductId && cat.products.some(p=>p.id===catalogueProductId))document.querySelector("#catalogue-product").value=catalogueProductId;
-  const render = () => {
-    const id = Number(document.querySelector("#catalogue-product").value),
-      variants = cat.variants.filter((v) => v.product_id === id),
-      options = cat.options.filter((o) => o.product_id === id);
-    catalogueProductId=id;
-    document.querySelector("#catalogue-editor").innerHTML =
-      `<div class="commerce-split"><section><h3>Tailles / modèles</h3><label>Modifier une variante<select id="variant-select"><option value="">+ Nouvelle variante</option>${variants.map((v) => `<option value="${esc(v.id)}">${esc(v.label)} · ${money(v.price_cents)} ${v.active ? "" : "(inactive)"}</option>`).join("")}</select></label><form id="variant-form" class="commerce-form-grid" style="margin-top:20px"></form></section><section><h3>Options et personnalisation</h3><label>Modifier une option<select id="option-select"><option value="">+ Nouvelle option</option>${options.map((o) => `<option value="${esc(o.id)}">${esc(o.label)} · ${money(o.price_cents)} ${o.active ? "" : "(inactive)"}</option>`).join("")}</select></label><form id="option-form" class="commerce-form-grid" style="margin-top:20px"></form></section></div>`;
-    const variantForm = () => {
-      const v = variants.find(
-        (v) => v.id === document.querySelector("#variant-select").value,
-      ) || {
-        label: "",
-        size: "",
-        color: "",
-        sku: "",
-        supplier: "Intersport / Kappa",
-        price_cents: 0,
-        active: 1,
-      };
-      const form = document.querySelector("#variant-form");
-      form.innerHTML = `${field("label", "Libellé du choix (ex. Adulte M)", v.label, "text", true)}${field("size", "Taille exacte (ou vide si unique)", v.size)}${field("color", "Couleur", v.color)}${field("sku", "Référence fournisseur", v.sku, "text", true)}${field("supplier", "Fournisseur", v.supplier, "text", true)}<label>Prix en euros<input name="price" type="number" min="0.01" max="10000" step="0.01" value="${v.price_cents / 100}" required></label><label class="commerce-check wide"><input name="active" type="checkbox" ${v.active ? "checked" : ""}>Variante disponible à la vente</label><div class="wide"><button type="submit">Enregistrer la variante</button></div>`;
-      form.onsubmit = (event) => {
-        event.preventDefault();
-        action(form.querySelector("button"), async () => {
-          const values = Object.fromEntries(new FormData(form));
-          await call("variants", {
-            method: "PUT",
-            data: {
-              ...values,
-              id: v.id,
-              product_id: id,
-              price_cents: Math.round(Number(values.price) * 100),
-              active: form.elements.active.checked,
-            },
-          });
-          notice(
-            "Variante enregistrée. Les commandes passées conservent leur prix initial.",
-          );
-          await catalogueView();
-        });
-      };
-    };
-    const optionForm = () => {
-      const o = options.find(
-        (o) => o.id === document.querySelector("#option-select").value,
-      ) || {
-        label: "",
-        price_cents: 0,
-        max_length: 4,
-        requires_text: 1,
-        active: 1,
-      };
-      const form = document.querySelector("#option-form");
-      form.innerHTML = `${field("label", "Nom de l’option (ex. Initiales)", o.label, "text", true)}<label>Supplément en euros<input name="price" type="number" min="0" max="1000" step="0.01" value="${o.price_cents / 100}" required></label>${field("max_length", "Longueur maximale du texte", o.max_length, "number", true)}<label class="commerce-check"><input name="requires_text" type="checkbox" ${o.requires_text ? "checked" : ""}>Texte de personnalisation obligatoire</label><label class="commerce-check wide"><input name="active" type="checkbox" ${o.active ? "checked" : ""}>Option disponible</label><div class="wide"><button type="submit">Enregistrer l’option</button></div>`;
-      form.onsubmit = (event) => {
-        event.preventDefault();
-        action(form.querySelector("button"), async () => {
-          const values = Object.fromEntries(new FormData(form));
-          await call("options", {
-            method: "PUT",
-            data: {
-              ...values,
-              id: o.id,
-              product_id: id,
-              price_cents: Math.round(Number(values.price) * 100),
-              max_length: Number(values.max_length),
-              active: form.elements.active.checked,
-              requires_text: form.elements.requires_text.checked,
-            },
-          });
-          notice("Option enregistrée.");
-          await catalogueView();
-        });
-      };
-    };
-    document.querySelector("#variant-select").onchange = variantForm;
-    document.querySelector("#option-select").onchange = optionForm;
-    variantForm();
-    optionForm();
-  };
-  document.querySelector("#catalogue-product").onchange = render;
-  if (cat.products.length) render();
-}
 async function adminsView() {
   const data=await call("admins");
   root.innerHTML=`<section class="commerce-card"><h2>Les responsables de la boutique</h2><p>Ces droits sont indépendants de l’administration du site. Chaque adresse doit aussi être autorisée dans votre application Cloudflare Access boutique (règle e-mail + PIN).</p><div class="commerce-table-wrap"><table><thead><tr><th>Responsable</th><th>E-mail</th><th>Accès</th><th>Action</th></tr></thead><tbody>${data.admins.map(a=>`<tr><td>${esc(a.name)}</td><td>${esc(a.email)}${a.email.toLowerCase()===data.actor.toLowerCase()?' (vous)':''}</td><td>${a.active?'Actif':'Désactivé'}</td><td><button type="button" class="commerce-secondary" data-admin="${esc(a.email)}">Modifier</button></td></tr>`).join('')}</tbody></table></div><h3 id="admin-editor-title">Ajouter un responsable</h3><form id="shop-admin-form" class="commerce-form-grid"><label>Adresse e-mail<input name="email" type="email" autocomplete="off" maxlength="254" required></label><label>Nom du responsable<input name="name" maxlength="120" required></label><label class="commerce-check wide"><input name="active" type="checkbox" checked><span>Autoriser la gestion boutique</span></label><div class="wide"><button type="submit">Enregistrer l’accès</button> <button type="button" id="new-shop-admin" class="commerce-secondary">Nouvel administrateur</button></div></form><p class="commerce-help">Désactiver un responsable bloque ses prochaines actions même si sa session Cloudflare est encore ouverte. Votre propre accès ne peut pas être désactivé depuis cette session.</p></section>`;
@@ -323,8 +235,9 @@ async function render() {
   try {
     await {
       orders,
-      content: () => renderContent(root, call, notice),
-      catalogue: catalogueView,
+      products: () => renderContent(root, call, notice, "shop_products"),
+      categories: () => renderContent(root, call, notice, "shop_categories"),
+      cover: async () => {root.innerHTML='<div id="cover-media"></div><div id="cover-display"></div>';await renderContent(root.querySelector('#cover-media'),call,notice,'site_media');await renderContent(root.querySelector('#cover-display'),call,notice,'shop_settings');},
       settings: settingsView,
       surveys,
       admins: adminsView,
@@ -334,16 +247,6 @@ async function render() {
     showError(message, error);
   }
 }
-document.querySelectorAll("[data-tab]").forEach(
-  (button) =>
-    (button.onclick = () => {
-      tab = button.dataset.tab;
-      document
-        .querySelectorAll("[data-tab]")
-        .forEach((b) => b.setAttribute("aria-selected", String(b === button)));
-      render();
-    }),
-);
 if (local && !readStorage("fce-shop-local-token")) {
   const value = prompt("Jeton de développement local (DEV_ADMIN_TOKEN) :");
   if (value)

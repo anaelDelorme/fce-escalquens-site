@@ -28,7 +28,6 @@ import {
 } from "./security";
 import { api, safeRedirect, verifiedPayments } from "./helloasso";
 import { drainMail, queueMail } from "./mail";
-import { cataloguePdf } from "./catalogue-pdf";
 export interface ShopEnv {
   DB: D1Database;
   ORDERS: D1Database;
@@ -72,7 +71,7 @@ export async function settings(
 async function catalogue(env: ShopEnv) {
   const result = await env.DB.batch<Row>([
     env.DB.prepare(
-      "SELECT id,name,short_description,description,price_label,sizes,options,delivery_delay,image_key,active FROM shop_products WHERE active=1 AND image_key<>''",
+      "SELECT p.id,p.shop_category_id,p.display_order,p.name,p.short_description,p.description,p.price_label,p.price_details,p.sizes,p.options,p.delivery_delay,p.image_key,p.active FROM shop_products p WHERE p.active=1 AND p.image_key<>'' AND (p.shop_category_id IS NULL OR EXISTS(SELECT 1 FROM shop_categories c WHERE c.id=p.shop_category_id AND c.active=1)) ORDER BY p.display_order,p.name",
     ),
     env.DB.prepare(
       "SELECT * FROM shop_variants WHERE active=1 ORDER BY product_id,label",
@@ -80,10 +79,12 @@ async function catalogue(env: ShopEnv) {
     env.DB.prepare(
       "SELECT * FROM shop_options WHERE active=1 ORDER BY product_id,label",
     ),
+    env.DB.prepare("SELECT id,name,display_order FROM shop_categories WHERE active=1 ORDER BY display_order,name"),
   ]);
   const ids = new Set(result[0].results.map((p) => p.id));
   return {
     products: result[0].results,
+    categories: result[3].results,
     variants: result[1].results.filter((v) => ids.has(v.product_id)),
     options: result[2].results.filter((o) => ids.has(o.product_id)),
   };
@@ -1341,13 +1342,9 @@ export async function shopRoute(
         terms_sections: termsSections(s),
       });
     }
+    // Legacy download URL now opens the illustrated generator, including WebP/AVIF photos.
     if (path === "/api/shop/catalogue.pdf" && request.method === "GET") {
-      await rateLimit(env, `pdf:${request.headers.get("cf-connecting-ip") || "local"}`, 15);
-      const bytes = await cataloguePdf(await catalogue(env));
-      return new Response(bytes as BodyInit, {headers: {
-        ...secureHeaders(), "content-type": "application/pdf",
-        "content-disposition": 'attachment; filename="catalogue-fce.pdf"',
-      }});
+      return new Response(null,{status:302,headers:{...secureHeaders(),location:'/boutique/catalogue/'}});
     }
     if (path === "/api/shop/catalogue" && request.method === "GET") {
       const cat = await catalogue(env);
