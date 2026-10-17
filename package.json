@@ -1,1 +1,33 @@
-{"name":"fce-escalquens","private":true,"type":"module","scripts":{"dev":"astro dev","build":"astro build","preview":"wrangler dev","local":"bash scripts/start-local.sh","setup:cloudflare":"bash scripts/setup-cloudflare.sh","db:migrate:local":"wrangler d1 migrations apply DB --local","db:migrate:remote":"wrangler d1 migrations apply DB --remote","db:seed:local":"wrangler d1 execute DB --local --file=./seed/demo.sql","db:seed:shop:local":"wrangler d1 execute DB --local --file=./seed/shop.sql","db:seed:shop:remote":"wrangler d1 execute DB --remote --file=./seed/shop.sql","deploy":"npm run build && wrangler deploy","cf:types":"wrangler types"},"dependencies":{"@astrojs/sitemap":"^3.7.4","astro":"latest"},"devDependencies":{"typescript":"latest","wrangler":"latest"}}
+{
+  "name": "fce-escalquens",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "wrangler dev --env local",
+    "local": "bash scripts/start-local.sh",
+    "setup:cloudflare": "bash scripts/setup-cloudflare.sh",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local --env local",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "db:seed:local": "wrangler d1 execute DB --local --file=./seed/demo.sql",
+    "db:seed:shop:local": "wrangler d1 execute DB --local --env local --file=./seed/shop.sql",
+    "db:seed:shop:remote": "wrangler d1 execute DB --remote --file=./seed/shop.sql",
+    "deploy": "npm run build && wrangler deploy",
+    "cf:types": "wrangler types",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "typecheck:shop": "tsc -p tsconfig.shop.json",
+    "db:migrate:orders:local": "wrangler d1 migrations apply ORDERS --local --env local"
+  },
+  "dependencies": {
+    "@astrojs/sitemap": "^3.7.4",
+    "astro": "latest",
+    "jose": "^6.2.12"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261016.1",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.151.1"
+  }
+}

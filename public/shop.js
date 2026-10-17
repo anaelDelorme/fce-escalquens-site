@@ -32,7 +32,7 @@ const productMeta=product=>{
     ${delay?`<div class="product-delay"><small>Délai indicatif</small><span>${shopEsc(delay)}</span></div>`:''}
   </div>`;
 };
-const orderButton=product=>`<button class="product-order" type="button" data-order-product="${shopEsc(product.name)}">Commander cet article →</button>`;
+const orderButton=product=>`<button class="product-order" type="button" data-order-product="${product.id}">Choisir mes options →</button>`;
 const productCard=product=>`<article class="shop-product-card">
   <div class="product-card-visual">${productVisual(product)}</div>
   <div class="product-card-copy"><small>${shopEsc(product.price_label||'Prix à confirmer')}</small><h3>${shopEsc(product.name)}</h3>${productDescriptions(product)}${productMeta(product)}${orderButton(product)}</div>
@@ -83,19 +83,7 @@ async function loadShop(){
     }).join('')||'<p class="shop-empty">La sélection de la boutique arrive bientôt.</p>';
     const catalogue=document.querySelector('#shop-catalogue');
     if(data.settings?.catalogue_key){catalogue.href=`/media/${encodeURIComponent(data.settings.catalogue_key).replace(/%2F/g,'/')}`;catalogue.textContent=`${data.settings.catalogue_title||'Catalogue complet'} →`;catalogue.target='_blank';catalogue.rel='noopener';catalogue.removeAttribute('aria-disabled')}
-    bindProductButtons();
+    document.dispatchEvent(new Event('shop-loaded'));
   }catch(error){document.querySelector('#shop-page')?.classList.remove('is-loading');revealShopHero(null);featuredNode.innerHTML='<p class="shop-empty">L’article à la une est momentanément indisponible.</p>';categoriesNode.innerHTML='<p class="shop-empty">La boutique ne peut pas être chargée pour le moment.</p>'}
 }
-function bindProductButtons(){document.querySelectorAll('[data-order-product]').forEach(button=>button.addEventListener('click',()=>{
-  const textarea=document.querySelector('#shop-order-form textarea[name="request"]'),line=`- ${button.dataset.orderProduct}\n  Quantité : 1\n  Taille : \n  Option(s) : `;
-  textarea.value=textarea.value.trim()?`${textarea.value.trim()}\n\n${line}`:line;
-  document.querySelector('#commander').scrollIntoView({behavior:'smooth'});setTimeout(()=>textarea.focus(),450);
-}))}
-document.querySelector('#shop-order-form')?.addEventListener('submit',event=>{
-  event.preventDefault();const values=Object.fromEntries(new FormData(event.currentTarget));
-  const settings=window.shopSettings||{},email=settings.contact_email||'fcescalquens@gmail.com',subject=settings.order_subject||'Commande boutique FC Escalquens';
-  const body=['Bonjour,','','Je souhaite commander les articles suivants :','',values.request,'',`Mon adresse e-mail : ${values.contact_email}`,`Mon numéro de téléphone : ${values.contact_phone}`,`Nom du licencié : ${values.licensed_name||'Non précisé'}`,`Équipe / catégorie : ${values.team||'Non précisée'}`,'','Merci de me confirmer la disponibilité, le délai, le prix final et les modalités de paiement.','','Sportivement.'].join('\n');
-  const status=document.querySelector('#shop-order-status');if(status)status.textContent='Votre application e-mail va s’ouvrir avec la commande préremplie. Vérifiez le message puis cliquez sur « Envoyer ».';
-  window.location.href=`mailto:${String(email).replace(/[^a-z0-9@._+-]/gi,'')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-});
 loadShop();

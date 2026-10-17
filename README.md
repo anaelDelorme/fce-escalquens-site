@@ -1,3 +1,13 @@
+# Boutique indépendante et paiement HelloAsso
+
+Installation détaillée sans compte HelloAsso : [docs/INSTALLATION-STAGING.md](docs/INSTALLATION-STAGING.md). La préproduction utilise la branche `staging` et la gestion boutique est sous `/admin-boutique/`.
+
+Le parcours d’achat, le backoffice Cloudflare Access, les bases séparées et les mails sont documentés dans [docs/BOUTIQUE.md](docs/BOUTIQUE.md). Les ventes sont fermées par défaut jusqu’à la configuration des bases, des secrets, du catalogue commercial et des mentions légales.
+
+Vérifications : `npm test`, `npm run typecheck:shop`, `npm run build`.
+
+---
+
 # Édition temporaire avant génération des PNG
 
 Ce paquet transforme la page de génération des visuels en deux étapes :

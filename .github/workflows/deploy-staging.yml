@@ -3,7 +3,7 @@ name: Déployer la préproduction
 on:
   push:
     branches:
-      - develop
+      - staging
 
   workflow_dispatch:
 
@@ -28,11 +28,23 @@ jobs:
       - name: Installer les dépendances
         run: npm ci
 
+      - name: Tester la boutique
+        run: npm test && npm run typecheck:shop
+
       - name: Construire le site
         run: npm run build
 
+      - name: Vérifier la configuration des bases commandes
+        run: node scripts/configure-orders.mjs --check staging
+
       - name: Appliquer les migrations D1 staging
         run: npx wrangler d1 migrations apply DB --remote --env staging
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Appliquer les migrations des commandes
+        run: npx wrangler d1 migrations apply ORDERS --remote --env staging
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

@@ -12,9 +12,11 @@ import Footer from '../../components/Footer.astro';
     <link rel="stylesheet" href="/enhancements.css?v=6">
     <link rel="stylesheet" href="/brand-charter.css">
     <link rel="stylesheet" href="/shop.css?v=3">
+    <link rel="stylesheet" href="/shop-commerce.css">
   </head>
   <body>
     <Header/>
+    <div class="commerce-toolbar"><a href="/boutique/suivi/">Suivre une commande</a><button type="button" id="open-cart">Mon panier <span id="cart-count">0</span></button></div>
     <main class="shop-page is-loading" id="shop-page">
       <section id="shop-maintenance" class="shop-maintenance" hidden aria-label="Boutique temporairement fermée">
         <div class="shop-maintenance-inner">
@@ -66,31 +68,25 @@ import Footer from '../../components/Footer.astro';
       <section class="order-process" aria-labelledby="order-title">
         <div class="section-intro"><p class="eyebrow">Simple et accompagné</p><h2 id="order-title">Comment commander ?</h2></div>
         <ol>
-          <li><b>01</b><div><h3>Envoyez votre demande</h3><p>Précisez les articles, les quantités, les tailles et les options souhaitées, comme le flocage des initiales.</p></div></li>
-          <li><b>02</b><div><h3>Le club vous confirme tout</h3><p>Nous vérifions la disponibilité et vous répondons avec le prix final et la démarche pour payer par virement, chèque ou espèces.</p></div></li>
-          <li><b>03</b><div><h3>Votre coach vous remet la commande</h3><p>Dès réception du paiement, la commande est lancée puis livrée par le club via le coach de l’équipe.</p></div></li>
+          <li><b>01</b><div><h3>Composez votre panier</h3><p>Choisissez précisément les tailles, quantités et personnalisations. Vérifiez vos initiales avant de valider.</p></div></li>
+          <li><b>02</b><div><h3>Payez avec HelloAsso</h3><p>Un paiement sécurisé, sans créer de compte. Vous recevez le récapitulatif et votre lien personnel de suivi par e-mail.</p></div></li>
+          <li><b>03</b><div><h3>Retrouvez-nous au club</h3><p>Choisissez la remise par votre coach ou un rendez-vous au club. Nous vous prévenons dès que vos articles sont prêts.</p></div></li>
         </ol>
       </section>
 
-      <section class="order-panel" id="commander" aria-labelledby="request-title">
-        <div>
-          <p class="eyebrow">Préparer ma demande</p>
-          <h2 id="request-title">On s’occupe<br>de la suite.</h2>
-          <p>Ce formulaire prépare votre commande puis ouvre votre application e-mail. Pensez à vérifier le message et à cliquer sur « Envoyer » dans votre messagerie. Aucun paiement n’est demandé sur le site.</p>
-        </div>
-        <form id="shop-order-form">
-          <label><span>Votre adresse e-mail *</span><input name="contact_email" type="email" autocomplete="email" required></label>
-          <label><span>Votre téléphone *</span><input name="contact_phone" type="tel" autocomplete="tel" required></label>
-          <label><span>Nom du licencié <small>(facultatif)</small></span><input name="licensed_name" autocomplete="name"></label>
-          <label><span>Équipe ou catégorie <small>(facultatif)</small></span><input name="team" placeholder="Ex. U11, Seniors…"></label>
-          <label class="wide"><span>Articles, quantités, tailles et options</span><textarea name="request" rows="8" required placeholder="Ex. 2 tee-shirts Castolo, taille M, avec initiales AD…"></textarea></label>
-          <p class="price-note">Les tarifs affichés sont indicatifs. Le club confirme le montant exact avant tout paiement.</p>
-          <p id="shop-order-status" class="order-status" aria-live="polite"></p>
-          <button type="submit">Préparer l’e-mail de commande →</button>
-        </form>
+      <section class="commerce-section" id="commander">
+        <p class="eyebrow">À vous de jouer</p><h2>Votre sélection, vos couleurs.</h2>
+        <p>Ajoutez les articles de votre choix au panier. La remise est gratuite, par le coach ou sur rendez-vous au club.</p>
+        <button id="show-cart" type="button">Voir mon panier →</button>
+        <p><a href="/cgv/">Conditions générales de vente</a> · <a href="/confidentialite/">Vos données personnelles</a></p>
       </section>
+      <noscript><p>Activez JavaScript pour configurer les articles et utiliser le panier. Pour une aide, contactez le club.</p></noscript>
     </main>
     <Footer/>
-    <script is:inline src="/shop.js?v=3"></script>
+    <dialog id="product-dialog" class="commerce-dialog" aria-labelledby="product-title"><button class="commerce-close" type="button" data-close aria-label="Fermer">×</button><div id="product-content"></div></dialog>
+    <dialog id="cart-dialog" class="commerce-dialog commerce-cart" aria-labelledby="cart-title"><button class="commerce-close" type="button" data-close aria-label="Fermer">×</button><p class="eyebrow">Boutique FC Escalquens</p><h2 id="cart-title">Mon panier.</h2><div id="cart-content"></div></dialog>
+    <div id="commerce-notice" class="commerce-toast" role="status" aria-live="polite" hidden></div>
+    <script is:inline src="/shop.js?v=4"></script>
+    <script is:inline type="module" src="/shop-commerce.js"></script>
   </body>
 </html>

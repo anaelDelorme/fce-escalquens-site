@@ -1,4 +1,7 @@
-interface Env {
+import { shopRoute, maintenance, type ShopEnv } from './shop/service';
+import { staff as shopStaff, sameOrigin as shopSameOrigin, response as shopResponse } from './shop/security';
+import { ShopError } from './shop/domain';
+interface Env extends ShopEnv {
   DB: D1Database;
   MEDIA: R2Bucket;
   ASSETS: Fetcher;
@@ -173,13 +176,19 @@ function testGate(request: Request, env: Env) {
   );
 }
 
-async function api(request: Request, env: Env, url: URL) {
+async function api(request: Request, env: Env, url: URL, trustedShopActor?: string) {
   const parts = url.pathname.split("/").filter(Boolean);
-  const table = parts[1];
-  const id = parts[2];
+  const shopScope = url.pathname.startsWith('/admin-boutique/api/content/');
+  const table = parts[shopScope ? 3 : 1];
+  const id = parts[shopScope ? 4 : 2];
+  if (!table) return json({error:'Ressource inconnue'},404);
+  const shopTables = new Set(['shop_categories','shop_products','shop_settings','site_media']);
+  if (shopScope && (!trustedShopActor || !shopTables.has(table))) return json({error:'Ressource boutique inconnue'},404);
+  if (!shopScope && table.startsWith('shop_')) return json({error:'Gestion déplacée vers /admin-boutique/'},404);
+  const authorize = async () => shopScope ? trustedShopActor : admin(request,env);
   if (!tables.has(table)) return json({ error: "Ressource inconnue" }, 404);
-  if (!url.pathname.startsWith("/admin-api/")) return json({ error: "Ressource publique inconnue" }, 404);
-  if (!await admin(request, env)) {
+  if (!shopScope && !url.pathname.startsWith("/admin-api/")) return json({ error: "Ressource publique inconnue" }, 404);
+  if (!await authorize()) {
     return json({ error: "Accès administrateur requis" }, 401);
   }
   // Ces tables contiennent des données personnelles (email, téléphone, numéro de
@@ -187,15 +196,24 @@ async function api(request: Request, env: Env, url: URL) {
   // même en lecture seule. Les pages publiques passent par pageData() qui expose
   // uniquement les champs nécessaires (ex. encadrant d'une équipe).
   const restrictedRead = new Set(["admins", "club_members"]);
-  if (restrictedRead.has(table) && request.method === "GET" && !await admin(request, env)) {
+  if (restrictedRead.has(table) && request.method === "GET" && !await authorize()) {
     return json({ error: "Accès administrateur requis" }, 401);
   }
+  if (table === 'site_media') {
+    if (request.method === 'POST') return json({error:'Les emplacements médias ne peuvent pas être créés depuis cette API.'},405);
+    if (id) {
+      const row = await env.DB.prepare('SELECT slot FROM site_media WHERE id=?').bind(id).first<{slot:string}>();
+      if (!row || (row.slot === 'shop_hero') !== shopScope) return json({error:'Emplacement média hors de cet espace de gestion.'},404);
+    }
+    if (request.method === 'DELETE') return json({error:'Un emplacement média ne peut pas être supprimé.'},405);
+  }
+  if (shopScope && table === 'shop_settings' && (request.method === 'DELETE' || request.method === 'POST')) return json({error:'Les réglages doivent être modifiés, pas supprimés ou recréés.'},405);
   if (request.method === "GET") {
     const order = defaultOrder[table] || "id ASC";
-    const rows = await env.DB.prepare(`SELECT * FROM ${table} ORDER BY ${order} LIMIT 1000`).all();
+    const rows = await env.DB.prepare(`SELECT * FROM ${table}${table==='site_media' ? (shopScope ? " WHERE slot='shop_hero'" : " WHERE slot<>'shop_hero'") : ''} ORDER BY ${order} LIMIT 1000`).all();
     return json(rows.results);
   }
-  if (!await admin(request, env)) {
+  if (!await authorize()) {
     return json({ error: "Adresse non autorisée. Vérifiez Cloudflare Access et la liste des administrateurs." }, 401);
   }
   if (request.method === "DELETE" && id) {
@@ -949,8 +967,8 @@ async function detectUpload(file: File) {
   return null;
 }
 
-async function upload(request: Request, env: Env) {
-  if (!await admin(request, env)) return json({ error: "Non autorisé" }, 401);
+async function upload(request: Request, env: Env, trustedShopActor?: string) {
+  if (!trustedShopActor && !await admin(request, env)) return json({ error: "Non autorisé" }, 401);
   const form = await request.formData();
   const file = form.get("file");
   if (!(file instanceof File)) return json({ error: "Fichier manquant" }, 400);
@@ -1963,7 +1981,7 @@ async function stagingAction(request: Request, env: Env) {
         "x-github-api-version": "2026-03-10"
       },
       body: JSON.stringify({
-        ref: env.STAGING_WORKFLOW_REF || "develop"
+        ref: env.STAGING_WORKFLOW_REF || "staging"
       })
     }
   );
@@ -1999,6 +2017,7 @@ async function stagingAction(request: Request, env: Env) {
 }
 
 export default {
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) { ctx.waitUntil(maintenance(env)); },
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(request.url);
     if (url.pathname === "/internal/sync/matches" && request.method === "POST") {
@@ -2011,8 +2030,27 @@ export default {
     if (url.pathname === "/internal/sync/standings" && request.method === "POST") {
       return ingestStandings(request, env);
     }
+    // Provider callbacks and token-authenticated tracking cannot carry the staging Basic header.
+    // Each tracking request is still authorized by its order-specific bearer token.
+    if (url.pathname === '/api/shop/helloasso/webhook' || url.pathname.startsWith('/api/shop/orders/')) return (await shopRoute(request, env, ctx))!;
     const gate = testGate(request, env);
     if (gate) return gate;
+    if (url.pathname.startsWith('/admin-boutique/api/content/') || url.pathname === '/admin-boutique/api/upload') {
+      try {
+        const actor = await shopStaff(request,env);
+        if (!['GET','HEAD'].includes(request.method)) shopSameOrigin(request,env);
+        if (url.pathname === '/admin-boutique/api/upload') {
+          if (request.method !== 'POST') return shopResponse({error:'Méthode non autorisée'},405);
+          return await upload(request,env,actor);
+        }
+        return await api(request,env,url,actor);
+      } catch(error) {
+        if (error instanceof ShopError) return shopResponse({error:error.message,code:error.code},error.status);
+        return shopResponse({error:'Cette opération sur le catalogue a échoué. Rechargez la page puis réessayez.',code:'CONTENT_ERROR'},500);
+      }
+    }
+    const shop = await shopRoute(request, env, ctx);
+    if (shop) return shop;
     if ((url.pathname === "/admin" || url.pathname.startsWith("/admin/")) &&
       request.headers.get("cf-access-authenticated-user-email") && !await admin(request, env)) {
       return new Response("Cette adresse est authentifiée par Cloudflare, mais elle n’est pas administratrice du site.", {
@@ -2039,6 +2077,8 @@ export default {
     if (url.pathname === "/admin-api/sync/matches" && request.method === "POST") {
       return json({ error: "Lancez l’action « Synchroniser les matchs » dans GitHub. Elle utilise ZenRows uniquement aux six horaires prévus." }, 409);
     }
+    if (url.pathname === '/admin/boutique' || url.pathname.startsWith('/admin/boutique/')) return new Response('La gestion boutique a été déplacée vers /admin-boutique/.',{status:410,headers:{'cache-control':'no-store'}});
+    if (url.pathname.startsWith('/admin-api/shop/')) return json({error:'API boutique déplacée vers /admin-boutique/api/'},410);
     if (url.pathname.startsWith("/admin-api/")) return api(request, env, url);
     // Les routes /api/<table> génériques ne sont pas publiques. L'interface
     // d'administration utilise /admin-api/<table>, ce qui évite qu'un en-tête

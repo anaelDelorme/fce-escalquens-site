@@ -4,3 +4,19 @@ TEST_SITE_USER=fce
 TEST_SITE_PASSWORD=
 INSTAGRAM_ACCESS_TOKEN=
 INSTAGRAM_USER_ID=  
+
+# Boutique — secrets locaux uniquement, ne jamais commiter .dev.vars.
+# wrangler dev --env local lit .dev.vars.local (ou .dev.vars en l'absence de fichier dédié).
+APP_ENV=local
+SHOP_ORIGIN=http://localhost:8787
+TRACKING_SECRET=remplacer-par-une-cle-aleatoire-de-64-caracteres
+HELLOASSO_CLIENT_ID=
+HELLOASSO_CLIENT_SECRET=
+# Signature des webhooks uniquement si votre contrat HelloAsso la propose.
+HELLOASSO_WEBHOOK_SECRET=
+CF_ACCESS_ISSUER=
+CF_ACCESS_SHOP_AUD=
+MAIL_PROVIDER=cloudflare
+MAIL_FROM=
+MAIL_TEST_TO=
+RESEND_API_KEY=
