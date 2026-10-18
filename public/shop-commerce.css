@@ -557,3 +557,19 @@ body:has(.commerce-toolbar) {padding-bottom:0;}
 .commerce-editor-group {min-width:0;border:1px solid var(--line);padding:20px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin:8px 0;}
 .commerce-editor-group legend {padding:0 8px;font:700 18px/1.4 Arial,sans-serif;color:var(--wine-dark);}
 @media(max-width:600px){.commerce-editor-group {grid-template-columns:minmax(0,1fr);padding:16px;}.commerce-editor-group label {grid-column:1/-1;}}
+
+/* Choice controls must never inherit the full-width text-input geometry. */
+:is(.commerce-dialog,.commerce-layout,.commerce-admin) .commerce-check input:is([type="radio"],[type="checkbox"]){width:20px;height:20px;min-width:20px;min-height:20px;max-width:20px;flex:0 0 20px;padding:0;margin:2px 0 0;border-radius:0;accent-color:var(--wine);}
+:is(.commerce-dialog,.commerce-layout,.commerce-admin) .commerce-check input[type="radio"]{border-radius:50%;}
+:is(.commerce-dialog,.commerce-layout,.commerce-admin) .commerce-check>span{min-width:0;flex:1 1 auto;line-height:1.5;overflow-wrap:anywhere;}
+.commerce-check{min-width:0;}
+.commerce-checkout fieldset{min-width:0;margin:24px 0;border:1px solid var(--line);border-radius:8px;padding:20px;}
+.commerce-checkout fieldset .commerce-check{padding:14px;border:1px solid var(--line);background:white;border-radius:6px;align-items:center;}
+.commerce-checkout fieldset .commerce-check:has(input:checked){border-color:var(--wine);background:#9f1a1a08;}
+.commerce-required{display:inline;}
+.commerce-mode{display:flex;flex-wrap:wrap;gap:8px;margin:20px 0 12px;}
+.commerce-mode button{background:white;color:var(--wine-dark);border:1px solid var(--line);}
+.commerce-mode button[aria-pressed="true"]{background:var(--wine-dark);color:white;border-color:var(--wine-dark);}
+#indicative-price{background:#f4eee5;cursor:default;font-weight:700;}
+#supplier-editor{padding-top:24px;}
+#variant-form small a{text-decoration:underline;text-underline-offset:3px;}

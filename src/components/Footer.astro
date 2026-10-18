@@ -1,4 +1,4 @@
-<footer>
+<footer class="site-footer"><div class="site-footer-inner">
 <div class="footer-brand">
   <div class="footer-brand-main">
     <img
@@ -25,9 +25,23 @@
   </div>
 </div>
  <div class="footer-links"><strong>Le terrain</strong><a href="/equipes/">Équipes</a><a href="/planning/">Planning</a><a href="/matchs/">Matchs & résultats</a><a href="/tournois/">Tournois</a><a href="/boutique/">Boutique</a></div>
-  <div class="footer-links"><strong>Le club</strong><a href="/mecenat/">Mécénat</a><a href="/contacts/">Contacts</a><a href="/admin/">Administration du site</a><a href="/admin-boutique/">Administration boutique</a><a href="/mentions-legales/">Mentions légales</a><a href="/cgv/">CGV boutique</a><a href="/confidentialite/">Confidentialité</a><a href="/cookies/">Cookies</a><a href="/accessibilite/">Accessibilité</a></div>
+  <div class="footer-links"><strong>Le club</strong><a href="/mecenat/">Mécénat</a><a href="/contacts/">Contacts</a><a href="/admin/">Administration du site</a><a href="/admin-boutique/">Administration boutique</a><a href="/admin-tournois/">Administration tournois</a><a href="/mentions-legales/">Mentions légales</a><a href="/cgv/">CGV boutique</a><a href="/confidentialite/">Confidentialité</a><a href="/cookies/">Cookies</a><a href="/accessibilite/">Accessibilité</a></div>
   <div class="footer-support"><strong>Nous contacter</strong><span>Toute demande concernant le club</span><a href="mailto:fcescalquens@gmail.com">fcescalquens@gmail.com</a><span>Un problème avec le site ?</span><a href="mailto:fcescalquens.web@gmail.com">fcescalquens.web@gmail.com</a></div>
-</footer>
+</div></footer>
 <style is:global>
 footer .footer-labels>span{font-size:12px}footer .footer-links strong,footer .footer-support strong{font-size:12px}footer .footer-links a,footer .footer-support a{font-size:14px}footer .footer-support span{font-size:13px}
+</style>
+
+<style is:global>
+/* A shared inner container keeps the footer aligned and prevents intrinsic-width overflow. */
+footer.site-footer{display:block;padding:48px 24px;background:#1b1213;border-top:6px solid var(--wine);}
+.site-footer-inner{width:100%;max-width:1180px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,.7fr) minmax(0,.9fr) minmax(0,1.1fr);gap:32px;align-items:start;}
+.site-footer-inner>*{min-width:0;}
+.site-footer-inner .footer-brand{max-width:330px;}
+.site-footer-inner .footer-brand-main{gap:12px;align-items:center;}
+.site-footer-inner .footer-brand-text{min-width:0;}
+.site-footer-inner .footer-labels-list{grid-template-columns:repeat(2,minmax(0,1fr));}
+.site-footer-inner a,.site-footer-inner span{overflow-wrap:anywhere;white-space:normal;}
+@media(max-width:980px){.site-footer-inner{grid-template-columns:repeat(2,minmax(0,1fr));gap:32px;}}
+@media(max-width:560px){footer.site-footer{padding:36px 20px;}.site-footer-inner{grid-template-columns:minmax(0,1fr);gap:28px;}.site-footer-inner .footer-brand{max-width:100%;}}
 </style>

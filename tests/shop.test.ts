@@ -14,11 +14,14 @@ import {
 } from "../src/shop/domain";
 import {
   shopRoute,
+  findOrder,
   settings,
   maintenance,
   reconcile,
   type ShopEnv,
 } from "../src/shop/service";
+import {tournamentRoute} from "../src/tournaments/service";
+import {accessToken,tokenKey} from "../src/shop/helloasso-auth";
 import { staff } from "../src/shop/security";
 import { defaultSettings } from "../src/shop/terms";
 import { drainMail } from "../src/shop/mail";
@@ -160,6 +163,8 @@ const accessJwk = {
 };
 const checkoutMetadata = new Map<number, any>();
 const realFetch = globalThis.fetch;
+let oauthGrants:string[]=[];
+let checkoutBodies:any[]=[];
 let intents = 0,
   paymentAuthorized = false,
   providerDown = false,
@@ -189,7 +194,7 @@ before(async () => {
   await DB.exec(
     "CREATE TABLE admins(email TEXT,active INTEGER);CREATE TABLE shop_products(id INTEGER PRIMARY KEY,name TEXT,image_key TEXT,active INTEGER,price_label TEXT,sizes TEXT,options TEXT);CREATE TABLE shop_settings(id INTEGER PRIMARY KEY,shop_enabled INTEGER);INSERT INTO shop_settings VALUES(1,1);INSERT INTO shop_products VALUES(1,'Castolo','test.webp',1,'Dès 20 €','','');",
   );
-  await DB.exec("ALTER TABLE shop_products ADD COLUMN display_order INTEGER NOT NULL DEFAULT 0;ALTER TABLE shop_products ADD COLUMN short_description TEXT DEFAULT '';ALTER TABLE shop_products ADD COLUMN description TEXT DEFAULT '';ALTER TABLE shop_products ADD COLUMN delivery_delay TEXT DEFAULT '';");
+  await DB.exec("ALTER TABLE shop_products ADD COLUMN display_order INTEGER NOT NULL DEFAULT 0;ALTER TABLE shop_products ADD COLUMN short_description TEXT DEFAULT '';ALTER TABLE shop_products ADD COLUMN description TEXT DEFAULT '';ALTER TABLE shop_products ADD COLUMN delivery_delay TEXT DEFAULT '';ALTER TABLE shop_products ADD COLUMN updated_at TEXT;");
   await DB.exec("CREATE TABLE shop_categories(id INTEGER PRIMARY KEY,slug TEXT UNIQUE,name TEXT,description TEXT,display_order INTEGER DEFAULT 0,active INTEGER DEFAULT 1,updated_at TEXT);INSERT INTO shop_categories(id,slug,name,display_order,active) VALUES(1,'textile','Textile',0,1);ALTER TABLE shop_products ADD COLUMN shop_category_id INTEGER REFERENCES shop_categories(id);ALTER TABLE shop_products ADD COLUMN price_details TEXT DEFAULT '';UPDATE shop_products SET shop_category_id=1;");
   // D1 exec accepts individual statements; migrations contain no triggers or embedded semicolons.
   for (const stmt of readFileSync(
@@ -224,6 +229,10 @@ before(async () => {
   )
     .bind(ids.option)
     .run();
+  await DB.exec(readFileSync(new URL('../migrations/0030_shop_suppliers.sql',import.meta.url),'utf8'));
+  await DB.exec("CREATE TABLE tournaments(id INTEGER PRIMARY KEY,name TEXT,starts_on TEXT,categories TEXT,status TEXT);INSERT INTO tournaments VALUES(1,'Tournoi U11','2027-06-10','[\"U11\"]','open');");
+  await DB.exec(readFileSync(new URL('../migrations/0031_tournament_checkout.sql',import.meta.url),'utf8'));
+
   await ORDERS.prepare("UPDATE settings SET data=? WHERE id=1")
     .bind(JSON.stringify(settingsValue))
     .run();
@@ -243,7 +252,7 @@ before(async () => {
     EMAIL: {
       async send(message) {
         assert.equal(message.to, "tester@example.org");
-        assert.ok(message.text.includes("/boutique/suivi/#"));
+        assert.match(message.text,/\/(boutique|tournois)\/suivi\/#/);
         if (mailFails) throw new Error("error leaking token http://secret");
         sent++;
         return { messageId: `m-${sent}` };
@@ -254,10 +263,15 @@ before(async () => {
     const url = String(input);
     if (url.includes("test.cloudflareaccess.com/cdn-cgi/access/certs"))
       return Response.json({ keys: [accessJwk] });
-    if (url.includes("/oauth2/token"))
-      return Response.json({ access_token: "test-token", expires_in: 1800 });
+    if (url.includes("/oauth2/token")) {
+      oauthGrants.push(new URLSearchParams(init.body).get('grant_type')||'');
+      return Response.json({ access_token: "test-token", refresh_token:"test-refresh",expires_in: 1800 });
+    }
+    if(url.endsWith('/users/me/organizations'))return Response.json([{organizationSlug:'test-fce'}]);
+    if(url.endsWith('/organizations/test-fce'))return Response.json({isCashInCompliant:true});
     if (url.endsWith("/checkout-intents") && init?.method === "POST") {
       intents++;
+      checkoutBodies.push(JSON.parse(init.body));
       checkoutMetadata.set(100 + intents, JSON.parse(init.body).metadata);
       if (providerDown) throw new Error("socket closed");
       return Response.json({
@@ -1193,4 +1207,111 @@ test('catégorie masquée : articles exclus du catalogue et des variantes vendab
  const cat=await route(request('/api/shop/catalogue'));assert.equal(cat.status,200);assert.equal(cat.body.products.length,0);assert.equal(cat.body.variants.length,0);
  await DB.prepare('UPDATE shop_categories SET active=1 WHERE id=1').run();
  const visible=await route(request('/api/shop/catalogue'));assert.ok(visible.body.products.length>0);assert.ok(visible.body.categories.length>0);
+});
+
+test('fournisseurs : migration des libellés, habilitation et contacts réservés à la gestion',async()=>{
+ const migrated=await DB.prepare('SELECT supplier_id,supplier FROM shop_variants WHERE id=?').bind(ids.variant).first<any>();assert.ok(migrated.supplier_id);assert.equal(migrated.supplier,'Intersport');
+ const unauthorized=await shopRoute(request('/admin-boutique/api/suppliers'),{...env,CF_ACCESS_ISSUER:'https://test.cloudflareaccess.com',CF_ACCESS_SHOP_AUD:'aud'},ctx);assert.equal(unauthorized?.status,401);
+ const create=await route(request('/admin-boutique/api/suppliers',{name:'Atelier du club',email:'atelier@example.org',contact_name:'Contact',active:true},{admin:true,method:'PUT'}));assert.equal(create.status,200);
+ const list=await route(request('/admin-boutique/api/suppliers',undefined,{admin:true}));assert.ok(list.body.suppliers.some((s:any)=>s.id===create.body.id&&s.email==='atelier@example.org'));
+ const publicCat=await route(request('/api/shop/catalogue'));assert.equal(publicCat.body.suppliers,undefined);assert.ok(!JSON.stringify(publicCat.body).includes('atelier@example.org'));
+ const duplicate=await route(request('/admin-boutique/api/suppliers',{name:'Atelier du club',active:true},{admin:true,method:'PUT'}));assert.equal(duplicate.status,409);
+});
+test('tarifs : prix affiché synchronisé, mode simple atomique et commandes passées conservées',async()=>{
+ const supplier=(await DB.prepare("SELECT id FROM shop_suppliers WHERE name='Intersport'").first<any>()).id;
+ await DB.prepare("INSERT INTO shop_products(id,name,image_key,active,shop_category_id,price_label) VALUES(991,'Accessoire','a.webp',1,1,'999 €')").run();
+ const save=async(data:any)=>route(request('/admin-boutique/api/variants',{label:'M',size:'M',color:'',sku:'A-1',supplier_id:supplier,price_cents:1250,active:true,product_id:991,...data},{admin:true,method:'PUT'}));
+ const first=await save({});assert.equal(first.status,200);
+ let product=await DB.prepare('SELECT price_label FROM shop_products WHERE id=991').first<any>();assert.equal(product.price_label,'12,50 €');
+ const second=await save({label:'L',size:'L',price_cents:1500});assert.equal(second.status,200);
+ product=await DB.prepare('SELECT price_label FROM shop_products WHERE id=991').first<any>();assert.equal(product.price_label,'À partir de 12,50 €');
+ // A catalogue text edit cannot overwrite the computed price of configured products.
+ const edit=await worker.fetch(request('/admin-boutique/api/content/shop_products/991',{price_label:'1 €',image_key:'a.webp'},{admin:true,method:'PUT'}),env as any,ctx);assert.equal(edit.status,200);
+ assert.equal((await DB.prepare('SELECT price_label FROM shop_products WHERE id=991').first<any>()).price_label,'À partir de 12,50 €');
+ await DB.prepare("INSERT INTO shop_options(id,product_id,label,price_cents,requires_text,max_length,active) VALUES('old-option',991,'Initiales',200,1,4,1)").run();
+ const snapshot=await ORDERS.prepare('SELECT name,supplier,unit_cents FROM order_items ORDER BY id LIMIT 1').first<any>();
+ const simple=await save({id:first.body.id,simple:true,label:'Taille unique',size:'',price_cents:1800});assert.equal(simple.status,200);
+ const active=(await DB.prepare('SELECT * FROM shop_variants WHERE product_id=991 AND active=1').all<any>()).results;assert.equal(active.length,1);assert.equal(active[0].label,'Taille unique');assert.equal(active[0].size,'');
+ assert.equal((await DB.prepare('SELECT COUNT(*) AS n FROM shop_options WHERE product_id=991 AND active=1').first<any>()).n,0);
+ assert.equal((await DB.prepare('SELECT price_label FROM shop_products WHERE id=991').first<any>()).price_label,'18,00 €');
+ assert.deepEqual(await ORDERS.prepare('SELECT name,supplier,unit_cents FROM order_items ORDER BY id LIMIT 1').first<any>(),snapshot);
+ const moved=await save({product_id:1,id:first.body.id});assert.equal(moved.status,409);
+ const badSupplier=await save({supplier_id:'invented'});assert.equal(badSupplier.status,400);
+});
+test('fournisseur désactivé : aucune nouvelle affectation, libellé courant actualisé, historique intact',async()=>{
+ const supplier=await DB.prepare("SELECT * FROM shop_suppliers WHERE name='Intersport'").first<any>();
+ const snapshot=await ORDERS.prepare('SELECT supplier FROM order_items ORDER BY id LIMIT 1').first<any>();
+ const update=await route(request('/admin-boutique/api/suppliers',{id:supplier.id,version:supplier.version,name:'Intersport club',active:false},{admin:true,method:'PUT'}));assert.equal(update.status,200);
+ assert.equal((await DB.prepare('SELECT supplier FROM shop_variants WHERE id=?').bind(ids.variant).first<any>()).supplier,'Intersport club');
+ assert.deepEqual(await ORDERS.prepare('SELECT supplier FROM order_items ORDER BY id LIMIT 1').first<any>(),snapshot);
+ const denied=await route(request('/admin-boutique/api/variants',{product_id:991,label:'Autre',size:'',sku:'A',supplier_id:supplier.id,price_cents:1000,active:true},{admin:true,method:'PUT'}));assert.equal(denied.status,409);
+ const stale=await route(request('/admin-boutique/api/suppliers',{id:supplier.id,version:supplier.version,name:'Ancienne édition',active:true},{admin:true,method:'PUT'}));assert.equal(stale.status,409);
+});
+
+const tournamentApi=async(path:string,data?:any,options:any={})=>{const res=await tournamentRoute(request(path,data,options),env,ctx);assert.ok(res);return {status:res.status,body:await res.json() as any};};
+const tournamentPayload=()=>({idempotency_key:crypto.randomUUID(),tournament_id:1,first_name:'Responsable',last_name:'Test',email:'responsable@example.org',phone:'0612345678',club_name:'Club test',team_name:'Équipe A',category:'U11',payment_choice:'later',version:1,expected_total:4900,accept_terms:true});
+let registration:any;
+test('tournois : réglages versionnés, inscription différée atomique, capacité et prix figés',async()=>{
+ const config={tournament_id:1,version:0,fee_cents:4900,capacity:1,enabled:true,allow_pay_later:true,registration_deadline:now()+86400,payment_deadline:now()+172800,terms:'Le club confirme les inscriptions. En cas d’annulation, contactez le club pour étudier les modalités de remboursement prévues au règlement.'};
+ assert.equal((await tournamentApi('/admin-tournois/api/sales',config,{admin:true,method:'PUT'})).status,200);
+ const before=intents,payload=tournamentPayload(),first=await tournamentApi('/api/tournaments/registrations',payload);
+ assert.equal(first.status,200,JSON.stringify(first.body));registration={...first.body,payload};assert.equal(intents,before);
+ assert.equal((await tournamentApi('/api/tournaments/registrations',payload)).body.order_id,registration.order_id);
+ assert.equal((await tournamentApi('/api/tournaments/registrations',tournamentPayload())).body.code,'TOURNAMENT_FULL');
+ const row=await ORDERS.prepare('SELECT * FROM orders WHERE id=?').bind(registration.order_id).first<any>();assert.equal(row.kind,'tournament');assert.equal(row.total_cents,4900);assert.notEqual(row.token_hash,registration.tracking_token);assert.equal(row.token_hash,await sha256(registration.tracking_token));
+ assert.equal((await ORDERS.prepare('SELECT count(*) n FROM order_items WHERE order_id=?').bind(registration.order_id).first<any>()).n,1);
+ assert.equal((await tournamentApi('/admin-tournois/api/sales',{...config,version:1,fee_cents:5500},{admin:true,method:'PUT'})).status,200);
+ assert.equal((await tournamentApi('/admin-tournois/api/sales',{...config,version:1,fee_cents:6000},{admin:true,method:'PUT'})).status,409);
+ assert.equal((await ORDERS.prepare('SELECT total_cents FROM orders WHERE id=?').bind(registration.order_id).first<any>()).total_cents,4900);
+ assert.equal((await route(request(`/api/shop/orders/${registration.order_id}`,undefined,{token:registration.tracking_token}))).status,404);
+ assert.equal((await route(request(`/admin-boutique/api/orders/${registration.order_id}`,undefined,{admin:true}))).status,404);
+ assert.equal((await tournamentApi(`/api/tournaments/registrations/${created.order_id}`,undefined,{token:created.tracking_token})).status,404);
+});
+test('tournois : paiement ultérieur HelloAsso, retour sans secret et validation par API uniquement',async()=>{
+ paymentAuthorized=false;providerDown=false;refund=0;apiTotal=4900;
+ const path=`/api/tournaments/registrations/${registration.order_id}`;
+ const paid=await tournamentApi(`${path}/pay`,{}, {token:registration.tracking_token});assert.equal(paid.status,200,JSON.stringify(paid.body));assert.match(paid.body.redirect_url,/helloasso-sandbox/);
+ const payload=checkoutBodies.at(-1);assert.equal(payload.totalAmount,4900);assert.match(payload.returnUrl,/\/paiements\/retour\//);assert.ok(!JSON.stringify(payload).includes(registration.tracking_token));
+ const view=await tournamentApi(path,undefined,{token:registration.tracking_token});assert.equal(view.body.order.payment_status,'pending');assert.equal(view.body.registration.registration_status,'pending');
+ paymentAuthorized=true;const confirmed=await tournamentApi(`${path}/refresh`,{}, {token:registration.tracking_token});assert.equal(confirmed.body.order.payment_status,'paid');assert.equal(confirmed.body.registration.registration_status,'pending');
+ await Promise.allSettled(tasks);await drainMail(env,await settings(env));const jobs=await ORDERS.prepare('SELECT status FROM outbox WHERE order_id=?').bind(registration.order_id).all<any>();assert.ok(jobs.results.every((j:any)=>j.status==='sent'));
+});
+test('tournois : habilitations Cloudflare indépendantes et contrôle des modifications concurrentes',async()=>{
+ const production={...env,APP_ENV:'production',SHOP_ORIGIN:'https://example.org',CF_ACCESS_ISSUER:'https://test.cloudflareaccess.com',CF_ACCESS_SHOP_AUD:'aud',CF_ACCESS_TOURNAMENT_AUD:'tournament-aud'};
+ await ORDERS.prepare("INSERT INTO tournament_admins(email,name) VALUES('tournois@example.org','Tournois')").run();
+ const signed=async(address:string,aud:string)=>new SignJWT({email:address}).setProtectedHeader({alg:'RS256',kid:'test-key'}).setIssuer(production.CF_ACCESS_ISSUER).setAudience(aud).setExpirationTime(now()+600).sign(accessPair.privateKey);
+ const req=async(address:string,aud:string)=>new Request('https://example.org/admin-tournois/',{headers:{'cf-access-jwt-assertion':await signed(address,aud)}});
+ assert.equal((await tournamentRoute(await req('tournois@example.org','tournament-aud'),production,ctx))?.status,200);
+ assert.equal((await tournamentRoute(await req('admin@example.org','aud'),production,ctx))?.status,401);
+ assert.equal((await tournamentRoute(await req('admin@example.org','tournament-aud'),production,ctx))?.status,403);
+ const order=await findOrder(env,registration.order_id),path=`/admin-tournois/api/registrations/${registration.order_id}`;
+ assert.equal((await tournamentApi(path,{version:order.version,registration_status:'accepted',public_note:'Bienvenue',internal_note:'ok'},{admin:true,method:'PUT'})).status,200);
+ assert.equal((await tournamentApi(path,{version:order.version,registration_status:'cancelled',public_note:'stale',internal_note:'stale'},{admin:true,method:'PUT'})).status,409);
+ const updated=await tournamentApi(path,undefined,{admin:true});assert.equal(updated.body.registration.registration_status,'accepted');assert.equal(updated.body.order.public_note,'Bienvenue');
+});
+test('OAuth : cache chiffré et renouvellement avec refresh_token',async()=>{
+ const base='https://api.helloasso-sandbox.com',key=await tokenKey(env,base),row=await ORDERS.prepare('SELECT * FROM helloasso_tokens WHERE cache_key=?').bind(key).first<any>();assert.ok(row);assert.ok(!row.encrypted.includes('test-token'));assert.ok(!row.encrypted.includes('test-refresh'));
+ const before=oauthGrants.length;await accessToken(env,base);assert.equal(oauthGrants.length,before);
+ await ORDERS.prepare('UPDATE helloasso_tokens SET expires_at=0 WHERE cache_key=?').bind(key).run();await accessToken(env,base);assert.equal(oauthGrants.at(-1),'refresh_token');
+ const res=await route(request('/admin-boutique/api/helloasso/test',{}, {admin:true}));assert.equal(res.status,200);assert.equal(res.body.can_receive_payments,true);assert.ok(!JSON.stringify(res.body).includes('test-token'));
+});
+test('tournois : choix imposé, échéance, renvoi générique et révocation du lien personnel',async()=>{
+ paymentAuthorized=false;providerDown=false;refund=0;
+ const sale=(await tournamentApi('/admin-tournois/api/sales',undefined,{admin:true})).body.sales[0];
+ assert.equal((await tournamentApi('/admin-tournois/api/sales',{...sale,tournament_id:sale.id,capacity:2,allow_pay_later:false},{admin:true,method:'PUT'})).status,200);
+ const stale=await tournamentApi('/api/tournaments/registrations',tournamentPayload());assert.equal(stale.body.code,'PRICE_CHANGED');
+ const payload={...tournamentPayload(),version:sale.version+1,expected_total:sale.fee_cents};assert.equal((await tournamentApi('/api/tournaments/registrations',payload)).body.code,'PAYMENT_CHOICE');
+ const created=await tournamentApi('/api/tournaments/registrations',{...payload,payment_choice:'now'});assert.equal(created.status,200,JSON.stringify(created.body));const id=created.body.order_id,token=created.body.tracking_token;
+ await ORDERS.prepare('UPDATE tournament_registrations SET payment_deadline=? WHERE order_id=?').bind(now()-1,id).run();
+ assert.equal((await tournamentApi(`/api/tournaments/registrations/${id}/pay`,{},{token})).body.code,'PAYMENT_DEADLINE');
+ assert.equal((await tournamentApi(`/admin-tournois/api/registrations/${id}/rotate-link`,{},{admin:true})).status,200);
+ assert.equal((await tournamentApi(`/api/tournaments/registrations/${id}`,undefined,{token})).status,404);
+ const good=await tournamentApi('/api/tournaments/recover',{email:'responsable@example.org'}),unknown=await tournamentApi('/api/tournaments/recover',{email:'inconnue@example.org'});assert.equal(good.status,200);assert.deepEqual(good.body,unknown.body);
+ assert.equal((await tournamentApi('/api/tournaments/registrations',{...tournamentPayload()},{origin:'https://evil.example'})).status,403);
+});
+test('tournois : clôture, date d’expiration du lien et en-têtes de protection des pages',async()=>{
+ const order=await findOrder(env,registration.order_id),path=`/admin-tournois/api/registrations/${order.id}`;
+ const closed=await tournamentApi(path,{version:order.version,registration_status:'attended',public_note:'Merci',internal_note:''},{admin:true,method:'PUT'});assert.equal(closed.status,200,JSON.stringify(closed.body));
+ const updated=await findOrder(env,order.id);assert.ok(updated.closed_at);assert.equal(updated.token_expires,updated.closed_at+90*86400);
+ for(const path of ['/paiements/retour/index.html','/tournois/suivi/index.html']){const res=await tournamentRoute(request(path),env,ctx);assert.equal(res?.headers.get('cache-control'),'no-store, private');assert.equal(res?.headers.get('referrer-policy'),'no-referrer');assert.match(res?.headers.get('content-security-policy')||'',/script-src 'self'/);}
 });

@@ -28,7 +28,7 @@ const richText=value=>{
     .join('');
 };
 
-let tournaments=[],links=[],teams=[],venues=[];
+let tournaments=[],links=[],teams=[],venues=[],sales=[];
 function categories(row){try{return Array.isArray(row.categories)?row.categories:JSON.parse(row.categories||'[]')}catch{return []}}
 function participatingTeams(id){const ids=links.filter(link=>link.tournament_id===id).map(link=>link.team_id);return teams.filter(team=>ids.includes(team.id))}
 function visual(row){
@@ -53,7 +53,8 @@ function draw(){
     const fallbackCategories=categories(row);
     const audience=labels.length?labels:fallbackCategories;
     const location=venue?.name||row.venue||'Lieu à confirmer';
-    const price=String(row.registration_price||'').trim()||'Tarif à confirmer';
+    const sale=sales.find(item=>item.id===row.id);
+    const price=sale?new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(sale.fee_cents/100)+' par équipe':String(row.registration_price||'').trim()||'Tarif à confirmer';
     return `<article class="tournament-card">
       ${visual(row)}
       <div class="tournament-card-body">
@@ -67,7 +68,7 @@ function draw(){
         </dl>
         ${row.organizer?`<p class="tournament-organizer">Organisé par <b>${esc(row.organizer)}</b></p>`:''}
         <div class="tournament-actions">
-          ${row.registration_url?`<a class="tournament-action tournament-action--primary" href="${esc(row.registration_url)}" target="_blank" rel="noopener">S’inscrire →</a>`:''}
+          ${sale?.available?`<button class="tournament-action tournament-action--primary" data-tournament-register="${row.id}">Inscrire mon équipe →</button>`:!sale&&row.registration_url?`<a class="tournament-action tournament-action--primary" href="${esc(row.registration_url)}" target="_blank" rel="noopener">S’inscrire →</a>`:''}
           ${row.tournify_url?`<a class="tournament-action" href="${esc(row.tournify_url)}" target="_blank" rel="noopener">Tournify →</a>`:''}
           ${row.poster_key?`<a class="tournament-action" href="/media/${esc(row.poster_key)}" target="_blank" rel="noopener">Voir l’affiche</a>`:''}
           ${row.rules_key?`<a class="tournament-action" href="/media/${esc(row.rules_key)}" target="_blank" rel="noopener">Règlement</a>`:''}
@@ -80,7 +81,10 @@ fetch('/api/page/tournaments').then(async response=>{
   const data=await response.json();
   if(!response.ok)throw new Error(data.error||`Tournois : ${response.status}`);
   return data;
-}).then(data=>{
+}).then(async data=>{
+  const result=await fetch("/api/tournaments/catalogue");
+  if(!result.ok)throw new Error("Configuration des inscriptions indisponible");
+  sales=(await result.json()).tournaments||[];
   tournaments=data.tournaments||[];
   links=data.links||[];
   teams=data.teams||[];

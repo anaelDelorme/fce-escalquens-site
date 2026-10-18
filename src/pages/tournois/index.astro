@@ -11,7 +11,7 @@ import Footer from '../../components/Footer.astro';
     <link rel="stylesheet" href="/styles.css">
     <link rel="stylesheet" href="/enhancements.css?v=6">
     <link rel="stylesheet" href="/brand-charter.css">
-    <link rel="stylesheet" href="/contacts-tournaments.css?v=3">
+    <link rel="stylesheet" href="/contacts-tournaments.css?v=3"><link rel="stylesheet" href="/shop-commerce.css?v=51"><link rel="stylesheet" href="/tournament-checkout.css">
   </head>
   <body>
     <Header/>
@@ -24,10 +24,10 @@ import Footer from '../../components/Footer.astro';
         <div class="tournaments-intro">
           <div><p class="eyebrow">À vos agendas</p><h2>Les rendez-vous à ne pas manquer.</h2></div>
         </div>
-        <div id="tournaments-list" class="tournament-grid" aria-live="polite"><p>Chargement des tournois…</p></div>
+        <p><a href="/tournois/suivi/">Déjà inscrit ? Suivre mon inscription ou payer plus tard →</a></p><div id="tournaments-list" class="tournament-grid" aria-live="polite"><p>Chargement des tournois…</p></div>
       </section>
     </main>
     <Footer/>
-    <script is:inline src="/tournaments.js?v=4"></script>
-  </body>
+    <script is:inline src="/tournaments.js?v=51"></script>
+  <script src="../../scripts/tournaments-checkout.js"></script></body>
 </html>

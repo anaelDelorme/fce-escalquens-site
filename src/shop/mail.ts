@@ -40,7 +40,7 @@ export async function deliverMail(
     order.id,
     order.token_version,
   );
-  const link = `${origin(env)}/boutique/suivi/#${order.id}.${token}`;
+  const link = `${origin(env)}/${order.kind === "tournament" ? "tournois" : "boutique"}/suivi/#${order.id}.${token}`;
   const items = (
     await env.ORDERS.prepare(
       "SELECT * FROM order_items WHERE order_id=? ORDER BY id",
@@ -48,8 +48,9 @@ export async function deliverMail(
       .bind(order.id)
       .all<Row>()
   ).results;
-  const title =
-    job.kind === "paid"
+  const title = order.kind === 'tournament'
+    ? ({paid:'Paiement confirmé',created:'Votre inscription est enregistrée',tracking:'Votre lien de suivi',payment:'Mise à jour du paiement'} as Record<string,string>)[job.kind] || 'Des nouvelles de votre inscription'
+    : job.kind === "paid"
       ? "Paiement confirmé"
       : job.kind === "created"
         ? "Votre commande est enregistrée"
@@ -72,7 +73,12 @@ export async function deliverMail(
           .join(", ")}\n${euros(i.unit_cents * i.quantity)}`,
     )
     .join("\n\n");
-  const content = `${title}\n\nBonjour ${order.first_name},\n\nCommande ${order.reference}\n${state}\nPréparation : ${statusLabels[order.fulfillment] || order.fulfillment}.\n${order.public_note}\n\n${details}\n\nTotal boutique : ${euros(order.total_cents)}\nRemise : ${order.delivery_method === "coach" ? `par le coach — ${order.team}` : `sur rendez-vous au club — ${settings.collection_address}`}.\n\nSuivre ma commande : ${link}\nCe lien est personnel : ne le transférez pas. Il permet aussi de donner votre avis sur la boutique. Aucun compte ni mot de passe n’est nécessaire.\n\nUne question ? ${settings.contact_email}\nInformations sur vos données : ${origin(env)}/confidentialite/\n\n${order.terms_snapshot}`;
+  let content = `${title}\n\nBonjour ${order.first_name},\n\nCommande ${order.reference}\n${state}\nPréparation : ${statusLabels[order.fulfillment] || order.fulfillment}.\n${order.public_note}\n\n${details}\n\nTotal boutique : ${euros(order.total_cents)}\nRemise : ${order.delivery_method === "coach" ? `par le coach — ${order.team}` : `sur rendez-vous au club — ${settings.collection_address}`}.\n\nSuivre ma commande : ${link}\nCe lien est personnel : ne le transférez pas. Il permet aussi de donner votre avis sur la boutique. Aucun compte ni mot de passe n’est nécessaire.\n\nUne question ? ${settings.contact_email}\nInformations sur vos données : ${origin(env)}/confidentialite/\n\n${order.terms_snapshot}`;
+  if(order.kind === "tournament") {
+    const registration=await env.ORDERS.prepare("SELECT * FROM tournament_registrations WHERE order_id=?").bind(order.id).first<Row>();
+    const labels:Record<string,string>={pending:"en attente de validation par le club",accepted:"acceptée",cancelled:"annulée",attended:"équipe accueillie"};
+    content=`Bonjour ${order.first_name},\n\nInscription ${order.reference} — ${registration?.tournament_name}\nClub : ${registration?.club_name}\nÉquipe : ${registration?.team_name} — ${registration?.category}\nInscription : ${labels[registration?.registration_status] || 'enregistrée'}.\n${state}\n${order.public_note}\nMontant : ${euros(order.total_cents)}\nDate limite de paiement : ${new Date((registration?.payment_deadline||0)*1000).toLocaleDateString('fr-FR',{timeZone:'Europe/Paris'})}\nLe paiement et l’acceptation par le club sont deux étapes distinctes.\n\nSuivre mon inscription et payer : ${link}\nCe lien personnel ne doit pas être transmis. Aucun compte n’est nécessaire.\n\nContact : ${settings.contact_email}\nVos données : ${origin(env)}/confidentialite/\n\n${order.terms_snapshot}`;
+  }
   // In staging no customer address is used: all messages go to the configured tester.
   const to =
     env.APP_ENV === "production" ? order.email : email(env.MAIL_TEST_TO);
@@ -81,12 +87,12 @@ export async function deliverMail(
   if (env.MAIL_PROVIDER === "cloudflare") {
     if (!env.EMAIL) throw new Error("MAIL_BINDING_MISSING");
     const result = await env.EMAIL.send({
-      from: { email: from, name: "Boutique FC Escalquens" },
+      from: { email: from, name: "FC Escalquens" },
       to,
       replyTo: settings.contact_email,
       subject,
       text: content,
-      html: `<div style="font-family:Arial,sans-serif;max-width:650px;margin:auto;color:#291d1d"><h1 style="color:#9f1a1a">${escapeHtml(title)}</h1><p>Commande <strong>${escapeHtml(order.reference)}</strong></p><p>${escapeHtml(state)}</p><p><a style="display:inline-block;background:#9f1a1a;color:white;padding:16px" href="${escapeHtml(link)}">Suivre ma commande</a></p><pre style="white-space:pre-wrap;font:inherit">${escapeHtml(content)}</pre></div>`,
+      html: `<div style="font-family:Arial,sans-serif;max-width:650px;margin:auto;color:#291d1d"><h1 style="color:#9f1a1a">${escapeHtml(order.kind === "tournament" ? "Suivi de votre inscription" : title)}</h1><p>${order.kind === "tournament" ? "Inscription" : "Commande"} <strong>${escapeHtml(order.reference)}</strong></p><p>${escapeHtml(state)}</p><p><a style="display:inline-block;background:#9f1a1a;color:white;padding:16px" href="${escapeHtml(link)}">Ouvrir mon suivi</a></p><pre style="white-space:pre-wrap;font:inherit">${escapeHtml(content)}</pre></div>`,
     });
     return result.messageId;
   }
@@ -100,7 +106,7 @@ export async function deliverMail(
         "idempotency-key": job.id,
       },
       body: JSON.stringify({
-        from: `Boutique FC Escalquens <${from}>`,
+        from: `FC Escalquens <${from}>`,
         to: [to],
         reply_to: settings.contact_email,
         subject,

@@ -11,8 +11,8 @@ import Footer from '../../components/Footer.astro';
     <link rel="stylesheet" href="/styles.css">
     <link rel="stylesheet" href="/enhancements.css?v=6">
     <link rel="stylesheet" href="/brand-charter.css">
-    <link rel="stylesheet" href="/shop.css?v=4">
-    <link rel="stylesheet" href="/shop-commerce.css?v=4">
+    <link rel="stylesheet" href="/shop.css?v=5">
+    <link rel="stylesheet" href="/shop-commerce.css?v=5">
   </head>
   <body>
     <Header/>
@@ -31,14 +31,14 @@ import Footer from '../../components/Footer.astro';
       </section>
       <section class="shop-hero">
         <div class="shop-hero-copy">
-          <p class="eyebrow">Boutique du club</p>
-          <h1>Votre club.<br>Vos couleurs.<br><em>Votre équipement.</em></h1>
-          <p>Sur le terrain, à l’entraînement ou dans les tribunes : trouvez votre prochain essentiel aux couleurs du FC Escalquens.</p>
+          <p class="eyebrow">La boutique du FC Escalquens</p>
+          <h1>L’esprit du club.<br><em>À porter partout.</em></h1>
+          <p>Pour les entraînements, les matchs et les jours de fierté FCE. Retrouvez les tenues et accessoires choisis par votre club.</p>
           <div class="shop-hero-actions"><a href="#selection">Trouver mon équipement <span>↓</span></a><a href="/boutique/suivi/">Suivre ma commande →</a></div><ul class="shop-promises"><li>Remise gratuite au club ou par le coach</li><li>Paiement sécurisé HelloAsso</li><li>Sans compte à créer</li></ul>
         </div>
         <div class="shop-hero-visual">
           <img id="shop-hero-image" data-fallback-src="/hero-foot.webp" alt="Joueuses du FC Escalquens sur le terrain">
-          <span class="shop-hero-caption">La sélection du club<br><strong>Une équipe. Une famille.</strong></span>
+          <span class="shop-hero-caption"><img src="/logo-fce.webp" alt=""><span>La sélection du club<strong>Une équipe. Une famille.</strong></span></span>
         </div>
       </section>
 
@@ -72,11 +72,9 @@ import Footer from '../../components/Footer.astro';
         </ol>
       </section>
 
-      <section class="commerce-section" id="commander">
-        <p class="eyebrow">À vous de jouer</p><h2>Votre sélection, vos couleurs.</h2>
-        <p>Ajoutez les articles de votre choix au panier. La remise est gratuite, par le coach ou sur rendez-vous au club.</p>
-        <button id="show-cart" type="button">Voir mon panier →</button>
-        <nav class="commerce-support" aria-label="Informations boutique"><a href="/boutique/suivi/">Retrouver ou suivre ma commande →</a><a href="/cgv/">Lire les conditions de vente →</a><a href="/confidentialite/">Comprendre l’utilisation de mes données →</a></nav>
+      <section class="commerce-section" id="commander" aria-labelledby="shop-end-title">
+        <div class="shop-end-card"><div><p class="eyebrow">Votre prochain équipement vous attend</p><h2 id="shop-end-title">Prêt à porter nos couleurs ?</h2><p>Retrouvez votre sélection et choisissez la remise par votre coach ou un rendez-vous au club.</p><button id="show-cart" type="button">Ouvrir mon panier →</button></div>
+        <nav class="commerce-support" aria-label="Informations boutique"><a href="/boutique/suivi/"><strong>Ma commande</strong><span>Retrouver mon suivi →</span></a><a href="/cgv/"><strong>Conditions de vente</strong><span>Remise, retours et garanties →</span></a><a href="/confidentialite/"><strong>Mes données personnelles</strong><span>Comprendre mes droits →</span></a></nav></div>
       </section>
       <noscript><p>Activez JavaScript pour configurer les articles et utiliser le panier. Pour une aide, contactez le club.</p></noscript>
     </main>

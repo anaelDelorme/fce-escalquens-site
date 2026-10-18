@@ -2,7 +2,7 @@ import { fail, now, paymentSummary, type Row } from "./domain";
 import { environment } from "./security";
 import type { ShopEnv } from "./service";
 import type { Settings } from "./terms";
-let cachedToken: { key: string; token: string; expires: number } | undefined;
+import { accessToken } from "./helloasso-auth";
 export function apiBase(env: ShopEnv) {
   return environment(env) === "production"
     ? "https://api.helloasso.com"
@@ -15,54 +15,21 @@ export async function api(
   data?: unknown,
 ): Promise<Row> {
   const base = apiBase(env);
-  const key = `${base}:${env.HELLOASSO_CLIENT_ID}:${env.HELLOASSO_CLIENT_SECRET}`;
-  if (!env.HELLOASSO_CLIENT_ID || !env.HELLOASSO_CLIENT_SECRET)
-    fail(
-      "HELLOASSO_CONFIG",
-      503,
-      "Le paiement est temporairement indisponible. Le club doit terminer sa configuration.",
-    );
-  if (!cachedToken || cachedToken.key !== key || cachedToken.expires <= now()) {
-    const auth = await fetch(`${base}/oauth2/token`, {
-      method: "POST",
+  const send = async (force = false) =>
+    fetch(`${base}/v5${path}`, {
+      method,
       redirect: "error",
-      signal: AbortSignal.timeout(12000),
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "client_credentials",
-        client_id: env.HELLOASSO_CLIENT_ID,
-        client_secret: env.HELLOASSO_CLIENT_SECRET,
-      }),
+      signal: AbortSignal.timeout(15000),
+      headers: {
+        authorization: `Bearer ${await accessToken(env, base, force)}`,
+        "content-type": "application/json",
+        accept: "application/json",
+      },
+      ...(data ? { body: JSON.stringify(data) } : {}),
     });
-    if (!auth.ok)
-      fail(
-        "HELLOASSO_AUTH",
-        503,
-        "La connexion au service de paiement est indisponible. Contactez le club si le problème persiste.",
-      );
-    const token = (await auth.json()) as Row;
-    if (typeof token.access_token !== "string")
-      fail("HELLOASSO_AUTH", 502, "Réponse du service de paiement invalide.");
-    cachedToken = {
-      key,
-      token: token.access_token,
-      expires:
-        now() +
-        Math.max(0, Math.min(Number(token.expires_in) || 1800, 1800) - 60),
-    };
-  }
-  const result = await fetch(`${base}/v5${path}`, {
-    method,
-    redirect: "error",
-    signal: AbortSignal.timeout(15000),
-    headers: {
-      authorization: `Bearer ${cachedToken.token}`,
-      "content-type": "application/json",
-      accept: "application/json",
-    },
-    ...(data ? { body: JSON.stringify(data) } : {}),
-  });
-  if (result.status === 401) cachedToken = undefined;
+  let result = await send();
+  // A rejected bearer token has not executed the operation; refresh once, no retries on timeouts.
+  if (result.status === 401) result = await send(true);
   if (!result.ok) {
     // Do not echo provider payloads: they can contain payer details or tokens.
     if (
@@ -156,4 +123,29 @@ function integerId(value: unknown) {
   if (!Number.isSafeInteger(value) || Number(value) <= 0)
     fail("HELLOASSO_RESPONSE", 502, "Référence HelloAsso invalide.");
   return Number(value);
+}
+
+export async function connectionStatus(env: ShopEnv, slug: string) {
+  const organizations = await api(env, "/users/me/organizations");
+  const rows = Array.isArray(organizations)
+    ? organizations
+    : Array.isArray(organizations.data)
+      ? organizations.data
+      : [];
+  const allowed = rows.some((r: Row) => r.organizationSlug === slug);
+  if (!allowed)
+    fail(
+      "HELLOASSO_ORGANIZATION",
+      409,
+      "Cette association n’est pas accessible avec les identifiants de cet environnement.",
+    );
+  const organization = await api(
+    env,
+    `/organizations/${encodeURIComponent(slug)}`,
+  );
+  return {
+    environment: environment(env),
+    organization_slug: slug,
+    can_receive_payments: organization.isCashInCompliant === true,
+  };
 }

@@ -229,3 +229,7 @@ Utiliser `http://localhost:8787` comme `SHOP_ORIGIN`. En local, la page de gesti
 - CNIL, exemple d’information clients : https://www.cnil.fr/fr/exemple-dinformation-clients-dun-site-de-vente-en-ligne-prospection-par-courriel-et-transmission-de
 - CNIL, durées : https://www.cnil.fr/fr/passer-laction/les-durees-de-conservation-des-donnees
 - CGV : https://entreprendre.service-public.gouv.fr/vosdroits/F33527
+
+## V5.1 : HelloAsso Sandbox et tournois
+
+La procédure cumulative depuis la V4, la configuration réelle du compte Sandbox `fce`, les URL webhook/retour, les secrets Worker et la recette des inscriptions figurent dans [BOUTIQUE-V5.1-INSTALLATION.md](BOUTIQUE-V5.1-INSTALLATION.md). Elle remplace l’installation séparée de la V5 si celle-ci n’a pas été appliquée. Les inscriptions privées et paiements sont administrés dans `/admin-tournois/`, avec `CF_ACCESS_TOURNAMENT_AUD` et la liste distincte `ORDERS.tournament_admins`. La présentation éditoriale des tournois reste gérée par l’administration du site.

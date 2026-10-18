@@ -90,9 +90,10 @@ export async function rateLimit(
       "Trop de tentatives. Patientez quelques minutes avant de réessayer.",
     );
 }
-export function accessConfiguration(env: ShopEnv) {
+export function accessConfiguration(env: ShopEnv, scope: "shop" | "tournament" = "shop") {
   const issuer = (env.CF_ACCESS_ISSUER || "").trim().replace(/\/+$/, "");
-  const audiences = (env.CF_ACCESS_SHOP_AUD || "")
+  const audienceName = scope === "shop" ? "CF_ACCESS_SHOP_AUD" : "CF_ACCESS_TOURNAMENT_AUD";
+  const audiences = (env[audienceName] || "")
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean);
@@ -100,17 +101,17 @@ export function accessConfiguration(env: ShopEnv) {
   if (!issuer) missing.push("CF_ACCESS_ISSUER");
   else if (!/^https:\/\/[a-z0-9-]+\.cloudflareaccess\.com$/.test(issuer))
     missing.push("CF_ACCESS_ISSUER (domaine d’équipe invalide)");
-  if (!audiences.length) missing.push("CF_ACCESS_SHOP_AUD");
+  if (!audiences.length) missing.push(audienceName);
   if (missing.length)
     fail(
       "ACCESS_CONFIG",
       503,
-      `Configuration Cloudflare Access manquante ou invalide : ${missing.join(", ")}. Renseignez ces variables sur le Worker de cet environnement, puis redéployez. L’AUD est celui de l’application boutique, pas l’identifiant de sa règle e-mail/PIN.`,
+      `Configuration Cloudflare Access manquante ou invalide : ${missing.join(", ")}. Renseignez ces variables sur le Worker de cet environnement, puis redéployez. L’AUD est celui de l’application ${scope === "shop" ? "boutique" : "tournois"}, pas l’identifiant de sa règle e-mail/PIN.`,
     );
   return { issuer, audiences };
 }
 
-export async function staff(request: Request, env: ShopEnv) {
+export async function staff(request: Request, env: ShopEnv, scope: "shop" | "tournament" = "shop") {
   const url = new URL(request.url);
   if (
     env.APP_ENV === "local" &&
@@ -119,7 +120,7 @@ export async function staff(request: Request, env: ShopEnv) {
     request.headers.get("x-admin-token") === env.DEV_ADMIN_TOKEN
   )
     return "local-admin";
-  const { issuer, audiences } = accessConfiguration(env);
+  const { issuer, audiences } = accessConfiguration(env, scope);
   const token = request.headers.get("cf-access-jwt-assertion");
   if (!token)
     fail("ACCESS_REQUIRED", 401, "Authentification Cloudflare Access requise.");
@@ -137,7 +138,7 @@ export async function staff(request: Request, env: ShopEnv) {
     if (typeof payload.email !== "string") throw new Error();
     const address = payload.email.toLowerCase();
     const row = await env.ORDERS.prepare(
-      "SELECT email FROM shop_admins WHERE email=? COLLATE NOCASE AND active=1 LIMIT 1",
+      `SELECT email FROM ${scope === "shop" ? "shop_admins" : "tournament_admins"} WHERE email=? COLLATE NOCASE AND active=1 LIMIT 1`,
     )
       .bind(address)
       .first();

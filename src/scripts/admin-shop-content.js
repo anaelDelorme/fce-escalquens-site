@@ -12,8 +12,6 @@ const schemas = {
     ["name", "Nom", "text", true],
     ["short_description", "Texte court — uniquement sur la carte boutique", "textarea"],
     ["description", "Détails de l’article — composition, entretien, précisions (fenêtre Détails)", "textarea"],
-    ["price_label", "Prix indicatif affiché", "text"],
-    ["price_details", "Détail des prix affichés", "textarea"],
     ["sizes", "Présentation des tailles", "textarea"],
     ["options", "Présentation des options", "textarea"],
     ["delivery_delay", "Délai indicatif", "text"],
@@ -139,16 +137,16 @@ export async function renderContent(root, call, notice, collection = "shop_produ
       };
     const groups=[
       ['Article et photo',['name','shop_category_id','image_key']],
-      ['Sur la carte de la boutique',['short_description','price_label','price_details','sizes','options','delivery_delay']],
+      ['Sur la carte de la boutique',['short_description','sizes','options','delivery_delay']],
       ['Dans la fenêtre Détails uniquement',['description']],
       ['Publication et mise en avant',['featured','highlighted','display_order','active']],
     ];
     const fields=collection==='shop_products'?groups.map(([title,names])=>`<fieldset class="commerce-editor-group wide"><legend>${title}</legend>${schemas[collection].filter(([name])=>names.includes(name)).map(renderField).join('')}</fieldset>`).join(''):schemas[collection].map(renderField).join('');
-    editor.innerHTML = `<form id="content-form" class="commerce-form-grid commerce-card"><h3 class="wide">${row.id ? "Modifier" : "Ajouter"} — ${labels[collection]}</h3>${fields}${collection === "shop_products" ? '<p class="commerce-help wide">Une photo est nécessaire pour publier l’article. Les tailles, prix et options se règlent juste en dessous de cette fiche. Le texte court apparaît sur la carte ; la description complète est réservée aux détails. Mise en forme des descriptions : **gras**, *italique*, [bordeaux]texte[/bordeaux], [or]texte[/or].</p>' : ""}<div class="commerce-actions wide"><button type="submit">Enregistrer</button><button type="button" class="commerce-secondary" id="content-cancel">Annuler</button></div></form>${collection === "shop_products" ? '<div id="product-pricing"></div>' : ""}`;
+    editor.innerHTML = `<form id="content-form" class="commerce-form-grid commerce-card"><h3 class="wide">${row.id ? "Modifier" : "Ajouter"} — ${labels[collection]}</h3>${fields}${collection === "shop_products" ? `<label class="wide">Prix affiché — calculé depuis les tarifs de commande<input id="indicative-price" readonly value="${esc(row.price_label||'Tarif à configurer ci-dessous')}"></label>` : ""}${collection === "shop_products" ? '<p class="commerce-help wide">Une photo est nécessaire pour publier l’article. Les tailles, prix et options se règlent juste en dessous de cette fiche. Le texte court apparaît sur la carte ; la description complète est réservée aux détails. Mise en forme des descriptions : **gras**, *italique*, [bordeaux]texte[/bordeaux], [or]texte[/or].</p>' : ""}<div class="commerce-actions wide"><button type="submit">Enregistrer</button><button type="button" class="commerce-secondary" id="content-cancel">Annuler</button></div></form>${collection === "shop_products" ? '<div id="product-pricing"></div>' : ""}`;
     const form = editor.querySelector("form");
     if(collection==='shop_products') {
       const target=editor.querySelector('#product-pricing');
-      if(row.id)renderVariants(target,call,notice,row.id).catch(error=>showError(errorNode,error));
+      if(row.id)renderVariants(target,call,notice,row.id,price=>{const input=editor.querySelector("#indicative-price");if(input)input.value=price||"Tarif à configurer ci-dessous";}).catch(error=>showError(errorNode,error));
       else target.innerHTML='<p class="commerce-message">Enregistrez d’abord l’article pour ajouter ses tailles, tarifs et options.</p>';
     }
     let uploading = 0;

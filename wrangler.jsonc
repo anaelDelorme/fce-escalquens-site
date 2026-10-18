@@ -19,7 +19,13 @@
       "/boutique/suivi",
       "/boutique/suivi/*",
       "/admin-boutique",
-      "/admin-boutique/*"
+      "/admin-boutique/*",
+      "/admin-tournois",
+      "/admin-tournois/*",
+      "/tournois/suivi",
+      "/tournois/suivi/*",
+      "/paiements/retour",
+      "/paiements/retour/*"
     ]
   },
   "d1_databases": [
@@ -51,7 +57,9 @@
         "STAGING_WORKFLOW_REF": "staging",
         "CF_ACCESS_ISSUER": "https://cold-flower-98c5.cloudflareaccess.com",
         "CF_ACCESS_SHOP_AUD": "cbe8e9e32519dc9eb7c136a7e858326480881777f7359720d771e42f34973d7a",
-        "SHOP_ORIGIN": "https://fce-escalquens-staging.fcescalquens.workers.dev"
+        "SHOP_ORIGIN": "https://fce-escalquens-staging.fcescalquens.workers.dev",
+        "HELLOASSO_ORGANIZATION_SLUG": "fce",
+        "CF_ACCESS_TOURNAMENT_AUD": "9f8aa0c1de144610ed89e32b49c62f63255632cdd4ba5f83abbce82160db73da"
       },
       "d1_databases": [
         {

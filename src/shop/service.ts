@@ -26,8 +26,9 @@ import {
   staff,
   secureHeaders,
 } from "./security";
-import { api, safeRedirect, verifiedPayments } from "./helloasso";
+import { api, safeRedirect, verifiedPayments, connectionStatus } from "./helloasso";
 import { drainMail, queueMail } from "./mail";
+import { priceLabelStatement } from "./catalogue-pricing";
 export interface ShopEnv {
   DB: D1Database;
   ORDERS: D1Database;
@@ -37,6 +38,8 @@ export interface ShopEnv {
   TRACKING_SECRET?: string;
   CF_ACCESS_ISSUER?: string;
   CF_ACCESS_SHOP_AUD?: string;
+  CF_ACCESS_TOURNAMENT_AUD?: string;
+  HELLOASSO_ORGANIZATION_SLUG?: string;
   DEV_ADMIN_TOKEN?: string;
   HELLOASSO_CLIENT_ID?: string;
   HELLOASSO_CLIENT_SECRET?: string;
@@ -65,6 +68,7 @@ export async function settings(
   return {
     ...defaultSettings,
     ...JSON.parse(row?.data || "{}"),
+    organization_slug: JSON.parse(row?.data || "{}").organization_slug || env.HELLOASSO_ORGANIZATION_SLUG || "",
     version: row?.version || 0,
   };
 }
@@ -134,7 +138,7 @@ async function openForSales(env: ShopEnv, s: Settings) {
     );
   origin(env);
 }
-const event = (
+export const event = (
   env: ShopEnv,
   id: string,
   kind: string,
@@ -144,7 +148,7 @@ const event = (
   env.ORDERS.prepare(
     "INSERT INTO order_events(id,order_id,kind,actor,message,created_at) VALUES(?,?,?,?,?,?)",
   ).bind(crypto.randomUUID(), id, kind, actor, message, now());
-async function findOrder(env: ShopEnv, id: string) {
+export async function findOrder(env: ShopEnv, id: string) {
   const order = await env.ORDERS.prepare("SELECT * FROM orders WHERE id=?")
     .bind(uuid(id))
     .first<Row>();
@@ -156,7 +160,7 @@ async function findOrder(env: ShopEnv, id: string) {
     );
   return order;
 }
-async function customerOrder(request: Request, env: ShopEnv, id: string) {
+export async function customerOrder(request: Request, env: ShopEnv, id: string) {
   const token = request.headers
     .get("authorization")
     ?.match(/^Bearer ([a-f0-9]{64})$/)?.[1];
@@ -180,7 +184,7 @@ async function customerOrder(request: Request, env: ShopEnv, id: string) {
     );
   return order;
 }
-async function detail(env: ShopEnv, order: Row, admin = false) {
+export async function detail(env: ShopEnv, order: Row, admin = false) {
   const [items, events, survey, mails, attempts] = await env.ORDERS.batch<Row>([
     env.ORDERS.prepare(
       "SELECT * FROM order_items WHERE order_id=? ORDER BY id",
@@ -203,6 +207,7 @@ async function detail(env: ShopEnv, order: Row, admin = false) {
     : Object.fromEntries(
         [
           "id",
+          "kind",
           "reference",
           "first_name",
           "licensed_name",
@@ -237,6 +242,7 @@ async function detail(env: ShopEnv, order: Row, admin = false) {
           : { kind: e.kind, message: e.message, created_at: e.created_at },
       ),
     survey: survey.results[0] || null,
+    ...(order.kind === "tournament" ? {registration: await env.ORDERS.prepare("SELECT tournament_name,club_name,team_name,category,registration_status,payment_deadline FROM tournament_registrations WHERE order_id=?").bind(order.id).first()} : {}),
     ...(admin ? { mails: mails.results, attempts: attempts.results } : {}),
   };
 }
@@ -412,7 +418,7 @@ async function createOrder(request: Request, env: ShopEnv, s: Settings) {
     ...result,
   });
 }
-async function checkout(
+export async function checkout(
   env: ShopEnv,
   s: Settings,
   order: Row,
@@ -421,6 +427,11 @@ async function checkout(
   if (order.fulfillment === "cancelled")
     fail("ORDER_CANCELLED", 409, "Cette commande a été annulée.");
   if (order.payment_status === "paid") return { paid: true };
+  if (order.kind === "tournament") {
+    const registration=await env.ORDERS.prepare("SELECT payment_deadline FROM tournament_registrations WHERE order_id=?").bind(order.id).first<Row>();
+    if(registration?.payment_deadline && registration.payment_deadline<now())fail("PAYMENT_DEADLINE",409,"La date limite de paiement est passée. Contactez le club.");
+  }
+
   if (
     [
       "review",
@@ -494,7 +505,7 @@ async function checkout(
     );
   }
   try {
-    const link = `${origin(env)}/boutique/suivi/#${order.id}.${token}`;
+    const link = `${origin(env)}/paiements/retour/?order=${order.id}&context=${order.kind === "tournament" ? "tournois" : "boutique"}`;
     const result = await api(
       env,
       `/organizations/${encodeURIComponent(s.organization_slug)}/checkout-intents`,
@@ -502,7 +513,7 @@ async function checkout(
       {
         totalAmount: order.total_cents,
         initialAmount: order.total_cents,
-        itemName: `Boutique FCE — ${order.reference}`,
+        itemName: `${order.kind === "tournament" ? "Tournoi" : "Boutique"} FCE — ${order.reference}`,
         containsDonation: false,
         backUrl: link,
         returnUrl: link,
@@ -682,7 +693,9 @@ async function webhook(request: Request, env: ShopEnv, s: Settings) {
     );
     if (!valid) fail("WEBHOOK_AUTH", 401, "Notification non authentifiée.");
   }
-  let id = data.metadata?.order_id;
+  let hookMetadata=data.metadata;
+  if(typeof hookMetadata==="string")try{hookMetadata=JSON.parse(hookMetadata);}catch{hookMetadata={};}
+  let id = hookMetadata?.order_id;
   if (typeof id !== "string" || !/^[a-f0-9-]{36}$/i.test(id)) {
     const providerOrder =
       data.eventType === "Order" ? data.data?.id : data.data?.order?.id;
@@ -704,7 +717,7 @@ async function webhook(request: Request, env: ShopEnv, s: Settings) {
   // Recover a creation whose API response was lost, using authoritative provider metadata.
   const providerOrderId =
     data.eventType === "Order" ? data.data?.id : data.data?.order?.id;
-  const attemptId = data.metadata?.attempt_id;
+  const attemptId = hookMetadata?.attempt_id;
   if (Number.isSafeInteger(providerOrderId) && typeof attemptId === "string") {
     const missing = await env.ORDERS.prepare(
       "SELECT id FROM checkout_attempts WHERE id=? AND order_id=? AND intent_id IS NULL AND state IN ('creating','uncertain')",
@@ -959,37 +972,31 @@ async function saveVariant(request: Request, env: ShopEnv, option = false) {
       option ? 100000 : 1000000,
     ),
     active = data.active === true ? 1 : 0;
-  // Never reassign an existing variant to a different article.
-  if (option)
-    await env.DB.prepare(
-      `INSERT INTO shop_options(id,product_id,label,price_cents,requires_text,max_length,active) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET label=excluded.label,price_cents=excluded.price_cents,requires_text=excluded.requires_text,max_length=excluded.max_length,active=excluded.active WHERE shop_options.product_id=excluded.product_id`,
-    )
-      .bind(
-        id,
-        productId,
-        label,
-        price,
-        data.requires_text === true ? 1 : 0,
-        integer(data.max_length, 1, 40),
-        active,
-      )
-      .run();
-  else
-    await env.DB.prepare(
-      `INSERT INTO shop_variants(id,product_id,label,size,color,sku,supplier,price_cents,active) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET label=excluded.label,size=excluded.size,color=excluded.color,sku=excluded.sku,supplier=excluded.supplier,price_cents=excluded.price_cents,active=excluded.active WHERE shop_variants.product_id=excluded.product_id`,
-    )
-      .bind(
-        id,
-        productId,
-        label,
-        text(data.size || "", 40),
-        text(data.color || "", 60),
-        text(data.sku, 100, true),
-        text(data.supplier, 100, true),
-        price,
-        active,
-      )
-      .run();
+  const table=option?'shop_options':'shop_variants';
+  const existing=await env.DB.prepare(`SELECT product_id FROM ${table} WHERE id=?`).bind(id).first<Row>();
+  if(existing && existing.product_id!==productId)fail('VARIANT_PRODUCT',409,'Ce choix appartient à un autre article.');
+  if(option) {
+    await env.DB.prepare(`INSERT INTO shop_options(id,product_id,label,price_cents,requires_text,max_length,active) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET label=excluded.label,price_cents=excluded.price_cents,requires_text=excluded.requires_text,max_length=excluded.max_length,active=excluded.active WHERE shop_options.product_id=excluded.product_id`)
+      .bind(id,productId,label,price,data.requires_text===true?1:0,integer(data.max_length,1,40),active).run();
+  } else {
+    const supplierId=text(data.supplier_id,64,true);
+    const supplier=await env.DB.prepare('SELECT id,name,active FROM shop_suppliers WHERE id=?').bind(supplierId).first<Row>();
+    if(!supplier)fail('SUPPLIER',400,'Choisissez un fournisseur enregistré dans la boutique.');
+    if(!supplier.active){
+      const previous=await env.DB.prepare('SELECT supplier_id FROM shop_variants WHERE id=?').bind(id).first<Row>();
+      if(previous?.supplier_id!==supplierId)fail('SUPPLIER_INACTIVE',409,'Ce fournisseur est désactivé. Choisissez un fournisseur actif.');
+    }
+    const simple=data.simple===true;
+    const statements=[];
+    if(simple){
+      statements.push(env.DB.prepare('UPDATE shop_variants SET active=0 WHERE product_id=? AND id<>?').bind(productId,id));
+      statements.push(env.DB.prepare('UPDATE shop_options SET active=0 WHERE product_id=?').bind(productId));
+    }
+    statements.push(env.DB.prepare(`INSERT INTO shop_variants(id,product_id,label,size,color,sku,supplier,supplier_id,price_cents,active) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET label=excluded.label,size=excluded.size,color=excluded.color,sku=excluded.sku,supplier=excluded.supplier,supplier_id=excluded.supplier_id,price_cents=excluded.price_cents,active=excluded.active WHERE shop_variants.product_id=excluded.product_id`)
+      .bind(id,productId,simple?'Taille unique':label,simple?'':text(data.size||'',40),simple?'':text(data.color||'',60),text(data.sku,100,true),supplier.name,supplierId,price,active));
+    statements.push(priceLabelStatement(env.DB,productId));
+    await env.DB.batch(statements);
+  }
   return response({ ok: true, id });
 }
 export async function maintenance(env: ShopEnv) {
@@ -1023,8 +1030,9 @@ export async function maintenance(env: ShopEnv) {
       now() - 365 * 86400,
     ),
     env.ORDERS.prepare(
-      "DELETE FROM orders WHERE created_at<? AND paid_at IS NULL AND NOT EXISTS(SELECT 1 FROM checkout_attempts a WHERE a.order_id=orders.id AND a.state IN ('creating','uncertain','pending','completed'))",
+      "DELETE FROM orders WHERE kind='shop' AND created_at<? AND paid_at IS NULL AND NOT EXISTS(SELECT 1 FROM checkout_attempts a WHERE a.order_id=orders.id AND a.state IN ('creating','uncertain','pending','completed'))",
     ).bind(now() - 30 * 86400),
+    env.ORDERS.prepare("DELETE FROM orders WHERE kind='tournament' AND paid_at IS NULL AND EXISTS(SELECT 1 FROM tournament_registrations r WHERE r.order_id=orders.id AND r.payment_deadline<?) AND NOT EXISTS(SELECT 1 FROM checkout_attempts a WHERE a.order_id=orders.id AND a.state IN ('creating','uncertain','pending','completed'))").bind(now()-90*86400),
     env.ORDERS.prepare(
       "UPDATE orders SET token_expires=MAX(token_expires,?) WHERE closed_at IS NULL AND paid_at IS NOT NULL",
     ).bind(now() + 90 * 86400),
@@ -1091,6 +1099,25 @@ export async function shopRoute(
     if (!["GET", "HEAD"].includes(request.method)) sameOrigin(request, env);
     if (isAdmin) {
       const actor = await staff(request, env);
+      if(path==='/admin-boutique/api/suppliers') {
+        if(request.method==='GET')return response({suppliers:(await env.DB.prepare('SELECT * FROM shop_suppliers ORDER BY active DESC,name COLLATE NOCASE').all<Row>()).results});
+        if(request.method==='PUT'){
+          const data=await body(request),id=data.id?text(data.id,64,true):crypto.randomUUID(),name=text(data.name,100,true);
+          const previous=await env.DB.prepare('SELECT version FROM shop_suppliers WHERE id=?').bind(id).first<Row>();
+          if(previous && integer(data.version,1,Number.MAX_SAFE_INTEGER)!==previous.version)fail('VERSION_CONFLICT',409,'Ce fournisseur a changé. Rechargez la page.');
+          const address=text(data.email||'',254);if(address)email(address);
+          if(typeof data.active!=='boolean')fail('INVALID_FIELD',400,'Indiquez si le fournisseur est actif.');
+          const duplicate=await env.DB.prepare('SELECT id FROM shop_suppliers WHERE name=? COLLATE NOCASE AND id<>?').bind(name,id).first();
+          if(duplicate)fail('SUPPLIER_DUPLICATE',409,'Un fournisseur porte déjà ce nom.');
+          const result=await env.DB.batch([
+            env.DB.prepare(`INSERT INTO shop_suppliers(id,name,contact_name,email,phone,address,notes,active) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,contact_name=excluded.contact_name,email=excluded.email,phone=excluded.phone,address=excluded.address,notes=excluded.notes,active=excluded.active,version=shop_suppliers.version+1 WHERE shop_suppliers.version=?`)
+              .bind(id,name,text(data.contact_name||'',120),address,text(data.phone||'',40),text(data.address||'',500),text(data.notes||'',2000),data.active?1:0,previous?.version||0),
+            env.DB.prepare('UPDATE shop_variants SET supplier=(SELECT name FROM shop_suppliers WHERE id=?) WHERE supplier_id=?').bind(id,id),
+          ]);
+          if(!result[0].meta.changes)fail('VERSION_CONFLICT',409,'Ce fournisseur a changé. Rechargez la page.');
+          return response({ok:true,id});
+        }
+      }
       if (path === "/admin-boutique/api/admins") {
         if (request.method === "GET") {
           const rows = await env.ORDERS.prepare("SELECT email,name,active FROM shop_admins ORDER BY active DESC,email").all<Row>();
@@ -1107,6 +1134,7 @@ export async function shopRoute(
           return response({ok:true});
         }
       }
+      if (path === "/admin-boutique/api/helloasso/test" && request.method === "POST") return response(await connectionStatus(env,s.organization_slug));
       if (path === "/admin-boutique/api/settings") {
         if (request.method === "GET")
           return response({
@@ -1137,7 +1165,7 @@ export async function shopRoute(
       ) {
         const [products, variants, options] = await env.DB.batch<Row>([
           env.DB.prepare(
-            "SELECT id,name,active FROM shop_products ORDER BY name",
+            "SELECT id,name,active,price_label FROM shop_products ORDER BY name",
           ),
           env.DB.prepare(
             "SELECT * FROM shop_variants ORDER BY product_id,label",
@@ -1168,7 +1196,7 @@ export async function shopRoute(
             30,
           );
         const rows = await env.ORDERS.prepare(
-          `SELECT id,reference,email,first_name,last_name,team,total_cents,payment_status,fulfillment,created_at,version FROM orders WHERE (?='' OR instr(lower(reference||' '||email||' '||first_name||' '||last_name),lower(?))>0) AND (?='' OR payment_status=?) AND (?='' OR fulfillment=?) ORDER BY created_at DESC LIMIT 51 OFFSET ?`,
+          `SELECT id,reference,email,first_name,last_name,team,total_cents,payment_status,fulfillment,created_at,version FROM orders WHERE kind='shop' AND (?='' OR instr(lower(reference||' '||email||' '||first_name||' '||last_name),lower(?))>0) AND (?='' OR payment_status=?) AND (?='' OR fulfillment=?) ORDER BY created_at DESC LIMIT 51 OFFSET ?`,
         )
           .bind(q, q, payment, payment, fulfillment, fulfillment, page * 50)
           .all<Row>();
@@ -1192,6 +1220,7 @@ export async function shopRoute(
       );
       if (match) {
         const order = await findOrder(env, match[1]);
+        if(order.kind !== "shop")fail("ORDER_NOT_FOUND",404,"Commande boutique introuvable.");
         if (!match[2] && request.method === "GET")
           return response(await detail(env, order, true));
         if (!match[2] && request.method === "PATCH") {
@@ -1381,7 +1410,7 @@ export async function shopRoute(
       await rateLimit(env, `recover-email:${address}`, 3, 3600);
       // Generic response for unknown addresses too; no order data leaves this endpoint.
       const orders = await env.ORDERS.prepare(
-        "SELECT id FROM orders WHERE email=? COLLATE NOCASE AND (?='' OR reference=? COLLATE NOCASE) ORDER BY created_at DESC LIMIT 10",
+        "SELECT id FROM orders WHERE kind='shop' AND email=? COLLATE NOCASE AND (?='' OR reference=? COLLATE NOCASE) ORDER BY created_at DESC LIMIT 10",
       ).bind(address, reference, reference).all<Row>();
       for (const order of orders.results) {
         await env.ORDERS.prepare(
@@ -1406,6 +1435,7 @@ export async function shopRoute(
         60,
       );
       const order = await customerOrder(request, env, match[1]);
+      if(order.kind!=="shop")fail("NOT_FOUND",404,"Commande introuvable.");
       if (!match[2] && request.method === "GET")
         return response(await detail(env, order));
       if (match[2] === "pay" && request.method === "POST") {
@@ -1427,6 +1457,7 @@ export async function shopRoute(
         return response(await detail(env, await findOrder(env, order.id)));
       }
       if (match[2] === "survey" && request.method === "POST") {
+        if(order.kind!=="shop")fail("SURVEY",404,"Enquête non disponible pour cette inscription.");
         if (!order.paid_at)
           fail(
             "SURVEY_PAYMENT",

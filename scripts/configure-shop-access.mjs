@@ -11,6 +11,9 @@ const get = (name, fallback) => {
 const target = get("--env", "staging");
 if (!["staging", "production"].includes(target))
   throw new Error("--env doit valoir staging ou production.");
+const scope=get("--scope","shop");
+if(!["shop","tournament"].includes(scope))throw new Error("--scope doit valoir shop ou tournament.");
+const audName=scope==='shop'?'CF_ACCESS_SHOP_AUD':'CF_ACCESS_TOURNAMENT_AUD';
 const file = resolve(
   get("--config", new URL("../wrangler.jsonc", import.meta.url).pathname),
 );
@@ -22,8 +25,8 @@ const values = {
   CF_ACCESS_ISSUER: String(get("--issuer", previous.CF_ACCESS_ISSUER || ""))
     .trim()
     .replace(/\/+$/, ""),
-  CF_ACCESS_SHOP_AUD: String(
-    get("--aud", previous.CF_ACCESS_SHOP_AUD || ""),
+  [audName]: String(
+    get("--aud", previous[audName] || ""),
   ).trim(),
   SHOP_ORIGIN: String(get("--origin", previous.SHOP_ORIGIN || ""))
     .trim()
@@ -36,12 +39,12 @@ if (
     "CF_ACCESS_ISSUER : renseignez https://VOTRE-EQUIPE.cloudflareaccess.com (domaine Zero Trust, pas celui du site).",
   );
 if (
-  !values.CF_ACCESS_SHOP_AUD.split(",").every((a) =>
+  !values[audName].split(",").every((a) =>
     /^[a-f0-9]{64}$/i.test(a.trim()),
   )
 )
   throw new Error(
-    "CF_ACCESS_SHOP_AUD : copiez le champ Application Audience (AUD) de l’application boutique. Le Policy ID de la règle Login Boutique ne convient pas.",
+    `${audName} : copiez le champ Application Audience (AUD) de l’application ${scope === "shop" ? "boutique" : "tournois"}. Le Policy ID ne convient pas.`,
   );
 let origin;
 try {
@@ -57,12 +60,12 @@ if (
   );
 if (args.includes("--check"))
   console.log(
-    `Configuration Access boutique ${target} vérifiée : domaine, audience et origine présents.`,
+    `Configuration Access ${scope} ${target} vérifiée : domaine, audience et origine présents.`,
   );
 else {
   section.vars = { ...previous, ...values };
   writeFileSync(file, JSON.stringify(config, null, 2) + "\n");
   console.log(
-    `Variables Access boutique ${target} enregistrées. Les bindings D1/R2 sont inchangés. Faites un commit/push pour les déployer.`,
+    `Variables Access ${scope} ${target} enregistrées. Les bindings D1/R2 sont inchangés. Faites un commit/push pour les déployer.`,
   );
 }

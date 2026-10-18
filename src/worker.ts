@@ -1,6 +1,8 @@
+import {tournamentRoute} from './tournaments/service';
 import { shopRoute, maintenance, type ShopEnv } from './shop/service';
 import { staff as shopStaff, sameOrigin as shopSameOrigin, response as shopResponse } from './shop/security';
 import { ShopError } from './shop/domain';
+import { priceLabelStatement } from './shop/catalogue-pricing';
 interface Env extends ShopEnv {
   DB: D1Database;
   MEDIA: R2Bucket;
@@ -336,6 +338,7 @@ async function api(request: Request, env: Env, url: URL, trustedShopActor?: stri
       await env.DB.prepare(
         `UPDATE ${table} SET ${values.map(([key]) => `${key}=?`).join(",")}${timestamp} WHERE id=?`
       ).bind(...bound, id).run();
+      if (table === "shop_products") await priceLabelStatement(env.DB,Number(id),true).run();
       if (table === "team_competitions" && body.team_id !== undefined) {
         await env.DB.prepare("UPDATE matches SET team_id=?,updated_at=CURRENT_TIMESTAMP WHERE competition_team_id=?")
           .bind(body.team_id || null, id).run();
@@ -2034,6 +2037,7 @@ export default {
     // Provider callbacks and token-authenticated tracking cannot carry the staging Basic header.
     // Each tracking request is still authorized by its order-specific bearer token.
     if (url.pathname === '/api/shop/helloasso/webhook' || url.pathname.startsWith('/api/shop/orders/')) return (await shopRoute(request, env, ctx))!;
+    if (url.pathname.startsWith('/api/tournaments/registrations/') || ['/paiements/retour','/tournois/suivi'].some(p=>url.pathname===p||url.pathname.startsWith(p+'/'))) return (await tournamentRoute(request,env,ctx))!;
     const gate = testGate(request, env);
     if (gate) return gate;
     if (url.pathname.startsWith('/admin-boutique/api/content/') || url.pathname === '/admin-boutique/api/upload') {
@@ -2050,6 +2054,8 @@ export default {
         return shopResponse({error:'Cette opération sur le catalogue a échoué. Rechargez la page puis réessayez.',code:'CONTENT_ERROR'},500);
       }
     }
+    const tournament = await tournamentRoute(request,env,ctx);
+    if (tournament) return tournament;
     const shop = await shopRoute(request, env, ctx);
     if (shop) return shop;
     if ((url.pathname === "/admin" || url.pathname.startsWith("/admin/")) &&
