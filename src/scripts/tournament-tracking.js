@@ -31,7 +31,7 @@ async function load(action = "") {
     );
     order = data.order;
     registration = data.registration;
-    content.innerHTML = `<section class="commerce-card"><p class="eyebrow">${esc(order.reference)}</p><h2>${esc(registration.tournament_name)}</h2><p>${esc(registration.club_name)} · ${esc(registration.team_name)} · ${esc(registration.category)}</p><dl><dt>Inscription</dt><dd>${esc(statuses[registration.registration_status])}</dd><dt>Paiement</dt><dd>${esc(paymentLabels[order.payment_status] || order.payment_status)} · ${money(order.total_cents)}</dd><dt>Date limite de paiement</dt><dd>${date(registration.payment_deadline)}</dd></dl>${sectionsSummary(registration)}${
+    content.innerHTML = `<section class="commerce-card"><p class="eyebrow">${esc(order.reference)}</p><h2>${esc(registration.tournament_name)}</h2><p>${esc(registration.club_name)} · ${esc(registration.team_name)} · ${esc(registration.category)}</p><dl><dt>Inscription</dt><dd>${esc(statuses[registration.registration_status])}</dd><dt>Paiement</dt><dd>${esc(paymentLabels[order.payment_status] || order.payment_status)} · ${money(order.total_cents)}</dd><dt>Date limite de paiement</dt><dd>${date(registration.payment_deadline)}</dd></dl>${sectionsSummary(registration)}${registration.payment_method==='cheque'?`<section class="tournament-cheque-instructions"><h3>Votre paiement par chèque</h3><p>${esc(registration.cheque_snapshot)}</p><p>${order.payment_status==='paid'?'Le club a confirmé la réception de votre paiement.':'En attente de réception et de confirmation par le club.'}</p></section>`:''}${
       JSON.parse(registration.form_snapshot || "[]").length
         ? `<h3>Vos réponses</h3><dl>${JSON.parse(registration.form_snapshot)
             .map((f) => {
@@ -40,7 +40,7 @@ async function load(action = "") {
             })
             .join("")}</dl>`
         : ""
-    }<p>Le paiement et l’acceptation par le club sont deux étapes distinctes.</p><p>${esc(order.public_note)}</p><div class="tournament-actions"><button id="refresh-payment">Vérifier le paiement</button>${registration.registration_status !== "cancelled" && ["pending", "refused"].includes(order.payment_status) && registration.payment_deadline * 1000 > Date.now() ? '<button id="pay-tournament">Payer avec HelloAsso →</button>' : ""}</div><details><summary>Conditions acceptées lors de l’inscription</summary><p class="tournament-terms">${esc(order.terms_snapshot)}</p></details></section>`;
+    }<p>Le paiement et l’acceptation par le club sont deux étapes distinctes.</p><p>${esc(order.public_note)}</p><div class="tournament-actions"><button id="refresh-payment">Vérifier le paiement</button>${registration.payment_method !== "cheque" && registration.registration_status !== "cancelled" && ["pending", "refused"].includes(order.payment_status) && registration.payment_deadline * 1000 > Date.now() ? '<button id="pay-tournament">Payer avec HelloAsso →</button>' : ""}</div><details><summary>Conditions acceptées lors de l’inscription</summary><p class="tournament-terms">${esc(order.terms_snapshot)}</p></details></section>`;
     message.textContent = "";
     content.querySelector("#refresh-payment").onclick = () => load("/refresh");
     content.querySelector("#pay-tournament")?.addEventListener("click", pay);

@@ -27,12 +27,12 @@ export function readQuestionAnswers(form, fields) {
 }
 
 export function sectionMarkup(sections) {
-  return `<fieldset class="tournament-sections wide"><legend>Quelles sections souhaitez-vous inscrire ?</legend><p>Répondez pour chaque section, puis indiquez le nombre d’équipes pour chaque « Oui ».</p>${sections.map((section,index)=>`<div class="tournament-section" data-section-row="${index}"><fieldset><legend>${esc(section)} *</legend><label><input type="radio" name="section:${index}" value="yes" required> Oui</label><label><input type="radio" name="section:${index}" value="no" required> Non</label></fieldset><label data-section-quantity hidden>Nombre d’équipes<input type="number" name="quantity:${index}" min="1" max="50" step="1" value="1" disabled></label></div>`).join('')}</fieldset>`;
+  return `<fieldset class="tournament-sections wide"><legend>Vos équipes</legend><p>Indiquez le nombre d’équipes à inscrire dans chaque section. Laissez 0 pour les autres.</p>${sections.map((section,index)=>`<label class="tournament-section" data-section-row="${index}"><span>${esc(section)}</span><span class="tournament-quantity"><small>Nombre d’équipes</small><input type="number" name="quantity:${index}" min="0" max="50" step="1" value="0" inputmode="numeric" required aria-label="Nombre d’équipes ${esc(section)}"></span></label>`).join('')}</fieldset>`;
 }
 export function readSections(form, sections) {
-  return sections.map((section,index)=>({section,participating:form.elements.namedItem(`section:${index}`).value==='yes',quantity:form.elements.namedItem(`section:${index}`).value==='yes'?Number(form.elements.namedItem(`quantity:${index}`).value):0}));
+  return sections.map((section,index)=>{const quantity=Number(form.elements.namedItem(`quantity:${index}`).value);return {section,participating:quantity>0,quantity};});
 }
 export function sectionsSummary(registration) {
   const rows=JSON.parse(registration.sections_json||'[]');
-  return rows.length?`<h3>Sections inscrites</h3><ul>${rows.map(row=>`<li>${esc(row.section)} : ${row.participating?`${row.quantity} équipe${row.quantity>1?'s':''}`:'Non'}</li>`).join('')}</ul>`:'';
+  return rows.length?`<h3>Sections inscrites</h3><ul>${rows.map(row=>`<li>${esc(row.section)} : ${row.participating?`${row.quantity} équipe${row.quantity>1?'s':''}`:'0 équipe'}</li>`).join('')}</ul>`:'';
 }

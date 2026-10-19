@@ -248,7 +248,7 @@ export async function detail(env: ShopEnv, order: Row, admin = false) {
           : { kind: e.kind, message: e.message, created_at: e.created_at },
       ),
     survey: survey.results[0] || null,
-    ...(order.kind === "tournament" ? {registration: await env.ORDERS.prepare("SELECT tournament_name,club_name,team_name,category,registration_status,payment_deadline,answers_json,form_snapshot,team_count,sections_json FROM tournament_registrations WHERE order_id=?").bind(order.id).first()} : {}),
+    ...(order.kind === "tournament" ? {registration: await env.ORDERS.prepare("SELECT tournament_name,club_name,team_name,category,registration_status,payment_deadline,answers_json,form_snapshot,team_count,sections_json,payment_method,cheque_snapshot FROM tournament_registrations WHERE order_id=?").bind(order.id).first()} : {}),
     ...(admin ? { mails: mails.results, attempts: attempts.results } : {}),
   };
 }
@@ -434,7 +434,8 @@ export async function checkout(
     fail("ORDER_CANCELLED", 409, "Cette commande a été annulée.");
   if (order.payment_status === "paid") return { paid: true };
   if (order.kind === "tournament") {
-    const registration=await env.ORDERS.prepare("SELECT payment_deadline FROM tournament_registrations WHERE order_id=?").bind(order.id).first<Row>();
+    const registration=await env.ORDERS.prepare("SELECT payment_deadline,payment_method FROM tournament_registrations WHERE order_id=?").bind(order.id).first<Row>();
+    if(registration?.payment_method==='cheque')fail("CHEQUE_PAYMENT",409,"Le règlement de cette inscription est prévu par chèque. Consultez les instructions dans votre suivi.");
     if(registration?.payment_deadline && registration.payment_deadline<now())fail("PAYMENT_DEADLINE",409,"La date limite de paiement est passée. Contactez le club.");
   }
 
@@ -922,8 +923,8 @@ async function saveSettings(
     seller_id: text(data.seller_id, 120),
     seller_phone: text(data.seller_phone, 30),
     contact_email: email(data.contact_email),
-    mediator_name: text(data.mediator_name, 200),
-    mediator_url: text(data.mediator_url, 500),
+    mediator_name: data.mediator_name===undefined?current.mediator_name:text(data.mediator_name, 200),
+    mediator_url: data.mediator_url===undefined?current.mediator_url:text(data.mediator_url, 500),
     collection_address: text(data.collection_address, 500),
     collection_instructions: text(data.collection_instructions, 1000),
     delivery_days: integer(data.delivery_days, 1, 180),

@@ -51,7 +51,7 @@ export function termsSections(s: Settings) {
     ],
     [
       "Réclamations et médiation",
-      `Adressez d’abord une réclamation écrite au club. En l’absence de solution amiable, vous pouvez recourir gratuitement au médiateur de la consommation compétent : ${s.mediator_name || "à désigner par le club avant ouverture des ventes"} — ${s.mediator_url || "coordonnées à compléter avant ouverture"}. Le droit français s’applique sans priver un consommateur des protections impératives dont il bénéficie. Les règles légales de compétence des tribunaux s’appliquent.`,
+      `Adressez d’abord une réclamation écrite au club. Le droit français s’applique sans priver un consommateur des protections impératives dont il bénéficie. Les règles légales de compétence des tribunaux s’appliquent.`,
     ],
     [
       "Données personnelles",

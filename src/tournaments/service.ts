@@ -42,11 +42,9 @@ async function sales(env: ShopEnv, all = false) {
       .all<Row>()
   ).results;
 }
-function configured(env: ShopEnv, s: Row) {
+function configured(env: ShopEnv, s: Row, helloasso=true) {
   if (
-    !s.organization_slug ||
-    !env.HELLOASSO_CLIENT_ID ||
-    !env.HELLOASSO_CLIENT_SECRET ||
+    (helloasso&&(!s.organization_slug || !env.HELLOASSO_CLIENT_ID || !env.HELLOASSO_CLIENT_SECRET)) ||
     (env.TRACKING_SECRET || "").length < 32
   )
     fail(
@@ -69,7 +67,6 @@ function configured(env: ShopEnv, s: Row) {
     );
 }
 async function create(request: Request, env: ShopEnv, s: Row) {
-  configured(env, s);
   await rateLimit(
     env,
     `tournament-create:${request.headers.get("cf-connecting-ip") || "local"}`,
@@ -78,6 +75,7 @@ async function create(request: Request, env: ShopEnv, s: Row) {
   const data = await body(request),
     id = uuid(data.idempotency_key),
     tournamentId = integer(data.tournament_id, 1, 2147483647);
+  configured(env,s,data.payment_choice!=="cheque");
   const customer = {
     email: email(data.email),
     first_name: text(data.first_name, 80, true),
@@ -89,7 +87,7 @@ async function create(request: Request, env: ShopEnv, s: Row) {
     fail("PHONE", 400, "Vérifiez le numéro de téléphone.");
   if (
     data.accept_terms !== true ||
-    !["now", "later"].includes(data.payment_choice)
+    !["now", "later", "cheque"].includes(data.payment_choice)
   )
     fail("TERMS", 400, "Acceptez les conditions et choisissez quand payer.");
   const hash = await sha256(
@@ -140,6 +138,8 @@ async function create(request: Request, env: ShopEnv, s: Row) {
         409,
         "Le paiement immédiat est requis pour ce tournoi.",
       );
+    if(data.payment_choice==='cheque'&&(!sale.allow_cheque||sale.cheque_deadline<now()||!sale.cheque_address||!sale.cheque_payee))fail('CHEQUE_CLOSED',409,'Le paiement par chèque n’est pas disponible pour ce tournoi.');
+    const cheque = data.payment_choice==='cheque' ? `Chèque à l’ordre de ${sale.cheque_payee}. À envoyer à ${sale.cheque_address} avant le ${new Date(sale.cheque_deadline*1000).toLocaleDateString('fr-FR',{timeZone:'Europe/Paris'})}.` : '';
     const fields = formFields(JSON.parse(sale.form_json || "[]"));
     const answers = formAnswers(fields, data.answers || {});
     const token = await trackingToken(env.TRACKING_SECRET!, id, 1),
@@ -163,7 +163,7 @@ async function create(request: Request, env: ShopEnv, s: Row) {
         `${selection.count} équipe${selection.count > 1 ? "s" : ""}`,
         total,
         `tournament-${sale.id}-v${sale.version}`,
-        `${sale.name}\nTarif par équipe : ${(sale.fee_cents / 100).toFixed(2)} EUR\n${selection.sections.filter(row=>row.participating).map(row=>`${row.section} : ${row.quantity} équipe(s)`).join("\n")}\nTotal : ${(total / 100).toFixed(2)} EUR\nPaiement avant le ${new Date(sale.payment_deadline * 1000).toISOString()}\n${sale.terms}`,
+        `${sale.name}\nTarif par équipe : ${(sale.fee_cents / 100).toFixed(2)} EUR\n${selection.sections.filter(row=>row.participating).map(row=>`${row.section} : ${row.quantity} équipe(s)`).join("\n")}\nTotal : ${(total / 100).toFixed(2)} EUR\nPaiement avant le ${new Date(sale.payment_deadline * 1000).toISOString()}\n${sale.terms}\n${cheque}`,
         stamp,
         stamp,
         stamp,
@@ -173,7 +173,7 @@ async function create(request: Request, env: ShopEnv, s: Row) {
         sale.capacity,
       ),
       env.ORDERS.prepare(
-        `INSERT OR IGNORE INTO tournament_registrations(order_id,tournament_id,tournament_name,club_name,team_name,category,payment_choice,payment_deadline,created_at,answers_json,form_snapshot,team_count,sections_json) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,? WHERE ${guard}`,
+        `INSERT OR IGNORE INTO tournament_registrations(order_id,tournament_id,tournament_name,club_name,team_name,category,payment_choice,payment_deadline,created_at,answers_json,form_snapshot,team_count,sections_json,payment_method,cheque_snapshot) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,? WHERE ${guard}`,
       ).bind(
         id,
         tournamentId,
@@ -181,13 +181,15 @@ async function create(request: Request, env: ShopEnv, s: Row) {
         customer.club_name,
         `${selection.count} équipe${selection.count > 1 ? "s" : ""}`,
         selection.sections.filter(row=>row.participating).map(row=>row.section).join(", "),
-        data.payment_choice,
-        sale.payment_deadline,
+        data.payment_choice==='cheque'?'later':data.payment_choice,
+        data.payment_choice==='cheque'?sale.cheque_deadline:sale.payment_deadline,
         stamp,
         JSON.stringify(answers),
         JSON.stringify(fields),
         selection.count,
         JSON.stringify(selection.sections),
+        data.payment_choice==='cheque'?'cheque':'helloasso',
+        cheque,
         id,
         hash,
       ),
@@ -347,11 +349,14 @@ export async function tournamentRoute(
             .bind(id)
             .first();
           if (!exists) fail("NOT_FOUND", 404, "Tournoi introuvable.");
+          const allowCheque=d.allow_cheque===true;
+          const chequePayee=text(d.cheque_payee||'',160,allowCheque),chequeAddress=text(d.cheque_address||'',1000,allowCheque),chequeDeadline=integer(d.cheque_deadline||0,0,4102444800);
+          if(allowCheque&&(chequeDeadline<registration||chequeDeadline>payment||(d.enabled&&chequeDeadline<=now())))fail('CHEQUE_CONFIG',400,'Précisez l’ordre du chèque, l’adresse et une échéance comprise entre la clôture des inscriptions et la date limite de paiement.');
           const fields = formFields(d.form_fields || []);
           const row =
             version === 0
               ? await env.DB.prepare(
-                  "INSERT OR IGNORE INTO tournament_sales(tournament_id,fee_cents,capacity,enabled,allow_pay_later,registration_deadline,payment_deadline,terms,form_json) VALUES(?,?,?,?,?,?,?,?,?) RETURNING version",
+                  "INSERT OR IGNORE INTO tournament_sales(tournament_id,fee_cents,capacity,enabled,allow_pay_later,registration_deadline,payment_deadline,terms,form_json,allow_cheque,cheque_payee,cheque_address,cheque_deadline) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING version",
                 )
                   .bind(
                     id,
@@ -363,10 +368,11 @@ export async function tournamentRoute(
                     payment,
                     terms,
                     JSON.stringify(fields),
+                    allowCheque?1:0,chequePayee,chequeAddress,chequeDeadline,
                   )
                   .first()
               : await env.DB.prepare(
-                  "UPDATE tournament_sales SET fee_cents=?,capacity=?,enabled=?,allow_pay_later=?,registration_deadline=?,payment_deadline=?,terms=?,form_json=?,version=version+1 WHERE tournament_id=? AND version=? RETURNING version",
+                  "UPDATE tournament_sales SET fee_cents=?,capacity=?,enabled=?,allow_pay_later=?,registration_deadline=?,payment_deadline=?,terms=?,form_json=?,allow_cheque=?,cheque_payee=?,cheque_address=?,cheque_deadline=?,version=version+1 WHERE tournament_id=? AND version=? RETURNING version",
                 )
                   .bind(
                     fee,
@@ -377,6 +383,7 @@ export async function tournamentRoute(
                     payment,
                     terms,
                     JSON.stringify(fields),
+                    allowCheque?1:0,chequePayee,chequeAddress,chequeDeadline,
                     id,
                     version,
                   )
@@ -433,7 +440,7 @@ export async function tournamentRoute(
           ).results,
         });
       const match = path.match(
-        /^\/admin-tournois\/api\/registrations\/([a-f0-9-]{36})(?:\/(reconcile|resend|rotate-link|resolve-attempt))?$/,
+        /^\/admin-tournois\/api\/registrations\/([a-f0-9-]{36})(?:\/(reconcile|resend|rotate-link|resolve-attempt|cheque-received))?$/,
       );
       if (match) {
         const order = await findOrder(env, match[1]);
@@ -442,6 +449,19 @@ export async function tournamentRoute(
         if (request.method === "GET" && !match[2])
           return response(await detail(env, order, true));
         const s = await settings(env);
+        if(request.method==='POST'&&match[2]==='cheque-received'){
+          const d=await body(request),version=integer(d.version,0,2147483647);
+          const registration=await env.ORDERS.prepare('SELECT payment_method,registration_status FROM tournament_registrations WHERE order_id=?').bind(order.id).first<Row>();
+          if(registration?.payment_method!=='cheque'||registration.registration_status==='cancelled'||order.payment_status!=='pending')fail('CHEQUE_STATE',409,'Cette inscription ne peut pas être réglée par chèque dans son état actuel.');
+          const mutation=crypto.randomUUID(),stamp=now();
+          const result=await env.ORDERS.batch([
+            env.ORDERS.prepare("UPDATE orders SET payment_status='paid',paid_at=?,updated_at=?,version=version+1,mutation_id=? WHERE id=? AND version=? AND payment_status='pending' RETURNING id").bind(stamp,stamp,mutation,order.id,version),
+            env.ORDERS.prepare("INSERT INTO order_events(id,order_id,kind,actor,message,created_at) SELECT ?,?,'payment',?,'Chèque reçu et paiement confirmé par le club.',? WHERE (SELECT mutation_id FROM orders WHERE id=?)=?").bind(mutation,order.id,actor,stamp,order.id,mutation),
+            env.ORDERS.prepare("INSERT INTO outbox(id,order_id,kind,available_at) SELECT ?,?,'paid',? WHERE (SELECT mutation_id FROM orders WHERE id=?)=?").bind(mutation,order.id,stamp,order.id,mutation)
+          ]);
+          if(!result[0].results.length)fail('VERSION',409,'Cette inscription a changé. Rechargez-la.');
+          ctx.waitUntil(drainMail(env,s));return response({ok:true});
+        }
         if (request.method === "POST" && match[2] === "reconcile") {
           await reconcile(env, s, order.id);
           ctx.waitUntil(drainMail(env, s));

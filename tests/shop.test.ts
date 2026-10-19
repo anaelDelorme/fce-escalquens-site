@@ -194,6 +194,7 @@ before(async () => {
   TOURNEYS=new TestDatabase();
   await TOURNEYS.exec(readFileSync(new URL("../migrations-tournaments/0001_tournaments.sql",import.meta.url),"utf8"));
   await TOURNEYS.exec(readFileSync(new URL("../migrations-tournaments/0002_registration_sections.sql",import.meta.url),"utf8"));
+  await TOURNEYS.exec(readFileSync(new URL("../migrations-tournaments/0003_cheque_payments.sql",import.meta.url),"utf8"));
   await TOURNEYS.exec("INSERT INTO module_imports(id,imported_at) VALUES('v5.2',0)");
   await TOURNEYS.exec(`INSERT INTO tournaments(id,slug,name,starts_on,categories,status) VALUES(1,'tournoi-u11','Tournoi U11','2027-06-10','["U11"]','open');`);
   await DB.exec(
@@ -1417,4 +1418,26 @@ test('lieux tournois : sélection dans la D1 du site et refus des lieux inconnus
  assert.equal((await tournamentApi('/admin-tournois/api/events',{...payload,name:'Lieu invalide',venue_id:999},{admin:true})).body.code,'VENUE');
  await DB.prepare('UPDATE venues SET active=0 WHERE id=1').run();
  try{assert.equal((await tournamentApi('/admin-tournois/api/events',{...payload,name:'Lieu désactivé'},{admin:true})).status,409);}finally{await DB.prepare('UPDATE venues SET active=1 WHERE id=1').run();}
+});
+
+test('tournoi chèque : instructions figées, pas de checkout, réception réservée au club et confirmation unique',async()=>{
+ await TOURNEYS.prepare('DELETE FROM rate_limits').run();
+ const event=await tournamentApi('/admin-tournois/api/events',{name:'Tournoi chèques',starts_on:'2027-07-05',status:'open',categories:['U11']},{admin:true});assert.equal(event.status,200);const id=event.body.id;
+ const config={tournament_id:id,version:0,fee_cents:5000,capacity:10,enabled:true,allow_pay_later:false,allow_cheque:true,cheque_payee:'FC Escalquens',cheque_address:'Club FCE, 1 rue du Stade',cheque_deadline:now()+150000,registration_deadline:now()+86400,payment_deadline:now()+172800,terms:'Le club confirme l’inscription. En cas d’annulation, contactez le club pour connaître les modalités de remboursement.'};
+ assert.equal((await tournamentApi('/admin-tournois/api/sales',{...config,cheque_address:''},{admin:true,method:'PUT'})).status,400);
+ assert.equal((await tournamentApi('/admin-tournois/api/sales',config,{admin:true,method:'PUT'})).status,200);
+ const payload={...tournamentPayload(),tournament_id:id,expected_total:5000,payment_choice:'cheque'};
+ const countBefore=intents,registered=await tournamentApi('/api/tournaments/registrations',payload);assert.equal(registered.status,200,JSON.stringify(registered.body));assert.equal(intents,countBefore);assert.equal(registered.body.redirect_url,undefined);
+ const orderId=registered.body.order_id,token=registered.body.tracking_token;
+ let detail=await tournamentApi(`/api/tournaments/registrations/${orderId}`,undefined,{token});assert.equal(detail.body.order.payment_status,'pending');assert.equal(detail.body.registration.payment_method,'cheque');assert.match(detail.body.registration.cheque_snapshot,/1 rue du Stade/);
+ assert.equal((await tournamentApi(`/api/tournaments/registrations/${orderId}/pay`,{},{token})).body.code,'CHEQUE_PAYMENT');assert.equal(intents,countBefore);
+ assert.equal((await tournamentApi('/admin-tournois/api/sales',{...config,version:1,cheque_address:'Nouvelle adresse'},{admin:true,method:'PUT'})).status,200);
+ detail=await tournamentApi(`/api/tournaments/registrations/${orderId}`,undefined,{token});assert.match(detail.body.registration.cheque_snapshot,/1 rue du Stade/);
+ assert.notEqual((await tournamentApi(`/admin-tournois/api/registrations/${orderId}/cheque-received`,{version:0})).status,200);
+ assert.equal((await tournamentApi(`/admin-tournois/api/registrations/${orderId}/cheque-received`,{version:99},{admin:true})).status,409);
+ assert.equal((await tournamentApi(`/admin-tournois/api/registrations/${orderId}/cheque-received`,{version:0},{admin:true})).status,200);
+ assert.equal((await tournamentApi(`/admin-tournois/api/registrations/${orderId}/cheque-received`,{version:0},{admin:true})).status,409);
+ detail=await tournamentApi(`/api/tournaments/registrations/${orderId}`,undefined,{token});assert.equal(detail.body.order.payment_status,'paid');assert.equal(detail.body.registration.registration_status,'pending');assert.equal(detail.body.events.filter((e:any)=>e.message==='Chèque reçu et paiement confirmé par le club.').length,1);
+ assert.equal((await tournamentApi('/admin-tournois/api/sales',{...config,version:2,allow_cheque:false},{admin:true,method:'PUT'})).status,200);
+ const denied=await tournamentApi('/api/tournaments/registrations',{...payload,idempotency_key:crypto.randomUUID(),version:3});assert.equal(denied.body.code,'CHEQUE_CLOSED');
 });

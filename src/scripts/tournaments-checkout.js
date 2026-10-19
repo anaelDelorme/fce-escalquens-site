@@ -9,6 +9,7 @@ import {
 } from "../../public/shop-common.js";
 const dialog = document.createElement("dialog");
 dialog.className = "tournament-dialog";
+dialog.setAttribute("aria-label", "Inscription au tournoi");
 document.body.append(dialog);
 let sale,
   draft,
@@ -25,7 +26,7 @@ async function open(id) {
   questions = JSON.parse(sale.form_json || "[]");
   const existing = readStorage(`fce-tournament-draft:${sale.id}`);
   draft = existing || { key: crypto.randomUUID() };
-  dialog.innerHTML = `<button type="button" data-close class="tournament-close" aria-label="Fermer">×</button><p class="eyebrow">Inscription au tournoi</p><h2>${esc(sale.name)}</h2><p class="tournament-fee">${money(sale.fee_cents)} <small>par équipe</small></p><p>Le club validera votre inscription. ${sale.allow_pay_later ? "Vous pouvez régler maintenant ou retrouver le paiement dans votre e-mail de suivi." : "Le paiement se fait avec HelloAsso."}</p><form class="commerce-form-grid">${[
+  dialog.innerHTML = `<button type="button" data-close class="tournament-close" aria-label="Fermer">×</button><p class="eyebrow">Inscription au tournoi</p><h2>${esc(sale.name)}</h2><p class="tournament-fee">${money(sale.fee_cents)} <small>par équipe</small></p><p>Le club validera votre inscription. ${sale.allow_pay_later ? "Vous pouvez régler maintenant ou retrouver le paiement dans votre e-mail de suivi." : "Le paiement se fait avec HelloAsso."}</p><form class="commerce-form-grid"><h3 class="wide tournament-form-title">Coordonnées du responsable</h3>${[
     ["club_name", "Club", "text", 120],
     ["first_name", "Prénom du responsable adulte", "text", 80],
     ["last_name", "Nom du responsable adulte", "text", 80],
@@ -34,19 +35,14 @@ async function open(id) {
   ]
     .map(
       ([name, label, type, max]) =>
-        `<label>${label} <span aria-hidden="true">*</span><input name="${name}" type="${type}" maxlength="${max}" required></label>`,
+        `<label><span>${label} <span aria-hidden="true">*</span></span><input name="${name}" type="${type}" maxlength="${max}" required></label>`,
     )
     .join(
       "",
-    )}${sectionMarkup(sections)}${questionMarkup(questions)}<div class="wide tournament-total" aria-live="polite"><span data-total-count>Choisissez vos sections</span><strong data-total-price>${money(0)}</strong><small>Nombre d’équipes × ${money(sale.fee_cents)} par équipe</small></div><div class="wide"><h3>Quand souhaitez-vous payer ?</h3><label class="tournament-choice"><input type="radio" name="payment_choice" value="now" checked> Maintenant avec HelloAsso</label>${sale.allow_pay_later ? '<label class="tournament-choice"><input type="radio" name="payment_choice" value="later"> Plus tard, depuis mon lien de suivi</label>' : ""}<p>Paiement au plus tard le ${date(sale.payment_deadline)}. La contribution volontaire proposée par HelloAsso peut être modifiée ou retirée sur sa page de paiement.</p><details open><summary>Conditions d’inscription et d’annulation</summary><p class="tournament-terms">${esc(sale.terms)}</p></details><label class="tournament-choice"><input type="checkbox" name="accept_terms" required> J’ai lu et j’accepte les conditions de ce tournoi. *</label><p class="commerce-help">Les champs * sont nécessaires à la gestion de l’inscription et du paiement. Coordonnées du responsable adulte uniquement ; aucune liste de joueurs n’est demandée. <a href="/confidentialite/" target="_blank" rel="noopener">Vos données et vos droits</a>.</p><button type="submit">Confirmer mon inscription →</button><p data-error role="status" tabindex="-1"></p><div data-recovery></div></div></form>`;
+    )}${sectionMarkup(sections)}${questionMarkup(questions)}<div class="wide tournament-total" aria-live="polite"><span data-total-count>Choisissez vos sections</span><strong data-total-price>${money(0)}</strong><small>Nombre d’équipes × ${money(sale.fee_cents)} par équipe</small></div><div class="wide"><h3>Quand souhaitez-vous payer ?</h3><label class="tournament-choice"><input type="radio" name="payment_choice" value="now" checked> De suite avec HelloAsso</label>${sale.allow_pay_later ? '<label class="tournament-choice"><input type="radio" name="payment_choice" value="later"> Plus tard avec HelloAsso</label>' : ""}${sale.allow_cheque ? `<label class="tournament-choice"><input type="radio" name="payment_choice" value="cheque"><span>Par chèque<small>À l’ordre de ${esc(sale.cheque_payee)} · À envoyer à ${esc(sale.cheque_address)} avant le ${date(sale.cheque_deadline)}.</small></span></label>` : ""}<p>Paiement au plus tard le ${date(sale.payment_deadline)}. La contribution volontaire proposée par HelloAsso peut être modifiée ou retirée sur sa page de paiement.</p><details><summary>Conditions d’inscription et d’annulation</summary><p class="tournament-terms">${esc(sale.terms)}</p></details><label class="tournament-choice"><input type="checkbox" name="accept_terms" required> J’ai lu et j’accepte les conditions de ce tournoi. *</label><p class="commerce-help">Les champs * sont nécessaires à la gestion de l’inscription et du paiement. Coordonnées du responsable adulte uniquement ; aucune liste de joueurs n’est demandée. <a href="/confidentialite/" target="_blank" rel="noopener">Vos données et vos droits</a>.</p><button type="submit">Confirmer mon inscription →</button><p data-error role="status" tabindex="-1"></p><div data-recovery></div></div></form>`;
   dialog.querySelector("[data-close]").onclick = () => dialog.close();
   const form=dialog.querySelector("form");
   const updateTotal=()=>{
-    form.querySelectorAll("[data-section-row]").forEach((row)=>{
-      const selected=row.querySelector("input[type=radio]:checked")?.value==='yes';
-      row.querySelector("[data-section-quantity]").hidden=!selected;
-      const input=row.querySelector("input[type=number]");input.disabled=!selected;input.required=selected;
-    });
     const count=readSections(form,sections).reduce((sum,row)=>sum+(Number.isInteger(row.quantity)&&row.quantity>0?row.quantity:0),0);
     form.querySelector("[data-total-count]").textContent=`${count} équipe${count>1?'s':''} à inscrire`;
     form.querySelector("[data-total-price]").textContent=money(count*sale.fee_cents);

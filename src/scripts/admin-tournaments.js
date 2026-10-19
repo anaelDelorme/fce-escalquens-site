@@ -94,6 +94,7 @@ async function registrations() {
       "total_cents",
       "team_count",
       "sections_json",
+      "payment_method",
     ];
     const questions = new Map();
     for (const r of visible)
@@ -138,7 +139,7 @@ async function show(id) {
           )
           .join("")}</dl>`
       : ""
-  }<p>Paiement : <b>${esc(paymentLabels[o.payment_status] || o.payment_status)}</b> · ${money(o.total_cents)}</p><p><button data-reconcile>Vérifier chez HelloAsso</button> <button data-resend>Renvoyer le suivi</button> <button data-rotate>Révoquer et renvoyer le lien</button></p><form class="commerce-form-grid"><label>Inscription<select name="registration_status">${Object.entries(
+  }${r.payment_method==='cheque'?`<p class="tournament-cheque-instructions">${esc(r.cheque_snapshot)}</p>${o.payment_status==='pending'&&r.registration_status!=='cancelled'?'<p><button data-cheque-received>Confirmer la réception du chèque et le paiement</button></p>':''}`:''}<p>Paiement : <b>${esc(paymentLabels[o.payment_status] || o.payment_status)}</b> · ${money(o.total_cents)}</p><p><button data-reconcile>Vérifier chez HelloAsso</button> <button data-resend>Renvoyer le suivi</button> <button data-rotate>Révoquer et renvoyer le lien</button></p><form class="commerce-form-grid"><label>Inscription<select name="registration_status">${Object.entries(
     labels,
   )
     .map(
@@ -173,6 +174,7 @@ async function show(id) {
     });
   });
   target.scrollIntoView({ behavior: "smooth", block: "start" });
+  target.querySelector('[data-cheque-received]')?.addEventListener('click',e=>action(e.target,async()=>{await call(`registrations/${id}/cheque-received`,{method:'POST',data:{version:o.version}});await registrations();await show(id);}));
   target.querySelector("[data-reconcile]").onclick = (e) =>
     action(e.target, async () => {
       await call(`registrations/${id}/reconcile`, { method: "POST" });
@@ -199,62 +201,6 @@ async function show(id) {
       await registrations();
       await show(id);
     });
-  };
-}
-async function sales() {
-  const data = await call("sales");
-  root.innerHTML = `<section class="commerce-card"><h2>Tarifs et inscriptions</h2><p>La page Tournois et visuels permet de créer le tournoi, ses dates, son affiche et son règlement. Construisez ici son formulaire, son tarif et ses modalités de paiement. L’ouverture exige le statut « Inscriptions ouvertes » dans la présentation et une configuration activée ici.</p><p>Les changements concernent les prochaines inscriptions. Les inscriptions déjà enregistrées gardent leur prix, conditions et date limite.</p><p><button id="test-helloasso">Tester la connexion HelloAsso</button> <span id="helloasso-state"></span></p><label>Tournoi<select id="sale-select"><option value="">Choisir un tournoi</option>${data.sales.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join("")}</select></label><section id="sale-form"></section></section>`;
-  root.querySelector("#test-helloasso").onclick = (e) =>
-    action(e.target, async () => {
-      const s = await call("helloasso/test", { method: "POST" });
-      root.querySelector("#helloasso-state").textContent =
-        `${s.environment} · ${s.organization_slug} · ${s.can_receive_payments ? "Encaissement autorisé" : "Association à vérifier"}`;
-    });
-  root.querySelector("#sale-select").onchange = (event) => {
-    const s = data.sales.find((s) => s.id === Number(event.target.value));
-    if (!s) {
-      root.querySelector("#sale-form").innerHTML = "";
-      return;
-    }
-    root.querySelector("#sale-form").innerHTML =
-      `<form class="commerce-form-grid tournament-admin-form">${field("fee", "Tarif par équipe en euros", ((s.fee_cents || 100) / 100).toFixed(2), "number")}${field("capacity", "Capacité en équipes (0 = sans limite)", s.capacity || 0, "number")}${field("registration_deadline", "Clôture des inscriptions", localTime(s.registration_deadline), "datetime-local")}${field("payment_deadline", "Date limite de paiement", localTime(s.payment_deadline), "datetime-local")}<label class="wide">Conditions du tournoi : modalités d’inscription, annulation et remboursement<textarea name="terms" maxlength="12000" required>${esc(s.terms || "")}</textarea></label><label class="tournament-choice"><input type="checkbox" name="allow_pay_later" ${s.allow_pay_later !== 0 ? "checked" : ""}> Autoriser le paiement plus tard</label><label class="tournament-choice"><input type="checkbox" name="enabled" ${s.enabled ? "checked" : ""}> Activer les inscriptions intégrées</label><section class="wide" id="tournament-form-builder"></section><div class="wide"><button type="submit">Enregistrer le tarif et le formulaire</button></div></form>`;
-    const form = root.querySelector("#sale-form form");
-    const preview=document.createElement("p");preview.className="wide commerce-help";preview.textContent="Sections avec réponse Oui/Non obligatoire : "+(JSON.parse(s.categories||"[]").join(", ")||"Équipes")+". Le total est calculé selon le nombre d’équipes inscrites.";form.prepend(preview);
-    const readFields = formEditor(
-      form.querySelector("#tournament-form-builder"),
-      JSON.parse(s.form_json || "[]"),
-    );
-    form.elements.fee.step = "0.01";
-    form.elements.fee.min = "0.01";
-    form.elements.fee.max = "10000";
-    form.elements.capacity.min = 0;
-    form.elements.capacity.max = 10000;
-    form.onsubmit = (e) => {
-      e.preventDefault();
-      action(form.querySelector("button"), async () => {
-        await call("sales", {
-          method: "PUT",
-          data: {
-            tournament_id: s.id,
-            version: s.version || 0,
-            fee_cents: Math.round(Number(form.elements.fee.value) * 100),
-            capacity: Number(form.elements.capacity.value),
-            registration_deadline: Math.floor(
-              new Date(form.elements.registration_deadline.value).getTime() /
-                1000,
-            ),
-            payment_deadline: Math.floor(
-              new Date(form.elements.payment_deadline.value).getTime() / 1000,
-            ),
-            terms: form.elements.terms.value,
-            form_fields: readFields(),
-            enabled: form.elements.enabled.checked,
-            allow_pay_later: form.elements.allow_pay_later.checked,
-          },
-        });
-        await sales();
-      });
-    };
   };
 }
 async function admins() {
@@ -294,7 +240,7 @@ call("status")
     return (
       {
         registrations,
-        sales,
+        sales: () => eventEditor(root,call,action),
         admins,
         events: () => eventEditor(root, call, action),
       }[root.dataset.page] || registrations
