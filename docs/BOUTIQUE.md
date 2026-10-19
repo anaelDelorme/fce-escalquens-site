@@ -1,5 +1,7 @@
 # Guide technique boutique
 
+**V5.2 :** suivre [TOURNOIS-V5.2.md](TOURNOIS-V5.2.md) pour les tableaux boutique, l’éditeur de formulaire et la migration obligatoire des tournois vers leur D1 dédiée.
+
 Pour une installation pas à pas **sans compte HelloAsso**, commencer par [INSTALLATION-STAGING.md](INSTALLATION-STAGING.md). La branche de préproduction s’appelle désormais `staging` ; l’administration boutique est entièrement sous `/admin-boutique/`.
 
 # Boutique FCE : installation, exploitation et recette

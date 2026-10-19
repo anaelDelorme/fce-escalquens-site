@@ -1,3 +1,4 @@
+import { questionMarkup, readQuestionAnswers } from "./tournament-form-fields";
 import {
   api,
   esc,
@@ -9,7 +10,9 @@ import {
 const dialog = document.createElement("dialog");
 dialog.className = "tournament-dialog";
 document.body.append(dialog);
-let sale, draft;
+let sale,
+  draft,
+  questions = [];
 async function open(id) {
   const data = await api("/api/tournaments/catalogue");
   sale = data.tournaments.find((item) => item.id === Number(id));
@@ -17,6 +20,7 @@ async function open(id) {
     throw new Error(
       "Les inscriptions ne sont plus ouvertes. Rechargez la page.",
     );
+  questions = JSON.parse(sale.form_json || "[]");
   const existing = readStorage("fce-tournament-draft");
   draft = existing || { key: crypto.randomUUID() };
   dialog.innerHTML = `<button type="button" data-close class="tournament-close" aria-label="Fermer">×</button><p class="eyebrow">Une inscription par équipe</p><h2>${esc(sale.name)}</h2><p class="tournament-fee">${money(sale.fee_cents)} <small>par équipe</small></p><p>Le club validera votre inscription. ${sale.allow_pay_later ? "Vous pouvez régler maintenant ou retrouver le paiement dans votre e-mail de suivi." : "Le paiement se fait avec HelloAsso."}</p><form class="commerce-form-grid">${[
@@ -34,7 +38,7 @@ async function open(id) {
     )
     .join(
       "",
-    )}<div class="wide"><h3>Quand souhaitez-vous payer ?</h3><label class="tournament-choice"><input type="radio" name="payment_choice" value="now" checked> Maintenant avec HelloAsso</label>${sale.allow_pay_later ? '<label class="tournament-choice"><input type="radio" name="payment_choice" value="later"> Plus tard, depuis mon lien de suivi</label>' : ""}<p>Paiement au plus tard le ${date(sale.payment_deadline)}. La contribution volontaire proposée par HelloAsso peut être modifiée ou retirée sur sa page de paiement.</p><details open><summary>Conditions d’inscription et d’annulation</summary><p class="tournament-terms">${esc(sale.terms)}</p></details><label class="tournament-choice"><input type="checkbox" name="accept_terms" required> J’ai lu et j’accepte les conditions de ce tournoi. *</label><p class="commerce-help">Les champs * sont nécessaires à la gestion de l’inscription et du paiement. Coordonnées du responsable adulte uniquement ; aucune liste de joueurs n’est demandée. <a href="/confidentialite/" target="_blank" rel="noopener">Vos données et vos droits</a>.</p><button type="submit">Confirmer mon inscription →</button><p data-error role="status" tabindex="-1"></p><div data-recovery></div></div></form>`;
+    )}${questionMarkup(questions)}<div class="wide"><h3>Quand souhaitez-vous payer ?</h3><label class="tournament-choice"><input type="radio" name="payment_choice" value="now" checked> Maintenant avec HelloAsso</label>${sale.allow_pay_later ? '<label class="tournament-choice"><input type="radio" name="payment_choice" value="later"> Plus tard, depuis mon lien de suivi</label>' : ""}<p>Paiement au plus tard le ${date(sale.payment_deadline)}. La contribution volontaire proposée par HelloAsso peut être modifiée ou retirée sur sa page de paiement.</p><details open><summary>Conditions d’inscription et d’annulation</summary><p class="tournament-terms">${esc(sale.terms)}</p></details><label class="tournament-choice"><input type="checkbox" name="accept_terms" required> J’ai lu et j’accepte les conditions de ce tournoi. *</label><p class="commerce-help">Les champs * sont nécessaires à la gestion de l’inscription et du paiement. Coordonnées du responsable adulte uniquement ; aucune liste de joueurs n’est demandée. <a href="/confidentialite/" target="_blank" rel="noopener">Vos données et vos droits</a>.</p><button type="submit">Confirmer mon inscription →</button><p data-error role="status" tabindex="-1"></p><div data-recovery></div></div></form>`;
   dialog.querySelector("[data-close]").onclick = () => dialog.close();
   dialog.querySelector("form").onsubmit = submit;
   dialog.showModal();
@@ -51,7 +55,10 @@ async function submit(event) {
     version: sale.version,
     expected_total: sale.fee_cents,
     accept_terms: true,
+    answers: readQuestionAnswers(form, questions),
   });
+  for (const key of Object.keys(data))
+    if (key.startsWith("extra:")) delete data[key];
   const fingerprint = Array.from(
     new Uint8Array(
       await crypto.subtle.digest(

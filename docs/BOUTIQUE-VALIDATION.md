@@ -1,6 +1,6 @@
 # État de validation de la livraison
 
-**Version actuelle : V5.1.** Voir la section V5.1 et son guide en fin de document. Les premières sections décrivent les livraisons précédentes.
+**Version actuelle : V5.2.** Voir la section V5.2 et son guide en fin de document. Les premières sections décrivent les livraisons précédentes.
 
 ## Vérifications effectuées
 
@@ -39,3 +39,10 @@ Les nouveaux tests vérifient cette séparation, la protection des médias par e
 - Les 31 migrations DB et les 3 migrations ORDERS s’appliquent intégralement sur deux SQLite distinctes ; contrôle d’intégrité des clés étrangères réussi.
 - La recette des vrais webhooks, des mails et du paiement dans le navigateur reste à effectuer sur le Worker staging après installation des secrets, des accès et des migrations. Aucun déploiement distant effectué ici.
 - Guide et recette : [BOUTIQUE-V5.1-INSTALLATION.md](BOUTIQUE-V5.1-INSTALLATION.md).
+
+## V5.2 : tableaux boutique et tournois dans une D1 dédiée
+
+- 63 tests passent : tableaux boutique, fourchettes, état d’ouverture détaillé, création des tournois hors du site, formulaires versionnés, validation des réponses, droits séparés et diagnostic Access, copie SQL, séparation des webhooks/mails et suivi des anciennes inscriptions.
+- Contrôle TypeScript réussi. Construction des 35 pages Astro réussie. L’empaquetage du Worker avec les trois bindings D1 est vérifié en déploiement à blanc. Les 32 migrations DB, les 3 migrations ORDERS et la migration TOURNAMENTS sont appliquées sur trois SQLite distinctes avec intégrité référentielle vérifiée.
+- Les règles Cloudflare réelles, la copie distante et les paiements Sandbox restent à vérifier après installation dans votre compte. Aucun déploiement distant n’a été effectué.
+- Procédure obligatoire avant le push : [TOURNOIS-V5.2.md](TOURNOIS-V5.2.md).

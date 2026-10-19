@@ -77,7 +77,9 @@ export async function deliverMail(
   if(order.kind === "tournament") {
     const registration=await env.ORDERS.prepare("SELECT * FROM tournament_registrations WHERE order_id=?").bind(order.id).first<Row>();
     const labels:Record<string,string>={pending:"en attente de validation par le club",accepted:"acceptée",cancelled:"annulée",attended:"équipe accueillie"};
-    content=`Bonjour ${order.first_name},\n\nInscription ${order.reference} — ${registration?.tournament_name}\nClub : ${registration?.club_name}\nÉquipe : ${registration?.team_name} — ${registration?.category}\nInscription : ${labels[registration?.registration_status] || 'enregistrée'}.\n${state}\n${order.public_note}\nMontant : ${euros(order.total_cents)}\nDate limite de paiement : ${new Date((registration?.payment_deadline||0)*1000).toLocaleDateString('fr-FR',{timeZone:'Europe/Paris'})}\nLe paiement et l’acceptation par le club sont deux étapes distinctes.\n\nSuivre mon inscription et payer : ${link}\nCe lien personnel ne doit pas être transmis. Aucun compte n’est nécessaire.\n\nContact : ${settings.contact_email}\nVos données : ${origin(env)}/confidentialite/\n\n${order.terms_snapshot}`;
+    const answers=JSON.parse(registration?.answers_json||'{}');
+    const responses=JSON.parse(registration?.form_snapshot||'[]').map((f:Row)=>`${f.label} : ${typeof answers[f.id]==='boolean'?(answers[f.id]?'Oui':'Non'):answers[f.id]||'—'}`).join('\n');
+    content=`Bonjour ${order.first_name},\n\nInscription ${order.reference} — ${registration?.tournament_name}\nClub : ${registration?.club_name}\nÉquipe : ${registration?.team_name} — ${registration?.category}\nInscription : ${labels[registration?.registration_status] || 'enregistrée'}.\n${state}\n${order.public_note}\nMontant : ${euros(order.total_cents)}\nDate limite de paiement : ${new Date((registration?.payment_deadline||0)*1000).toLocaleDateString('fr-FR',{timeZone:'Europe/Paris'})}\nLe paiement et l’acceptation par le club sont deux étapes distinctes.\n${responses}\n\nSuivre mon inscription et payer : ${link}\nCe lien personnel ne doit pas être transmis. Aucun compte n’est nécessaire.\n\nContact : ${settings.contact_email}\nVos données : ${origin(env)}/confidentialite/\n\n${order.terms_snapshot}`;
   }
   // In staging no customer address is used: all messages go to the configured tester.
   const to =
@@ -122,9 +124,9 @@ export async function drainMail(env: ShopEnv, settings: Settings) {
   if (!env.ORDERS) return;
   const jobs = (
     await env.ORDERS.prepare(
-      "SELECT * FROM outbox WHERE status IN ('pending','sending') AND available_at<=? AND locked_until<? AND attempts<8 ORDER BY available_at LIMIT 10",
+      "SELECT * FROM outbox WHERE status IN ('pending','sending') AND available_at<=? AND locked_until<? AND attempts<8 AND EXISTS(SELECT 1 FROM orders o WHERE o.id=outbox.order_id AND o.kind=?) ORDER BY available_at LIMIT 10",
     )
-      .bind(now(), now())
+      .bind(now(), now(),env.ORDER_KIND||"shop")
       .all<Row>()
   ).results;
   for (const job of jobs) {

@@ -69,17 +69,16 @@ export async function accessToken(env: ShopEnv, base: string, force = false) {
       503,
       "Le club doit terminer la configuration HelloAsso.",
     );
+  const db = env.PAYMENT_DB || env.ORDERS;
   const cache = await tokenKey(env, base);
   if (inflight.has(cache)) return inflight.get(cache)!;
   const task = (async () => {
-    await env.ORDERS.prepare(
-      "INSERT OR IGNORE INTO helloasso_tokens(cache_key) VALUES(?)",
-    )
+    await db
+      .prepare("INSERT OR IGNORE INTO helloasso_tokens(cache_key) VALUES(?)")
       .bind(cache)
       .run();
-    const existing = await env.ORDERS.prepare(
-      "SELECT * FROM helloasso_tokens WHERE cache_key=?",
-    )
+    const existing = await db
+      .prepare("SELECT * FROM helloasso_tokens WHERE cache_key=?")
       .bind(cache)
       .first<Row>();
     let tokens = existing?.encrypted
@@ -88,9 +87,10 @@ export async function accessToken(env: ShopEnv, base: string, force = false) {
     if (!force && tokens?.access_token && existing!.expires_at > now() + 60)
       return tokens.access_token as string;
     const lock = crypto.randomUUID();
-    const claimed = await env.ORDERS.prepare(
-      "UPDATE helloasso_tokens SET lock_id=?,locked_until=? WHERE cache_key=? AND locked_until<=? RETURNING cache_key",
-    )
+    const claimed = await db
+      .prepare(
+        "UPDATE helloasso_tokens SET lock_id=?,locked_until=? WHERE cache_key=? AND locked_until<=? RETURNING cache_key",
+      )
       .bind(lock, now() + 45, cache, now())
       .first();
     if (!claimed)
@@ -100,9 +100,10 @@ export async function accessToken(env: ShopEnv, base: string, force = false) {
         "La connexion au paiement est en cours de renouvellement. Réessayez dans quelques instants.",
       );
     try {
-      const latest = await env.ORDERS.prepare(
-        "SELECT encrypted,expires_at FROM helloasso_tokens WHERE cache_key=?",
-      )
+      const latest = await db
+        .prepare(
+          "SELECT encrypted,expires_at FROM helloasso_tokens WHERE cache_key=?",
+        )
         .bind(cache)
         .first<Row>();
       tokens = latest?.encrypted ? await decrypt(env, latest.encrypted) : null;
@@ -147,9 +148,10 @@ export async function accessToken(env: ShopEnv, base: string, force = false) {
         );
       tokens.refresh_expires = now() + 29 * 86400;
       const expires = now() + Math.min(1800, Number(tokens.expires_in) || 1800);
-      await env.ORDERS.prepare(
-        "UPDATE helloasso_tokens SET encrypted=?,expires_at=? WHERE cache_key=? AND lock_id=?",
-      )
+      await db
+        .prepare(
+          "UPDATE helloasso_tokens SET encrypted=?,expires_at=? WHERE cache_key=? AND lock_id=?",
+        )
         .bind(await encryptTokens(env, tokens), expires, cache, lock)
         .run();
       return tokens.access_token as string;
@@ -161,9 +163,10 @@ export async function accessToken(env: ShopEnv, base: string, force = false) {
         "La connexion HelloAsso n’a pas répondu. Réessayez dans quelques instants.",
       );
     } finally {
-      await env.ORDERS.prepare(
-        "UPDATE helloasso_tokens SET locked_until=0,lock_id='' WHERE cache_key=? AND lock_id=?",
-      )
+      await db
+        .prepare(
+          "UPDATE helloasso_tokens SET locked_until=0,lock_id='' WHERE cache_key=? AND lock_id=?",
+        )
         .bind(cache, lock)
         .run();
     }

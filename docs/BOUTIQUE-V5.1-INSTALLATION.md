@@ -1,5 +1,7 @@
 # V5.1 — boutique et inscriptions aux tournois avec HelloAsso Sandbox
 
+**Si vous installez la V5.2 après cette version, suivez [TOURNOIS-V5.2.md](TOURNOIS-V5.2.md) : le stockage des tournois et leur première habilitation changent.**
+
 Livraison du 18 octobre 2026. **Ce patch remplace la V5 non installée : appliquez-le directement après la V4. N’installez pas la V5 avant.** Il inclut ses fournisseurs, articles simples, prix synchronisés et corrections de mise en page.
 
 ## 1. Ce qui est prêt et ce qui reste à configurer

@@ -1,4 +1,4 @@
-import {tournamentRoute} from './tournaments/service';
+import {tournamentEnv,tournamentRoute} from './tournaments/service';
 import { shopRoute, maintenance, type ShopEnv } from './shop/service';
 import { staff as shopStaff, sameOrigin as shopSameOrigin, response as shopResponse } from './shop/security';
 import { ShopError } from './shop/domain';
@@ -187,6 +187,7 @@ async function api(request: Request, env: Env, url: URL, trustedShopActor?: stri
   const shopTables = new Set(['shop_categories','shop_products','shop_settings','site_media']);
   if (shopScope && (!trustedShopActor || !shopTables.has(table))) return json({error:'Ressource boutique inconnue'},404);
   if (!shopScope && table.startsWith('shop_')) return json({error:'Gestion déplacée vers /admin-boutique/'},404);
+  if(['tournaments','tournament_teams'].includes(table))return json({error:'Gestion déplacée vers /admin-tournois/'},410);
   const authorize = async () => shopScope ? trustedShopActor : admin(request,env);
   if (!tables.has(table)) return json({ error: "Ressource inconnue" }, 404);
   if (!shopScope && !url.pathname.startsWith("/admin-api/")) return json({ error: "Ressource publique inconnue" }, 404);
@@ -770,18 +771,15 @@ async function pageData(env: Env, url: URL) {
   }
 
   if (page === "tournaments") {
-    const [tournaments, links, teams, venues] = await env.DB.batch<AnyRow>([
-      env.DB.prepare(`SELECT id,slug,name,summary,starts_on,ends_on,venue,categories,
-        registration_price,registration_url,rules_key,image_key,poster_key,
-        status,season_id,venue_id,tournify_url,organizer
-        FROM tournaments WHERE status IN ('published','open','finished')
-        AND (season_id IS NULL OR season_id=${activeSeason}) ORDER BY starts_on`),
-      env.DB.prepare(`SELECT tt.tournament_id,tt.team_id FROM tournament_teams tt JOIN tournaments t ON t.id=tt.tournament_id
-        WHERE t.season_id IS NULL OR t.season_id=${activeSeason} ORDER BY tt.tournament_id`),
-      env.DB.prepare("SELECT id,name,group_name FROM teams WHERE active=1 ORDER BY name COLLATE NOCASE"),
-      env.DB.prepare("SELECT id,name,address,latitude,longitude,maps_url,active,display_order FROM venues WHERE active=1 ORDER BY display_order,name COLLATE NOCASE")
+    if(!env.TOURNAMENTS)return json({error:'Les tournois sont en cours de configuration.'},503);
+    const [events,refs]=await Promise.all([
+      env.TOURNAMENTS.batch<AnyRow>([
+        env.TOURNAMENTS.prepare("SELECT id,slug,name,summary,starts_on,ends_on,venue,categories,registration_price,rules_key,image_key,poster_key,status,season_id,venue_id,tournify_url,organizer FROM tournaments WHERE status IN ('published','open','finished') ORDER BY starts_on"),
+        env.TOURNAMENTS.prepare('SELECT tournament_id,team_id FROM tournament_teams ORDER BY tournament_id')
+      ]),
+      env.DB.batch<AnyRow>([env.DB.prepare('SELECT id,name,group_name FROM teams WHERE active=1 ORDER BY name'),env.DB.prepare('SELECT id,name,address,latitude,longitude,maps_url,active,display_order FROM venues WHERE active=1 ORDER BY display_order,name')])
     ]);
-    return publicJson({ tournaments: resultRows(tournaments), links: resultRows(links), teams: resultRows(teams), venues: resultRows(venues) });
+    return publicJson({tournaments:resultRows(events[0]),links:resultRows(events[1]),teams:resultRows(refs[0]),venues:resultRows(refs[1])});
   }
 
   if (page === "mecenat") {
@@ -2021,7 +2019,7 @@ async function stagingAction(request: Request, env: Env) {
 }
 
 export default {
-  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) { ctx.waitUntil(maintenance(env)); },
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) { ctx.waitUntil(Promise.all([maintenance(env),...(env.TOURNAMENTS?[maintenance(tournamentEnv(env))]:[])])); },
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(request.url);
     if (url.pathname === "/internal/sync/matches" && request.method === "POST") {
@@ -2036,7 +2034,12 @@ export default {
     }
     // Provider callbacks and token-authenticated tracking cannot carry the staging Basic header.
     // Each tracking request is still authorized by its order-specific bearer token.
-    if (url.pathname === '/api/shop/helloasso/webhook' || url.pathname.startsWith('/api/shop/orders/')) return (await shopRoute(request, env, ctx))!;
+    if (url.pathname === '/api/shop/helloasso/webhook') {
+      const shop=await shopRoute(request.clone(),env,ctx);
+      if(!shop?.ok||!env.TOURNAMENTS)return shop!;
+      return (await shopRoute(request,tournamentEnv(env),ctx))!;
+    }
+    if (url.pathname.startsWith('/api/shop/orders/'))return (await shopRoute(request,env,ctx))!;
     if (url.pathname.startsWith('/api/tournaments/registrations/') || ['/paiements/retour','/tournois/suivi'].some(p=>url.pathname===p||url.pathname.startsWith(p+'/'))) return (await tournamentRoute(request,env,ctx))!;
     const gate = testGate(request, env);
     if (gate) return gate;
@@ -2054,6 +2057,7 @@ export default {
         return shopResponse({error:'Cette opération sur le catalogue a échoué. Rechargez la page puis réessayez.',code:'CONTENT_ERROR'},500);
       }
     }
+    if(url.pathname==='/admin-tournois/api/upload'){try{const scoped=tournamentEnv(env);const actor=await shopStaff(request,scoped,'tournament');shopSameOrigin(request,env);if(request.method!=='POST')return shopResponse({error:'Méthode non autorisée.'},405);return await upload(request,env,actor);}catch(e){return shopResponse({error:e instanceof ShopError?e.message:'Envoi impossible.',code:e instanceof ShopError?e.code:'UPLOAD'},e instanceof ShopError?e.status:500);}}
     const tournament = await tournamentRoute(request,env,ctx);
     if (tournament) return tournament;
     const shop = await shopRoute(request, env, ctx);

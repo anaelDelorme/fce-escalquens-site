@@ -62,14 +62,13 @@ export async function cataloguePdf(cat: Catalogue, stamp = new Date(), images: C
         text(page,`${String(productNumber).padStart(2,'0')} / ${category}`,244,top-18,300,8,bold,red,1);
         let y=top-40;y-=text(page,p.name,244,y,304,17,bold,wine,2)+7;
         const variants=cat.variants.filter(v=>v.product_id===p.id),options=cat.options.filter(o=>o.product_id===p.id);
-        if(variants.length){const prices=variants.map(v=>v.price_cents),min=Math.min(...prices);y-=text(page,(new Set(prices).size>1?'À partir de ':'')+money(min),244,y,300,15,bold,red,1)+7;}
+        if(variants.length){const prices=variants.map(v=>v.price_cents),min=Math.min(...prices);y-=text(page,(new Set(prices).size>1?'De '+money(min)+' à '+money(Math.max(...prices)):money(min)),244,y,300,15,bold,red,1)+7;}
         else if(p.price_label){y-=text(page,p.price_label,244,y,300,12,bold,red,1)+7;}
         y-=text(page,p.short_description||p.description,244,y,300,10,font,ink,3)+9;
         // Group sizes sharing a price to keep a full size range readable without a long table.
         const prices=new Map<number,string[]>();for(const v of variants){if(!prices.has(v.price_cents))prices.set(v.price_cents,[]);prices.get(v.price_cents)!.push(v.label+(v.color?' / '+v.color:''));}
         const detailLines=variants.length?[...prices].map(([price,labels])=>`${labels.join(', ')} : ${money(price)}`):[p.sizes?`Tailles : ${p.sizes}`:'Tailles à préciser', 'Commande en ligne prochainement'];
         for(const o of options)detailLines.push(`${o.label} : ${o.price_cents?'+ '+money(o.price_cents):'inclus'}`);
-        if(!options.length&&p.options)detailLines.push(`Options présentées : ${p.options}`);
         if(p.delivery_delay)detailLines.push(`Délai indicatif : ${p.delivery_delay}`);
         const available=Math.max(1,Math.floor((y-(bottom+32))/12.4));
         const details=wrap(detailLines.join('\n'),300,9);const chosen=details.slice(0,available);

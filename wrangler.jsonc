@@ -39,6 +39,11 @@
       "database_name": "fce-escalquens-orders",
       "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "migrations-orders"
+    },
+    {
+      "binding": "fce_escalquens_tournaments_staging",
+      "database_name": "fce-escalquens-tournaments-staging",
+      "database_id": "00000000-0000-0000-0000-000000000000"
     }
   ],
   "r2_buckets": [
@@ -72,6 +77,12 @@
           "database_name": "fce-escalquens-orders-staging",
           "database_id": "3149647e-9a2f-403a-9591-b7d161bbc98a",
           "migrations_dir": "migrations-orders"
+        },
+        {
+          "binding": "TOURNAMENTS",
+          "database_name": "fce-escalquens-tournaments-staging",
+          "database_id": "be2b86a8-41d2-4873-8e3e-52c62bc72db3",
+          "migrations_dir": "migrations-tournaments"
         }
       ],
       "r2_buckets": [

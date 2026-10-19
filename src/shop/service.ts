@@ -32,6 +32,9 @@ import { priceLabelStatement } from "./catalogue-pricing";
 export interface ShopEnv {
   DB: D1Database;
   ORDERS: D1Database;
+  TOURNAMENTS?: D1Database;
+  PAYMENT_DB?: D1Database;
+  ORDER_KIND?: "shop" | "tournament";
   ASSETS: Fetcher;
   APP_ENV?: string;
   SHOP_ORIGIN?: string;
@@ -62,7 +65,7 @@ export interface ShopEnv {
 export async function settings(
   env: ShopEnv,
 ): Promise<Settings & { version: number }> {
-  const row = await env.ORDERS.prepare(
+  const row = await (env.PAYMENT_DB||env.ORDERS).prepare(
     "SELECT data,version FROM settings WHERE id=1",
   ).first<Row>();
   return {
@@ -97,12 +100,13 @@ async function openForSales(env: ShopEnv, s: Settings) {
   const shop = await env.DB.prepare(
     "SELECT shop_enabled FROM shop_settings WHERE id=1",
   ).first<Row>();
-  if (!shop || !shop.shop_enabled || !s.checkout_enabled)
+  if (!shop || !shop.shop_enabled)
     fail(
       "SHOP_CLOSED",
       503,
-      "Les commandes sont momentanément fermées. Votre panier est conservé.",
+      "La boutique est masquée par le club. Votre panier est conservé.",
     );
+  if(!s.checkout_enabled)fail("CHECKOUT_DISABLED",503,"Le paiement n’est pas encore activé par le club. Votre panier est conservé.");
   if (
     !s.legal_ready ||
     !s.seller_address ||
@@ -138,6 +142,7 @@ async function openForSales(env: ShopEnv, s: Settings) {
     );
   origin(env);
 }
+async function shopAvailability(env:ShopEnv,s:Settings){try{await openForSales(env,s);return {ready:true,code:'READY',message:'Le paiement est ouvert.'};}catch(error){return {ready:false,code:error instanceof ShopError?error.code:'CONFIGURATION',message:error instanceof ShopError?error.message:'La configuration doit être vérifiée.'};}}
 export const event = (
   env: ShopEnv,
   id: string,
@@ -242,7 +247,7 @@ export async function detail(env: ShopEnv, order: Row, admin = false) {
           : { kind: e.kind, message: e.message, created_at: e.created_at },
       ),
     survey: survey.results[0] || null,
-    ...(order.kind === "tournament" ? {registration: await env.ORDERS.prepare("SELECT tournament_name,club_name,team_name,category,registration_status,payment_deadline FROM tournament_registrations WHERE order_id=?").bind(order.id).first()} : {}),
+    ...(order.kind === "tournament" ? {registration: await env.ORDERS.prepare("SELECT tournament_name,club_name,team_name,category,registration_status,payment_deadline,answers_json,form_snapshot FROM tournament_registrations WHERE order_id=?").bind(order.id).first()} : {}),
     ...(admin ? { mails: mails.results, attempts: attempts.results } : {}),
   };
 }
@@ -709,8 +714,8 @@ async function webhook(request: Request, env: ShopEnv, s: Settings) {
     id = attempt?.order_id;
   }
   if (!id) return response({ ok: true });
-  const order = await env.ORDERS.prepare("SELECT id FROM orders WHERE id=?")
-    .bind(id)
+  const order = await env.ORDERS.prepare("SELECT id FROM orders WHERE id=? AND kind=?")
+    .bind(id,env.ORDER_KIND||"shop")
     .first();
   if (!order) return response({ ok: true });
   await rateLimit(env, `webhook:${id}`, 30, 60);
@@ -1001,12 +1006,13 @@ async function saveVariant(request: Request, env: ShopEnv, option = false) {
 }
 export async function maintenance(env: ShopEnv) {
   if (!env.ORDERS) return;
+  if(env.ORDER_KIND==="tournament"&&!await env.ORDERS.prepare("SELECT id FROM module_imports WHERE id='v5.2'").first())return;
   const s = await settings(env);
   const due = (
     await env.ORDERS.prepare(
-      "SELECT id FROM orders WHERE reconcile_after<=? AND EXISTS(SELECT 1 FROM checkout_attempts a WHERE a.order_id=orders.id AND a.intent_id IS NOT NULL) AND (closed_at IS NULL OR closed_at>?) ORDER BY reconcile_after LIMIT 20",
+      "SELECT id FROM orders WHERE kind=? AND reconcile_after<=? AND EXISTS(SELECT 1 FROM checkout_attempts a WHERE a.order_id=orders.id AND a.intent_id IS NOT NULL) AND (closed_at IS NULL OR closed_at>?) ORDER BY reconcile_after LIMIT 20",
     )
-      .bind(now(), now() - 180 * 86400)
+      .bind(env.ORDER_KIND||"shop",now(), now() - 180 * 86400)
       .all<Row>()
   ).results;
   for (const o of due) {
@@ -1019,9 +1025,9 @@ export async function maintenance(env: ShopEnv) {
     }
   }
   await env.ORDERS.prepare(
-    "UPDATE checkout_attempts SET state='uncertain',last_error='PAYMENT_UNCERTAIN' WHERE state='creating' AND created_at<?",
+    "UPDATE checkout_attempts SET state='uncertain',last_error='PAYMENT_UNCERTAIN' WHERE state='creating' AND created_at<? AND order_id IN (SELECT id FROM orders WHERE kind=?)",
   )
-    .bind(now() - 120)
+    .bind(now() - 120,env.ORDER_KIND||"shop")
     .run();
   await drainMail(env, s);
   await env.ORDERS.batch([
@@ -1030,12 +1036,12 @@ export async function maintenance(env: ShopEnv) {
       now() - 365 * 86400,
     ),
     env.ORDERS.prepare(
-      "DELETE FROM orders WHERE kind='shop' AND created_at<? AND paid_at IS NULL AND NOT EXISTS(SELECT 1 FROM checkout_attempts a WHERE a.order_id=orders.id AND a.state IN ('creating','uncertain','pending','completed'))",
-    ).bind(now() - 30 * 86400),
-    env.ORDERS.prepare("DELETE FROM orders WHERE kind='tournament' AND paid_at IS NULL AND EXISTS(SELECT 1 FROM tournament_registrations r WHERE r.order_id=orders.id AND r.payment_deadline<?) AND NOT EXISTS(SELECT 1 FROM checkout_attempts a WHERE a.order_id=orders.id AND a.state IN ('creating','uncertain','pending','completed'))").bind(now()-90*86400),
+      "DELETE FROM orders WHERE kind='shop' AND kind=? AND created_at<? AND paid_at IS NULL AND NOT EXISTS(SELECT 1 FROM checkout_attempts a WHERE a.order_id=orders.id AND a.state IN ('creating','uncertain','pending','completed'))",
+    ).bind(env.ORDER_KIND||"shop",now() - 30 * 86400),
+    env.ORDERS.prepare("DELETE FROM orders WHERE kind='tournament' AND kind=? AND paid_at IS NULL AND EXISTS(SELECT 1 FROM tournament_registrations r WHERE r.order_id=orders.id AND r.payment_deadline<?) AND NOT EXISTS(SELECT 1 FROM checkout_attempts a WHERE a.order_id=orders.id AND a.state IN ('creating','uncertain','pending','completed'))").bind(env.ORDER_KIND||"shop",now()-90*86400),
     env.ORDERS.prepare(
-      "UPDATE orders SET token_expires=MAX(token_expires,?) WHERE closed_at IS NULL AND paid_at IS NOT NULL",
-    ).bind(now() + 90 * 86400),
+      "UPDATE orders SET token_expires=MAX(token_expires,?) WHERE kind=? AND closed_at IS NULL AND paid_at IS NOT NULL",
+    ).bind(now() + 90 * 86400,env.ORDER_KIND||"shop"),
     env.ORDERS.prepare(
       "DELETE FROM orders WHERE closed_at IS NOT NULL AND closed_at<?",
     ).bind(now() - 10 * 366 * 86400),
@@ -1066,6 +1072,7 @@ export async function shopRoute(
   try {
     if (!env.ORDERS)
       fail("ORDERS_CONFIG", 503, "La boutique est en cours de configuration.");
+    if(env.ORDER_KIND==="tournament"&&!await env.ORDERS.prepare("SELECT id FROM module_imports WHERE id='v5.2'").first())fail("MIGRATION_PENDING",503,"La copie initiale des tournois n’est pas terminée.");
     const s = await settings(env);
     if (isStaffPage) {
       if (
@@ -1141,6 +1148,7 @@ export async function shopRoute(
             settings: s,
             environment: environment(env),
             origin: env.SHOP_ORIGIN || "",
+            availability: await shopAvailability(env,s),
             configuration: {
               credentials:
                 !!env.HELLOASSO_CLIENT_ID && !!env.HELLOASSO_CLIENT_SECRET,
@@ -1377,15 +1385,17 @@ export async function shopRoute(
     }
     if (path === "/api/shop/catalogue" && request.method === "GET") {
       const cat = await catalogue(env);
-      let available = true;
+      let available = true, unavailable: Row | null = null;
       try {
         await openForSales(env, s);
-      } catch {
+      } catch(error) {
         available = false;
+        unavailable=error instanceof ShopError?{code:error.code,message:error.message}:{code:"CONFIGURATION",message:"Le paiement est temporairement indisponible. Votre panier est conservé."};
       }
       return response({
         ...cat,
         checkout_available: available,
+        checkout_unavailable: unavailable,
         environment: environment(env),
         terms_version: TERMS_VERSION,
         delivery_days: s.delivery_days,

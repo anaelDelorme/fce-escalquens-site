@@ -68,7 +68,7 @@ function draw(){
         </dl>
         ${row.organizer?`<p class="tournament-organizer">Organisé par <b>${esc(row.organizer)}</b></p>`:''}
         <div class="tournament-actions">
-          ${sale?.available?`<button class="tournament-action tournament-action--primary" data-tournament-register="${row.id}">Inscrire mon équipe →</button>`:!sale&&row.registration_url?`<a class="tournament-action tournament-action--primary" href="${esc(row.registration_url)}" target="_blank" rel="noopener">S’inscrire →</a>`:''}
+          ${sale?.available?`<button class="tournament-action tournament-action--primary" data-tournament-register="${row.id}">Inscrire mon équipe →</button>`:''}
           ${row.tournify_url?`<a class="tournament-action" href="${esc(row.tournify_url)}" target="_blank" rel="noopener">Tournify →</a>`:''}
           ${row.poster_key?`<a class="tournament-action" href="/media/${esc(row.poster_key)}" target="_blank" rel="noopener">Voir l’affiche</a>`:''}
           ${row.rules_key?`<a class="tournament-action" href="/media/${esc(row.rules_key)}" target="_blank" rel="noopener">Règlement</a>`:''}

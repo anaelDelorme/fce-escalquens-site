@@ -43,3 +43,7 @@ ordre_affichage_equipes.py
 
 # Sauvegardes locales des imports catalogue
 backups/boutique-*/
+
+# Copies temporaires de la migration tournois (données privées)
+.tournaments-copy-*/
+backups-tournois/

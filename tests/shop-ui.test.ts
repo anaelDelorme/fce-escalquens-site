@@ -84,3 +84,13 @@ test('article simple : un prix et un fournisseur sélectionné, aucune taille ni
  w.document.querySelector<HTMLElement>('[data-product-mode="choices"]')!.click();assert.equal(w.document.querySelector<HTMLFormElement>('#option-form')!.hidden,true);w.document.querySelector<HTMLElement>('#add-product-option')!.click();assert.equal(w.document.querySelector<HTMLFormElement>('#option-form')!.hidden,false);
  await w.happyDOM.abort();w.close();
 });
+test('administration boutique DOM : tableaux des modèles et des personnalisations sans champ de présentation des options',async()=>{
+ const w=new Window({url:'https://example.org/admin-boutique/articles/'});w.document.write('<p id="admin-shop-message"></p><div id="root"></div>');
+ const data={variants:[{id:'m',product_id:1,label:'Adulte M',size:'M',color:'Bordeaux',price_cents:2000,sku:'SKU-M',supplier_id:'s1',active:1},{id:'l',product_id:1,label:'Adulte L',size:'L',price_cents:2500,sku:'SKU-L',supplier_id:'s1',active:1}],options:[{id:'initials',product_id:1,label:'Initiales',price_cents:200,requires_text:1,max_length:4,active:1}]};
+ const call=async(path:string)=>path==='catalogue'?data:{suppliers:[{id:'s1',name:'Kappa',active:1}]};
+ await renderVariants(w.document.querySelector('#root'),call,()=>{},1);
+ assert.equal(w.document.querySelectorAll('table').length,2);assert.match(w.document.querySelectorAll('table')[0].textContent!,/Adulte L/);assert.match(w.document.querySelectorAll('table')[1].textContent!,/Initiales/);assert.equal(w.document.querySelector('#variant-select'),null);assert.equal(w.document.querySelector('#option-select'),null);assert.match(w.document.querySelector('#published-variant-price')!.textContent!,/De 20,00.*à 25,00/);
+ w.document.querySelector<HTMLElement>('[data-edit-variant="l"]')!.click();assert.equal((w.document.querySelector('[name=price]') as HTMLInputElement).value,'25');
+ w.document.querySelector<HTMLElement>('[data-edit-personalization="initials"]')!.click();assert.equal(w.document.querySelectorAll('#option-form input[type=checkbox]').length,0);assert.equal((w.document.querySelector('#option-form [name=label]') as HTMLInputElement).value,'Initiales');
+ await w.happyDOM.abort();w.close();
+});

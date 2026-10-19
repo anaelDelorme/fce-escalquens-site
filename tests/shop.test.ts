@@ -20,7 +20,7 @@ import {
   reconcile,
   type ShopEnv,
 } from "../src/shop/service";
-import {tournamentRoute} from "../src/tournaments/service";
+import {tournamentEnv,tournamentRoute} from "../src/tournaments/service";
 import {accessToken,tokenKey} from "../src/shop/helloasso-auth";
 import { staff } from "../src/shop/security";
 import { defaultSettings } from "../src/shop/terms";
@@ -147,7 +147,7 @@ test("liens opaques, déterministes pour les mails, stockés uniquement en hash"
   assert.equal(a, await trackingToken("a".repeat(64), "test", 1));
   assert.notEqual(a, await trackingToken("a".repeat(64), "test", 2));
 });
-let DB: TestDatabase, ORDERS: TestDatabase, env: ShopEnv;
+let DB: TestDatabase, ORDERS: TestDatabase, TOURNEYS:TestDatabase, env: ShopEnv;
 const tasks: Promise<unknown>[] = [];
 const ctx = {
   waitUntil(p: Promise<unknown>) {
@@ -191,6 +191,10 @@ const settingsValue = {
 before(async () => {
   DB = new TestDatabase();
   ORDERS = new TestDatabase();
+  TOURNEYS=new TestDatabase();
+  await TOURNEYS.exec(readFileSync(new URL("../migrations-tournaments/0001_tournaments.sql",import.meta.url),"utf8"));
+  await TOURNEYS.exec("INSERT INTO module_imports(id,imported_at) VALUES('v5.2',0)");
+  await TOURNEYS.exec(`INSERT INTO tournaments(id,slug,name,starts_on,categories,status) VALUES(1,'tournoi-u11','Tournoi U11','2027-06-10','["U11"]','open');`);
   await DB.exec(
     "CREATE TABLE admins(email TEXT,active INTEGER);CREATE TABLE shop_products(id INTEGER PRIMARY KEY,name TEXT,image_key TEXT,active INTEGER,price_label TEXT,sizes TEXT,options TEXT);CREATE TABLE shop_settings(id INTEGER PRIMARY KEY,shop_enabled INTEGER);INSERT INTO shop_settings VALUES(1,1);INSERT INTO shop_products VALUES(1,'Castolo','test.webp',1,'Dès 20 €','','');",
   );
@@ -239,6 +243,7 @@ before(async () => {
   env = {
     DB: DB as any,
     ORDERS: ORDERS as any,
+    TOURNAMENTS:TOURNEYS as any,
     ASSETS: { fetch: async () => new Response("<html>page</html>") } as any,
     APP_ENV: "local",
     SHOP_ORIGIN: "http://localhost:8787",
@@ -321,6 +326,7 @@ after(async () => {
   await Promise.allSettled(tasks);
   DB?.close();
   ORDERS?.close();
+  TOURNEYS?.close();
 });
 const request = (
   path: string,
@@ -1224,10 +1230,10 @@ test('tarifs : prix affiché synchronisé, mode simple atomique et commandes pas
  const first=await save({});assert.equal(first.status,200);
  let product=await DB.prepare('SELECT price_label FROM shop_products WHERE id=991').first<any>();assert.equal(product.price_label,'12,50 €');
  const second=await save({label:'L',size:'L',price_cents:1500});assert.equal(second.status,200);
- product=await DB.prepare('SELECT price_label FROM shop_products WHERE id=991').first<any>();assert.equal(product.price_label,'À partir de 12,50 €');
+ product=await DB.prepare('SELECT price_label FROM shop_products WHERE id=991').first<any>();assert.equal(product.price_label,'De 12,50 € à 15,00 €');
  // A catalogue text edit cannot overwrite the computed price of configured products.
  const edit=await worker.fetch(request('/admin-boutique/api/content/shop_products/991',{price_label:'1 €',image_key:'a.webp'},{admin:true,method:'PUT'}),env as any,ctx);assert.equal(edit.status,200);
- assert.equal((await DB.prepare('SELECT price_label FROM shop_products WHERE id=991').first<any>()).price_label,'À partir de 12,50 €');
+ assert.equal((await DB.prepare('SELECT price_label FROM shop_products WHERE id=991').first<any>()).price_label,'De 12,50 € à 15,00 €');
  await DB.prepare("INSERT INTO shop_options(id,product_id,label,price_cents,requires_text,max_length,active) VALUES('old-option',991,'Initiales',200,1,4,1)").run();
  const snapshot=await ORDERS.prepare('SELECT name,supplier,unit_cents FROM order_items ORDER BY id LIMIT 1').first<any>();
  const simple=await save({id:first.body.id,simple:true,label:'Taille unique',size:'',price_cents:1800});assert.equal(simple.status,200);
@@ -1258,11 +1264,11 @@ test('tournois : réglages versionnés, inscription différée atomique, capacit
  assert.equal(first.status,200,JSON.stringify(first.body));registration={...first.body,payload};assert.equal(intents,before);
  assert.equal((await tournamentApi('/api/tournaments/registrations',payload)).body.order_id,registration.order_id);
  assert.equal((await tournamentApi('/api/tournaments/registrations',tournamentPayload())).body.code,'TOURNAMENT_FULL');
- const row=await ORDERS.prepare('SELECT * FROM orders WHERE id=?').bind(registration.order_id).first<any>();assert.equal(row.kind,'tournament');assert.equal(row.total_cents,4900);assert.notEqual(row.token_hash,registration.tracking_token);assert.equal(row.token_hash,await sha256(registration.tracking_token));
- assert.equal((await ORDERS.prepare('SELECT count(*) n FROM order_items WHERE order_id=?').bind(registration.order_id).first<any>()).n,1);
+ const row=await TOURNEYS.prepare('SELECT * FROM orders WHERE id=?').bind(registration.order_id).first<any>();assert.equal(row.kind,'tournament');assert.equal(row.total_cents,4900);assert.notEqual(row.token_hash,registration.tracking_token);assert.equal(row.token_hash,await sha256(registration.tracking_token));
+ assert.equal((await TOURNEYS.prepare('SELECT count(*) n FROM order_items WHERE order_id=?').bind(registration.order_id).first<any>()).n,1);
  assert.equal((await tournamentApi('/admin-tournois/api/sales',{...config,version:1,fee_cents:5500},{admin:true,method:'PUT'})).status,200);
  assert.equal((await tournamentApi('/admin-tournois/api/sales',{...config,version:1,fee_cents:6000},{admin:true,method:'PUT'})).status,409);
- assert.equal((await ORDERS.prepare('SELECT total_cents FROM orders WHERE id=?').bind(registration.order_id).first<any>()).total_cents,4900);
+ assert.equal((await TOURNEYS.prepare('SELECT total_cents FROM orders WHERE id=?').bind(registration.order_id).first<any>()).total_cents,4900);
  assert.equal((await route(request(`/api/shop/orders/${registration.order_id}`,undefined,{token:registration.tracking_token}))).status,404);
  assert.equal((await route(request(`/admin-boutique/api/orders/${registration.order_id}`,undefined,{admin:true}))).status,404);
  assert.equal((await tournamentApi(`/api/tournaments/registrations/${created.order_id}`,undefined,{token:created.tracking_token})).status,404);
@@ -1274,17 +1280,17 @@ test('tournois : paiement ultérieur HelloAsso, retour sans secret et validation
  const payload=checkoutBodies.at(-1);assert.equal(payload.totalAmount,4900);assert.match(payload.returnUrl,/\/paiements\/retour\//);assert.ok(!JSON.stringify(payload).includes(registration.tracking_token));
  const view=await tournamentApi(path,undefined,{token:registration.tracking_token});assert.equal(view.body.order.payment_status,'pending');assert.equal(view.body.registration.registration_status,'pending');
  paymentAuthorized=true;const confirmed=await tournamentApi(`${path}/refresh`,{}, {token:registration.tracking_token});assert.equal(confirmed.body.order.payment_status,'paid');assert.equal(confirmed.body.registration.registration_status,'pending');
- await Promise.allSettled(tasks);await drainMail(env,await settings(env));const jobs=await ORDERS.prepare('SELECT status FROM outbox WHERE order_id=?').bind(registration.order_id).all<any>();assert.ok(jobs.results.every((j:any)=>j.status==='sent'));
+ await Promise.allSettled(tasks);await drainMail(env,await settings(env));const jobs=await TOURNEYS.prepare('SELECT status FROM outbox WHERE order_id=?').bind(registration.order_id).all<any>();assert.ok(jobs.results.every((j:any)=>j.status==='sent'));
 });
 test('tournois : habilitations Cloudflare indépendantes et contrôle des modifications concurrentes',async()=>{
  const production={...env,APP_ENV:'production',SHOP_ORIGIN:'https://example.org',CF_ACCESS_ISSUER:'https://test.cloudflareaccess.com',CF_ACCESS_SHOP_AUD:'aud',CF_ACCESS_TOURNAMENT_AUD:'tournament-aud'};
- await ORDERS.prepare("INSERT INTO tournament_admins(email,name) VALUES('tournois@example.org','Tournois')").run();
+ await TOURNEYS.prepare("INSERT INTO tournament_admins(email,name) VALUES('tournois@example.org','Tournois')").run();
  const signed=async(address:string,aud:string)=>new SignJWT({email:address}).setProtectedHeader({alg:'RS256',kid:'test-key'}).setIssuer(production.CF_ACCESS_ISSUER).setAudience(aud).setExpirationTime(now()+600).sign(accessPair.privateKey);
  const req=async(address:string,aud:string)=>new Request('https://example.org/admin-tournois/',{headers:{'cf-access-jwt-assertion':await signed(address,aud)}});
  assert.equal((await tournamentRoute(await req('tournois@example.org','tournament-aud'),production,ctx))?.status,200);
  assert.equal((await tournamentRoute(await req('admin@example.org','aud'),production,ctx))?.status,401);
  assert.equal((await tournamentRoute(await req('admin@example.org','tournament-aud'),production,ctx))?.status,403);
- const order=await findOrder(env,registration.order_id),path=`/admin-tournois/api/registrations/${registration.order_id}`;
+ const order=await findOrder(tournamentEnv(env),registration.order_id),path=`/admin-tournois/api/registrations/${registration.order_id}`;
  assert.equal((await tournamentApi(path,{version:order.version,registration_status:'accepted',public_note:'Bienvenue',internal_note:'ok'},{admin:true,method:'PUT'})).status,200);
  assert.equal((await tournamentApi(path,{version:order.version,registration_status:'cancelled',public_note:'stale',internal_note:'stale'},{admin:true,method:'PUT'})).status,409);
  const updated=await tournamentApi(path,undefined,{admin:true});assert.equal(updated.body.registration.registration_status,'accepted');assert.equal(updated.body.order.public_note,'Bienvenue');
@@ -1302,7 +1308,7 @@ test('tournois : choix imposé, échéance, renvoi générique et révocation du
  const stale=await tournamentApi('/api/tournaments/registrations',tournamentPayload());assert.equal(stale.body.code,'PRICE_CHANGED');
  const payload={...tournamentPayload(),version:sale.version+1,expected_total:sale.fee_cents};assert.equal((await tournamentApi('/api/tournaments/registrations',payload)).body.code,'PAYMENT_CHOICE');
  const created=await tournamentApi('/api/tournaments/registrations',{...payload,payment_choice:'now'});assert.equal(created.status,200,JSON.stringify(created.body));const id=created.body.order_id,token=created.body.tracking_token;
- await ORDERS.prepare('UPDATE tournament_registrations SET payment_deadline=? WHERE order_id=?').bind(now()-1,id).run();
+ await TOURNEYS.prepare('UPDATE tournament_registrations SET payment_deadline=? WHERE order_id=?').bind(now()-1,id).run();
  assert.equal((await tournamentApi(`/api/tournaments/registrations/${id}/pay`,{},{token})).body.code,'PAYMENT_DEADLINE');
  assert.equal((await tournamentApi(`/admin-tournois/api/registrations/${id}/rotate-link`,{},{admin:true})).status,200);
  assert.equal((await tournamentApi(`/api/tournaments/registrations/${id}`,undefined,{token})).status,404);
@@ -1310,8 +1316,57 @@ test('tournois : choix imposé, échéance, renvoi générique et révocation du
  assert.equal((await tournamentApi('/api/tournaments/registrations',{...tournamentPayload()},{origin:'https://evil.example'})).status,403);
 });
 test('tournois : clôture, date d’expiration du lien et en-têtes de protection des pages',async()=>{
- const order=await findOrder(env,registration.order_id),path=`/admin-tournois/api/registrations/${order.id}`;
+ const order=await findOrder(tournamentEnv(env),registration.order_id),path=`/admin-tournois/api/registrations/${order.id}`;
  const closed=await tournamentApi(path,{version:order.version,registration_status:'attended',public_note:'Merci',internal_note:''},{admin:true,method:'PUT'});assert.equal(closed.status,200,JSON.stringify(closed.body));
- const updated=await findOrder(env,order.id);assert.ok(updated.closed_at);assert.equal(updated.token_expires,updated.closed_at+90*86400);
+ const updated=await findOrder(tournamentEnv(env),order.id);assert.ok(updated.closed_at);assert.equal(updated.token_expires,updated.closed_at+90*86400);
  for(const path of ['/paiements/retour/index.html','/tournois/suivi/index.html']){const res=await tournamentRoute(request(path),env,ctx);assert.equal(res?.headers.get('cache-control'),'no-store, private');assert.equal(res?.headers.get('referrer-policy'),'no-referrer');assert.match(res?.headers.get('content-security-policy')||'',/script-src 'self'/);}
+});
+test('tournois V5.2 : création dans la D1 dédiée, ancien CRUD fermé et formulaire versionné',async()=>{
+ const created=await tournamentApi('/admin-tournois/api/events',{name:'Tournoi personnalisé',starts_on:'2027-07-01',status:'open',venue:'Stade du club',categories:['U13'],summary:'Présentation',organizer:'FCE'},{admin:true});assert.equal(created.status,200,JSON.stringify(created.body));const id=created.body.id;
+ assert.equal(await DB.prepare('SELECT id FROM tournaments WHERE id=? AND name=?').bind(id,'Tournoi personnalisé').first(),null);
+ const old=await worker.fetch(request('/admin-api/tournaments',undefined,{admin:true}),env as any,ctx);assert.equal(old.status,410);
+ const fields=[{id:'transport',label:'Besoin de stationnement ?',type:'select',required:true,choices:['Oui','Non']},{id:'comment',label:'Précision logistique',type:'textarea',required:false,choices:[]}];
+ const config={tournament_id:id,version:0,fee_cents:4900,capacity:5,enabled:true,allow_pay_later:true,registration_deadline:now()+86400,payment_deadline:now()+172800,terms:'Inscription confirmée par le club. Les conditions d’annulation et de remboursement sont communiquées dans le règlement du tournoi.',form_fields:fields};
+ assert.equal((await tournamentApi('/admin-tournois/api/sales',config,{admin:true,method:'PUT'})).status,200);
+ const payload={...tournamentPayload(),tournament_id:id};
+ assert.equal((await tournamentApi('/api/tournaments/registrations',payload)).status,400);
+ const result=await tournamentApi('/api/tournaments/registrations',{...payload,answers:{transport:'Oui',comment:'Un minibus'}});assert.equal(result.status,200,JSON.stringify(result.body));
+ const detail=await tournamentApi(`/api/tournaments/registrations/${result.body.order_id}`,undefined,{token:result.body.tracking_token});assert.equal(JSON.parse(detail.body.registration.answers_json).comment,'Un minibus');assert.equal(await ORDERS.prepare('SELECT id FROM orders WHERE id=?').bind(result.body.order_id).first(),null);
+ assert.equal((await tournamentApi('/admin-tournois/api/sales',{...config,version:1,form_fields:[{...fields[0],label:'Nouveau libellé'}]},{admin:true,method:'PUT'})).status,200);
+ const frozen=await tournamentApi(`/api/tournaments/registrations/${result.body.order_id}`,undefined,{token:result.body.tracking_token});assert.equal(JSON.parse(frozen.body.registration.form_snapshot)[0].label,'Besoin de stationnement ?');
+ const invalid=await tournamentApi('/api/tournaments/registrations',{...payload,idempotency_key:crypto.randomUUID(),version:2,answers:{transport:'Choix inventé'}});assert.equal(invalid.status,400);
+});
+test('tournois V5.2 : webhook et mails traités dans la bonne base sans réveiller les copies historiques',async()=>{
+ const original=await TOURNEYS.prepare('SELECT * FROM orders WHERE id=?').bind(registration.order_id).first<any>();
+ // Simulate a historical row retained in ORDERS after migration.
+ const columns=Object.keys(original);await ORDERS.prepare(`INSERT INTO orders(${columns.join(',')}) VALUES(${columns.map(()=>'?').join(',')})`).bind(...columns.map(k=>original[k])).run();
+ await ORDERS.prepare("INSERT INTO outbox(id,order_id,kind,available_at) VALUES('old-tournament-mail',?,'tracking',?)").bind(original.id,now()).run();
+ const before=sent;await drainMail(env,await settings(env));assert.equal((await ORDERS.prepare("SELECT status FROM outbox WHERE id='old-tournament-mail'").first<any>()).status,'pending');
+ paymentAuthorized=true;refund=0;apiTotal=4900;await TOURNEYS.prepare('UPDATE orders SET last_checked=0,payment_status=\'pending\' WHERE id=?').bind(original.id).run();
+ const response=await worker.fetch(request('/api/shop/helloasso/webhook',{eventType:'Payment',metadata:{order_id:original.id}}),env as any,ctx);assert.equal(response.status,200);assert.equal((await TOURNEYS.prepare('SELECT payment_status FROM orders WHERE id=?').bind(original.id).first<any>()).payment_status,'paid');
+ // No write/reconciliation of the stale historical copy in ORDERS.
+ assert.equal((await ORDERS.prepare('SELECT payment_status FROM orders WHERE id=?').bind(original.id).first<any>()).payment_status,original.payment_status);
+ await Promise.allSettled(tasks);
+});
+test('boutique : le catalogue et les paramètres distinguent paiement désactivé et configuration incomplète',async()=>{
+ const s=await settings(env);await ORDERS.prepare('UPDATE settings SET data=? WHERE id=1').bind(JSON.stringify({...s,checkout_enabled:false})).run();
+ const cat=await route(request('/api/shop/catalogue'));assert.equal(cat.body.checkout_available,false);assert.equal(cat.body.checkout_unavailable.code,'CHECKOUT_DISABLED');assert.match(cat.body.checkout_unavailable.message,/pas encore activé/);
+ const admin=await route(request('/admin-boutique/api/settings',undefined,{admin:true}));assert.equal(admin.body.availability.code,'CHECKOUT_DISABLED');await ORDERS.prepare('UPDATE settings SET data=? WHERE id=1').bind(JSON.stringify(s)).run();
+});
+test('Access : audience erronée identifiée et gestion des responsables tournois avec JWT dédié',async()=>{
+ const production={...env,APP_ENV:'production',SHOP_ORIGIN:'https://example.org',CF_ACCESS_ISSUER:'https://test.cloudflareaccess.com',CF_ACCESS_TOURNAMENT_AUD:'tournament-aud'};
+ const jwt=async(aud:string)=>new SignJWT({email:'tournois@example.org'}).setProtectedHeader({alg:'RS256',kid:'test-key'}).setIssuer(production.CF_ACCESS_ISSUER).setAudience(aud).setExpirationTime(now()+600).sign(accessPair.privateKey);
+ const req=async(aud:string,data?:any)=>new Request('https://example.org/admin-tournois/api/admins',{method:data?'PUT':'GET',headers:{'cf-access-jwt-assertion':await jwt(aud),...(data?{'content-type':'application/json',origin:'https://example.org'}:{})},...(data?{body:JSON.stringify(data)}:{})});
+ const wrong=await tournamentRoute(await req('aud'),production,ctx);assert.equal(wrong?.status,401);assert.equal((await wrong!.json() as any).code,'ACCESS_AUDIENCE');
+ assert.equal((await tournamentRoute(await req('tournament-aud',{email:'nouveau@example.org',name:'Nouveau',active:true}),production,ctx))?.status,200);
+ assert.ok(await TOURNEYS.prepare("SELECT email FROM tournament_admins WHERE email='nouveau@example.org'").first());assert.equal(await ORDERS.prepare("SELECT email FROM tournament_admins WHERE email='nouveau@example.org'").first(),null);
+ assert.equal((await tournamentRoute(await req('tournament-aud',{email:'tournois@example.org',name:'Tournois',active:false}),production,ctx))?.status,409);
+});
+test('copie initiale incomplète : inscriptions bloquées et webhook à réessayer, sans envoi de mail tournois',async()=>{
+ await Promise.allSettled(tasks);await TOURNEYS.prepare("DELETE FROM module_imports WHERE id='v5.2'").run();
+ try{
+  const blocked=await tournamentApi('/api/tournaments/registrations',tournamentPayload());assert.equal(blocked.status,503);assert.equal(blocked.body.code,'MIGRATION_PENDING');
+  const callback=await worker.fetch(request('/api/shop/helloasso/webhook',{eventType:'Payment',metadata:{order_id:registration.order_id}}),env as any,ctx);assert.equal(callback.status,503);
+  const before=sent;await maintenance(tournamentEnv(env));assert.equal(sent,before);
+ }finally{await TOURNEYS.prepare("INSERT INTO module_imports(id,imported_at) VALUES('v5.2',?)").bind(now()).run();}
 });

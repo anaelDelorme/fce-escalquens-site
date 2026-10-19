@@ -19,7 +19,7 @@ const productMeta=product=>{
   return `<div class="product-meta">
     ${prices.length?`<div><small>Tarifs</small>${prices.map(line=>`<span>${shopEsc(line)}</span>`).join('')}</div>`:''}
     ${sizes.length?`<div><small>Tailles</small>${sizes.map(line=>`<span>${shopEsc(line)}</span>`).join('')}</div>`:''}
-    ${options.length?`<div><small>Options</small>${options.map(line=>`<span>${shopEsc(line)}</span>`).join('')}</div>`:''}
+    ${options.length?`<div><small>Personnalisations</small>${options.map(line=>`<span>${shopEsc(line)}</span>`).join('')}</div>`:''}
     ${delay?`<div class="product-delay"><small>Délai indicatif</small><span>${shopEsc(delay)}</span></div>`:''}
   </div>`;
 };
@@ -58,7 +58,7 @@ async function loadShop(){
   const featuredNode=document.querySelector('#shop-featured'),categoriesNode=document.querySelector('#shop-categories');
   try{
     const [response,commerceResponse]=await Promise.all([fetch('/api/page/shop?v=3'),fetch('/api/shop/catalogue')]);const data=await response.json();const commerce=commerceResponse.ok?await commerceResponse.json():null;
-    for(const p of data.products||[]){const variants=commerce?.variants.filter(v=>v.product_id===p.id)||[],options=commerce?.options.filter(o=>o.product_id===p.id)||[];p.sellable=variants.length>0;p.orderLabel=!variants.length?'Tailles et tarifs bientôt disponibles':variants.length>1?(options.length?'Choisir ma taille et personnaliser':'Choisir ma taille'):options.length?'Personnaliser mon article':'Ajouter au panier';if(variants.length){const prices=variants.map(v=>v.price_cents),min=Math.min(...prices),max=Math.max(...prices);p.price_label=(min!==max?'À partir de ':'')+new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(min/100);p.price_details=min!==max?'Le prix dépend de la taille choisie.':'';}}
+    for(const p of data.products||[]){const variants=commerce?.variants.filter(v=>v.product_id===p.id)||[],options=commerce?.options.filter(o=>o.product_id===p.id)||[];p.options=options.map(o=>o.label).join('\n');p.sellable=variants.length>0;p.orderLabel=!variants.length?'Tailles et tarifs bientôt disponibles':variants.length>1?(options.length?'Choisir ma taille et personnaliser':'Choisir ma taille'):options.length?'Personnaliser mon article':'Ajouter au panier';if(variants.length){const prices=variants.map(v=>v.price_cents),min=Math.min(...prices),max=Math.max(...prices);const money=n=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(n/100);p.price_label=min!==max?'De '+money(min)+' à '+money(max):money(min);p.price_details='';p.sizes=variants.map(v=>v.label).join('\n');p.options=options.map(o=>o.label+(o.price_cents?' · +'+money(o.price_cents):'')).join('\n');}}
     if(!response.ok)throw new Error(data.error||'Boutique indisponible');
     const products=data.products||[],categories=data.categories||[],featured=products.find(product=>Number(product.featured)===1)||products[0];
     window.shopSettings=data.settings||{};

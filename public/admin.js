@@ -8,8 +8,6 @@ const schemas={
   seasons:['label','starts_on','ends_on','active'],
   training_sessions:['team_id','season_id','weekday','starts_at','ends_at','venue_id','notes','active'],
   contacts:['name','role','category','email','phone','responsibilities','availability','photo_key','published'],
-  tournaments:['name','season_id','summary','starts_on','ends_on','venue_id','organizer','categories','registration_price','registration_url','tournify_url','image_key','poster_key','rules_key','status'],
-  tournament_teams:['tournament_id','team_id','notes'],
   sponsors:['name','logo_key','website_url','tier','description','active','display_order'],
   sponsor_packages:['name','price_label','benefits','featured','display_order','active'],
   site_media:['object_key','alt_text'],
@@ -81,7 +79,7 @@ async function loadHealth(){
   }catch(error){panel.dataset.state='error';$('#health-status').textContent='État indisponible';$('#health-sources').textContent=error.message||'Lecture impossible.'}
   finally{button.disabled=false}
 }
-async function ensureReferences(){if(referencesLoaded)return;const [teams,members,venues,levels,seasons,tournaments,entries]=await Promise.all(['teams','club_members','venues','competition_levels','seasons','tournaments','team_competitions'].map(async resource=>{const response=await fetch(`/admin-api/${resource}`,{headers:authHeaders()});if(!response.ok)throw new Error(response.status===401?'Session Cloudflare expirée. Rechargez la page.':'Données de référence indisponibles.');return response.json()}));references={teams,club_members:members,venues,competition_levels:levels,seasons,tournaments,team_competitions:entries};referencesLoaded=true;}
+async function ensureReferences(){if(referencesLoaded)return;const [teams,members,venues,levels,seasons,tournaments,entries]=await Promise.all(['teams','club_members','venues','competition_levels','seasons','tournaments','team_competitions'].map(async resource=>{if(resource==='tournaments')return [];const response=await fetch(`/admin-api/${resource}`,{headers:authHeaders()});if(!response.ok)throw new Error(response.status===401?'Session Cloudflare expirée. Rechargez la page.':'Données de référence indisponibles.');return response.json()}));references={teams,club_members:members,venues,competition_levels:levels,seasons,tournaments,team_competitions:entries};referencesLoaded=true;}
 async function load(){
   $('#new').hidden=['team_competitions','site_media','shop_settings'].includes(current);
   $('#import-coaches').hidden=current!=='club_members';

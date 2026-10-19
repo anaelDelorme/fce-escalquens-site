@@ -12,8 +12,6 @@ const schemas = {
     ["name", "Nom", "text", true],
     ["short_description", "Texte court — uniquement sur la carte boutique", "textarea"],
     ["description", "Détails de l’article — composition, entretien, précisions (fenêtre Détails)", "textarea"],
-    ["sizes", "Présentation des tailles", "textarea"],
-    ["options", "Présentation des options", "textarea"],
     ["delivery_delay", "Délai indicatif", "text"],
     ["image_key", "Photo de l’article", "image"],
     ["featured", "Article à la une", "checkbox"],

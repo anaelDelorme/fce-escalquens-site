@@ -1,3 +1,5 @@
+import { events } from "./events";
+import { formFields, formAnswers } from "./forms";
 import {
   body,
   origin,
@@ -99,6 +101,7 @@ async function create(request: Request, env: ShopEnv, s: Row) {
       version: data.version,
       total: data.expected_total,
       choice: data.payment_choice,
+      answers: data.answers || {},
     }),
   );
   let order = await env.ORDERS.prepare("SELECT * FROM orders WHERE id=?")
@@ -135,6 +138,8 @@ async function create(request: Request, env: ShopEnv, s: Row) {
         409,
         "Le paiement immédiat est requis pour ce tournoi.",
       );
+    const fields = formFields(JSON.parse(sale.form_json || "[]"));
+    const answers = formAnswers(fields, data.answers || {});
     const token = await trackingToken(env.TRACKING_SECRET!, id, 1),
       stamp = now(),
       reference = `FCE-T-${new Date().getFullYear()}-${id.replaceAll("-", "").slice(0, 12).toUpperCase()}`;
@@ -165,7 +170,7 @@ async function create(request: Request, env: ShopEnv, s: Row) {
         sale.capacity,
       ),
       env.ORDERS.prepare(
-        `INSERT OR IGNORE INTO tournament_registrations(order_id,tournament_id,tournament_name,club_name,team_name,category,payment_choice,payment_deadline,created_at) SELECT ?,?,?,?,?,?,?,?,? WHERE ${guard}`,
+        `INSERT OR IGNORE INTO tournament_registrations(order_id,tournament_id,tournament_name,club_name,team_name,category,payment_choice,payment_deadline,created_at,answers_json,form_snapshot) SELECT ?,?,?,?,?,?,?,?,?,?,? WHERE ${guard}`,
       ).bind(
         id,
         tournamentId,
@@ -176,6 +181,8 @@ async function create(request: Request, env: ShopEnv, s: Row) {
         data.payment_choice,
         sale.payment_deadline,
         stamp,
+        JSON.stringify(answers),
+        JSON.stringify(fields),
         id,
         hash,
       ),
@@ -243,6 +250,21 @@ async function create(request: Request, env: ShopEnv, s: Row) {
     }
   return response(result);
 }
+export function tournamentEnv(env: ShopEnv): ShopEnv {
+  if (!env.TOURNAMENTS)
+    fail(
+      "TOURNAMENTS_CONFIG",
+      503,
+      "La base des tournois doit être configurée. Voir docs/TOURNOIS-V5.2.md.",
+    );
+  return {
+    ...env,
+    DB: env.TOURNAMENTS,
+    ORDERS: env.TOURNAMENTS,
+    PAYMENT_DB: env.PAYMENT_DB || env.ORDERS,
+    ORDER_KIND: "tournament",
+  };
+}
 export async function tournamentRoute(
   request: Request,
   env: ShopEnv,
@@ -257,6 +279,28 @@ export async function tournamentRoute(
       path.startsWith("/paiements/retour/");
   if (!admin && !tracking && !path.startsWith("/api/tournaments/")) return null;
   try {
+    if (tracking) {
+      const asset = await env.ASSETS.fetch(request);
+      return new Response(asset.body, {
+        status: asset.status,
+        headers: new Headers({
+          ...Object.fromEntries(asset.headers),
+          ...secureHeaders(),
+        }),
+      });
+    }
+    env = tournamentEnv(env);
+    if (
+      !["GET", "HEAD"].includes(request.method) &&
+      !(await env.ORDERS.prepare(
+        "SELECT id FROM module_imports WHERE id='v5.2'",
+      ).first())
+    )
+      fail(
+        "MIGRATION_PENDING",
+        503,
+        "La copie initiale des tournois doit être terminée avant de modifier ou enregistrer une inscription.",
+      );
     if (admin) {
       const actor = await staff(request, env, "tournament");
       if (!path.startsWith("/admin-tournois/api/")) {
@@ -270,6 +314,8 @@ export async function tournamentRoute(
         });
       }
       if (!["GET", "HEAD"].includes(request.method)) sameOrigin(request, env);
+      const eventResponse = await events(request, env, path);
+      if (eventResponse) return eventResponse;
       if (path === "/admin-tournois/api/status" && request.method === "GET")
         return response({
           environment: env.APP_ENV === "production" ? "production" : "sandbox",
@@ -303,10 +349,11 @@ export async function tournamentRoute(
             .bind(id)
             .first();
           if (!exists) fail("NOT_FOUND", 404, "Tournoi introuvable.");
+          const fields = formFields(d.form_fields || []);
           const row =
             version === 0
               ? await env.DB.prepare(
-                  "INSERT OR IGNORE INTO tournament_sales(tournament_id,fee_cents,capacity,enabled,allow_pay_later,registration_deadline,payment_deadline,terms) VALUES(?,?,?,?,?,?,?,?) RETURNING version",
+                  "INSERT OR IGNORE INTO tournament_sales(tournament_id,fee_cents,capacity,enabled,allow_pay_later,registration_deadline,payment_deadline,terms,form_json) VALUES(?,?,?,?,?,?,?,?,?) RETURNING version",
                 )
                   .bind(
                     id,
@@ -317,10 +364,11 @@ export async function tournamentRoute(
                     registration,
                     payment,
                     terms,
+                    JSON.stringify(fields),
                   )
                   .first()
               : await env.DB.prepare(
-                  "UPDATE tournament_sales SET fee_cents=?,capacity=?,enabled=?,allow_pay_later=?,registration_deadline=?,payment_deadline=?,terms=?,version=version+1 WHERE tournament_id=? AND version=? RETURNING version",
+                  "UPDATE tournament_sales SET fee_cents=?,capacity=?,enabled=?,allow_pay_later=?,registration_deadline=?,payment_deadline=?,terms=?,form_json=?,version=version+1 WHERE tournament_id=? AND version=? RETURNING version",
                 )
                   .bind(
                     fee,
@@ -330,6 +378,7 @@ export async function tournamentRoute(
                     registration,
                     payment,
                     terms,
+                    JSON.stringify(fields),
                     id,
                     version,
                   )
@@ -358,7 +407,8 @@ export async function tournamentRoute(
         if (request.method === "PUT") {
           const d = await body(request),
             address = email(d.email),
-            name = text(d.name || "", 100);
+            name = text(d.name || "", 100,true);
+          if(typeof d.active!=="boolean")fail("INVALID_FIELD",400,"Indiquez si l’accès est actif.");
           if (address === actor && !d.active)
             fail(
               "SELF_DISABLE",
@@ -548,16 +598,6 @@ export async function tournamentRoute(
         }
       }
       return response({ error: "Ressource inconnue." }, 404);
-    }
-    if (tracking) {
-      const asset = await env.ASSETS.fetch(request);
-      return new Response(asset.body, {
-        status: asset.status,
-        headers: new Headers({
-          ...Object.fromEntries(asset.headers),
-          ...secureHeaders(),
-        }),
-      });
     }
     if (path === "/api/tournaments/catalogue" && request.method === "GET") {
       const rows = await sales(env);

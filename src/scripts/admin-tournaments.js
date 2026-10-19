@@ -1,3 +1,5 @@
+import { formEditor } from "./tournament-form-editor";
+import { eventEditor } from "./tournament-events-editor";
 import {
   api,
   esc,
@@ -90,9 +92,23 @@ async function registrations() {
       "registration_status",
       "total_cents",
     ];
+    const questions = new Map();
+    for (const r of visible)
+      for (const f of JSON.parse(r.form_snapshot || "[]"))
+        questions.set(f.id, `${r.tournament_name} — ${f.label}`);
+    const custom = Array.from(questions.keys());
     const csv =
       "\uFEFF" +
-      [columns, ...visible.map((r) => columns.map((k) => r[k]))]
+      [
+        [...columns, ...custom.map((id) => questions.get(id))],
+        ...visible.map((r) => [
+          ...columns.map((k) => r[k]),
+          ...custom.map((id) => {
+            const v = JSON.parse(r.answers_json || "{}")[id];
+            return typeof v === "boolean" ? (v ? "Oui" : "Non") : v || "";
+          }),
+        ]),
+      ]
         .map((row) => row.map(cell).join(";"))
         .join("\r\n");
     const url = URL.createObjectURL(
@@ -110,7 +126,16 @@ async function show(id) {
     o = data.order,
     r = data.registration,
     target = root.querySelector("#registration-detail");
-  target.innerHTML = `<section class="commerce-card"><h2>${esc(o.reference)}</h2><p>${esc(r.tournament_name)} · ${esc(r.club_name)} · ${esc(r.team_name)}</p><p>${esc(o.first_name)} ${esc(o.last_name)} · ${esc(o.email)} · ${esc(o.phone)}</p><p>Paiement : <b>${esc(paymentLabels[o.payment_status] || o.payment_status)}</b> · ${money(o.total_cents)}</p><p><button data-reconcile>Vérifier chez HelloAsso</button> <button data-resend>Renvoyer le suivi</button> <button data-rotate>Révoquer et renvoyer le lien</button></p><form class="commerce-form-grid"><label>Inscription<select name="registration_status">${Object.entries(
+  target.innerHTML = `<section class="commerce-card"><h2>${esc(o.reference)}</h2><p>${esc(r.tournament_name)} · ${esc(r.club_name)} · ${esc(r.team_name)}</p><p>${esc(o.first_name)} ${esc(o.last_name)} · ${esc(o.email)} · ${esc(o.phone)}</p>${
+    JSON.parse(r.form_snapshot || "[]").length
+      ? `<dl>${JSON.parse(r.form_snapshot)
+          .map(
+            (f) =>
+              `<dt>${esc(f.label)}</dt><dd>${esc(typeof JSON.parse(r.answers_json || "{}")[f.id] === "boolean" ? (JSON.parse(r.answers_json)[f.id] ? "Oui" : "Non") : JSON.parse(r.answers_json || "{}")[f.id] || "—")}</dd>`,
+          )
+          .join("")}</dl>`
+      : ""
+  }<p>Paiement : <b>${esc(paymentLabels[o.payment_status] || o.payment_status)}</b> · ${money(o.total_cents)}</p><p><button data-reconcile>Vérifier chez HelloAsso</button> <button data-resend>Renvoyer le suivi</button> <button data-rotate>Révoquer et renvoyer le lien</button></p><form class="commerce-form-grid"><label>Inscription<select name="registration_status">${Object.entries(
     labels,
   )
     .map(
@@ -175,7 +200,7 @@ async function show(id) {
 }
 async function sales() {
   const data = await call("sales");
-  root.innerHTML = `<section class="commerce-card"><h2>Tarifs et inscriptions</h2><p>La présentation des tournois (affiche, dates, règlement) reste gérée dans l’administration du site. Cet espace règle les inscriptions et le paiement par équipe. L’ouverture exige le statut « Inscriptions ouvertes » dans la présentation et une configuration activée ici.</p><p>Les changements concernent les prochaines inscriptions. Les inscriptions déjà enregistrées gardent leur prix, conditions et date limite.</p><p><button id="test-helloasso">Tester la connexion HelloAsso</button> <span id="helloasso-state"></span></p><label>Tournoi<select id="sale-select"><option value="">Choisir un tournoi</option>${data.sales.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join("")}</select></label><section id="sale-form"></section></section>`;
+  root.innerHTML = `<section class="commerce-card"><h2>Tarifs et inscriptions</h2><p>La page Tournois et visuels permet de créer le tournoi, ses dates, son affiche et son règlement. Construisez ici son formulaire, son tarif et ses modalités de paiement. L’ouverture exige le statut « Inscriptions ouvertes » dans la présentation et une configuration activée ici.</p><p>Les changements concernent les prochaines inscriptions. Les inscriptions déjà enregistrées gardent leur prix, conditions et date limite.</p><p><button id="test-helloasso">Tester la connexion HelloAsso</button> <span id="helloasso-state"></span></p><label>Tournoi<select id="sale-select"><option value="">Choisir un tournoi</option>${data.sales.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join("")}</select></label><section id="sale-form"></section></section>`;
   root.querySelector("#test-helloasso").onclick = (e) =>
     action(e.target, async () => {
       const s = await call("helloasso/test", { method: "POST" });
@@ -189,8 +214,12 @@ async function sales() {
       return;
     }
     root.querySelector("#sale-form").innerHTML =
-      `<form class="commerce-form-grid tournament-admin-form">${field("fee", "Tarif par équipe en euros", ((s.fee_cents || 100) / 100).toFixed(2), "number")}${field("capacity", "Places (0 = sans limite)", s.capacity || 0, "number")}${field("registration_deadline", "Clôture des inscriptions", localTime(s.registration_deadline), "datetime-local")}${field("payment_deadline", "Date limite de paiement", localTime(s.payment_deadline), "datetime-local")}<label class="wide">Conditions du tournoi : modalités d’inscription, annulation et remboursement<textarea name="terms" maxlength="12000" required>${esc(s.terms || "")}</textarea></label><label class="tournament-choice"><input type="checkbox" name="allow_pay_later" ${s.allow_pay_later !== 0 ? "checked" : ""}> Autoriser le paiement plus tard</label><label class="tournament-choice"><input type="checkbox" name="enabled" ${s.enabled ? "checked" : ""}> Activer les inscriptions intégrées</label><div class="wide"><button type="submit">Enregistrer</button></div></form>`;
+      `<form class="commerce-form-grid tournament-admin-form">${field("fee", "Tarif par équipe en euros", ((s.fee_cents || 100) / 100).toFixed(2), "number")}${field("capacity", "Places (0 = sans limite)", s.capacity || 0, "number")}${field("registration_deadline", "Clôture des inscriptions", localTime(s.registration_deadline), "datetime-local")}${field("payment_deadline", "Date limite de paiement", localTime(s.payment_deadline), "datetime-local")}<label class="wide">Conditions du tournoi : modalités d’inscription, annulation et remboursement<textarea name="terms" maxlength="12000" required>${esc(s.terms || "")}</textarea></label><label class="tournament-choice"><input type="checkbox" name="allow_pay_later" ${s.allow_pay_later !== 0 ? "checked" : ""}> Autoriser le paiement plus tard</label><label class="tournament-choice"><input type="checkbox" name="enabled" ${s.enabled ? "checked" : ""}> Activer les inscriptions intégrées</label><section class="wide" id="tournament-form-builder"></section><div class="wide"><button type="submit">Enregistrer le tarif et le formulaire</button></div></form>`;
     const form = root.querySelector("#sale-form form");
+    const readFields = formEditor(
+      form.querySelector("#tournament-form-builder"),
+      JSON.parse(s.form_json || "[]"),
+    );
     form.elements.fee.step = "0.01";
     form.elements.fee.min = "0.01";
     form.elements.fee.max = "10000";
@@ -214,6 +243,7 @@ async function sales() {
               new Date(form.elements.payment_deadline.value).getTime() / 1000,
             ),
             terms: form.elements.terms.value,
+            form_fields: readFields(),
             enabled: form.elements.enabled.checked,
             allow_pay_later: form.elements.allow_pay_later.checked,
           },
@@ -258,7 +288,12 @@ call("status")
         ? "PRODUCTION — inscriptions et paiements réels"
         : "SANDBOX — paiements de test, mails réservés au destinataire de test";
     return (
-      { registrations, sales, admins }[root.dataset.page] || registrations
+      {
+        registrations,
+        sales,
+        admins,
+        events: () => eventEditor(root, call, action),
+      }[root.dataset.page] || registrations
     )();
   })
   .then(() => (message.textContent = ""))

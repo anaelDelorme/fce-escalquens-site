@@ -90,9 +90,13 @@ export async function rateLimit(
       "Trop de tentatives. Patientez quelques minutes avant de réessayer.",
     );
 }
-export function accessConfiguration(env: ShopEnv, scope: "shop" | "tournament" = "shop") {
+export function accessConfiguration(
+  env: ShopEnv,
+  scope: "shop" | "tournament" = "shop",
+) {
   const issuer = (env.CF_ACCESS_ISSUER || "").trim().replace(/\/+$/, "");
-  const audienceName = scope === "shop" ? "CF_ACCESS_SHOP_AUD" : "CF_ACCESS_TOURNAMENT_AUD";
+  const audienceName =
+    scope === "shop" ? "CF_ACCESS_SHOP_AUD" : "CF_ACCESS_TOURNAMENT_AUD";
   const audiences = (env[audienceName] || "")
     .split(",")
     .map((value) => value.trim())
@@ -111,7 +115,11 @@ export function accessConfiguration(env: ShopEnv, scope: "shop" | "tournament" =
   return { issuer, audiences };
 }
 
-export async function staff(request: Request, env: ShopEnv, scope: "shop" | "tournament" = "shop") {
+export async function staff(
+  request: Request,
+  env: ShopEnv,
+  scope: "shop" | "tournament" = "shop",
+) {
   const url = new URL(request.url);
   if (
     env.APP_ENV === "local" &&
@@ -137,26 +145,72 @@ export async function staff(request: Request, env: ShopEnv, scope: "shop" | "tou
     });
     if (typeof payload.email !== "string") throw new Error();
     const address = payload.email.toLowerCase();
-    const row = await env.ORDERS.prepare(
+    return await authorizedAddress(env, scope, address);
+  } catch (e: any) {
+    if (e instanceof Error && "status" in e) throw e;
+    if (e.code === "ERR_JWT_EXPIRED")
+      fail(
+        "ACCESS_EXPIRED",
+        401,
+        "Votre session Cloudflare a expiré. Déconnectez-vous puis reconnectez-vous.",
+      );
+    if (e.code === "ERR_JWT_CLAIM_VALIDATION_FAILED" && e.claim === "aud")
+      fail(
+        "ACCESS_AUDIENCE",
+        401,
+        `Cloudflare utilise une autre application pour cette URL. Vérifiez ${scope === "shop" ? "CF_ACCESS_SHOP_AUD" : "CF_ACCESS_TOURNAMENT_AUD"} et les chemins /admin-${scope === "shop" ? "boutique" : "tournois"} et /admin-${scope === "shop" ? "boutique" : "tournois"}/*. L’application du site ne doit pas les recouvrir.`,
+      );
+    if (e.code === "ERR_JWT_CLAIM_VALIDATION_FAILED" && e.claim === "iss")
+      fail(
+        "ACCESS_ISSUER",
+        401,
+        "Le domaine d’équipe Cloudflare ne correspond pas à CF_ACCESS_ISSUER. Vérifiez la configuration du Worker.",
+      );
+    if (
+      [
+        "ERR_JWKS_TIMEOUT",
+        "ERR_JWKS_INVALID",
+        "ERR_JWKS_NO_MATCHING_KEY",
+      ].includes(e.code)
+    )
+      fail(
+        "ACCESS_KEYS",
+        503,
+        "Impossible de vérifier les clés Cloudflare. Vérifiez le domaine d’équipe et réessayez.",
+      );
+    return fail(
+      "ACCESS_INVALID",
+      401,
+      "Le jeton Cloudflare ne peut pas être vérifié. Déconnectez-vous puis reconnectez-vous ; si le problème persiste, vérifiez l’AUD de cette application et le domaine d’équipe.",
+    );
+  }
+}
+async function authorizedAddress(
+  env: ShopEnv,
+  scope: "shop" | "tournament",
+  address: string,
+) {
+  let row;
+  try {
+    row = await env.ORDERS.prepare(
       `SELECT email FROM ${scope === "shop" ? "shop_admins" : "tournament_admins"} WHERE email=? COLLATE NOCASE AND active=1 LIMIT 1`,
     )
       .bind(address)
       .first();
-    if (!row)
-      fail(
-        "FORBIDDEN",
-        403,
-        "Cette adresse ne dispose pas des droits de gestion du club.",
-      );
-    return text(address, 254, true);
-  } catch (e: any) {
-    if (e.code === "FORBIDDEN") throw e;
-    return fail(
-      "ACCESS_INVALID",
-      401,
-      "La session Cloudflare a expiré ou est invalide. Reconnectez-vous.",
+  } catch {
+    fail(
+      "ACCESS_DATABASE",
+      503,
+      "La table des responsables est indisponible. Vérifiez le binding D1 et appliquez ses migrations.",
     );
   }
+  if (!row)
+    fail(
+      "FORBIDDEN",
+      403,
+      `Cette adresse n’est pas responsable ${scope === "shop" ? "de la boutique" : "des tournois"}. Le premier accès doit être ajouté dans la base dédiée, puis les suivants dans la page Responsables.`,
+    );
+  return text(address, 254, true);
 }
 export function response(data: unknown, status = 200) {
   return Response.json(data, { status, headers: secureHeaders() });
