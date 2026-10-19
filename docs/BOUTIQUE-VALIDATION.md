@@ -46,3 +46,13 @@ Les nouveaux tests vérifient cette séparation, la protection des médias par e
 - Contrôle TypeScript réussi. Construction des 35 pages Astro réussie. L’empaquetage du Worker avec les trois bindings D1 est vérifié en déploiement à blanc. Les 32 migrations DB, les 3 migrations ORDERS et la migration TOURNAMENTS sont appliquées sur trois SQLite distinctes avec intégrité référentielle vérifiée.
 - Les règles Cloudflare réelles, la copie distante et les paiements Sandbox restent à vérifier après installation dans votre compte. Aucun déploiement distant n’a été effectué.
 - Procédure obligatoire avant le push : [TOURNOIS-V5.2.md](TOURNOIS-V5.2.md).
+
+## V5.2.1 : reprise des imports Wrangler et accroche boutique
+
+- 67 tests passent, dont quatre tests du script de copie lancé en sous-processus avec un Wrangler simulé et trois bases SQLite persistantes : progression non JSON, reprise d’un import partiel, import sans lignes et échec de commande sans fuite de données.
+- Le marqueur final dépend toujours des contrôles SQL de présence et de nombre de lignes ; un simple code de sortie réussi n’y suffit pas.
+- Build Astro réussi. Accroche boutique simplifiée. Aucun accès ni changement aux bases distantes pendant cette correction.
+
+## V5.2.2 : responsables déjà présents pendant la copie
+
+Les huit tests du script de copie passent, dont initialisation préalable des responsables, reprise d’une copie interrompue, adresses insensibles à la casse, conservation des désactivations locales et refus d’une adresse source manquante. Les contrôles stricts sur les autres tables restent actifs. Aucun accès aux bases distantes pendant ces tests.

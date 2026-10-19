@@ -41,13 +41,17 @@ function run(database, extra) {
     throw new Error(
       `Échec D1 ${database}. Aucun secret ni contenu de ligne n’est affiché. Vérifiez l’authentification, le binding et les migrations.`,
     );
+  // Remote --file imports can emit progress messages even with --json.
+  // This is a write, not a row query: verify the imported rows below before
+  // creating the completion marker, instead of parsing the import progress.
+  if (extra.includes("--file")) return [];
   try {
     const parsed = JSON.parse(result.stdout);
     if (!Array.isArray(parsed) || parsed.some((r) => r.success === false))
       throw new Error();
     return parsed.flatMap((r) => r.results || []);
   } catch {
-    throw new Error("Réponse Wrangler illisible.");
+    throw new Error("Réponse JSON Wrangler illisible pour une requête D1 hors import.");
   }
 }
 const query = (db, sql) => run(db, ["--command", sql]);
@@ -104,6 +108,9 @@ const started = query(
 );
 if (!started.length) {
   for (const table of Object.keys(data)) {
+    // The first administrator may be bootstrapped in the destination before
+    // copying. Preserve that list, including deliberate local deactivations.
+    if (table === "tournament_admins") continue;
     const [{ n }] = query("TOURNAMENTS", `SELECT count(*) n FROM ${table}`);
     if (Number(n))
       throw new Error(
@@ -146,10 +153,13 @@ try {
     }
   }
   for (const [table, rows] of Object.entries(data)) {
+    // Every source address was checked above. Extra destination admins are
+    // legitimate; INSERT OR IGNORE also preserves their current access state.
+    if (table === "tournament_admins") continue;
     const [{ n }] = query("TOURNAMENTS", `SELECT count(*) n FROM ${table}`);
     if (Number(n) !== rows.length)
       throw new Error(
-        `Nombre de lignes inattendu dans ${table}. La copie n’est pas validée.`,
+        `Nombre de lignes inattendu dans ${table} (source : ${rows.length}, destination : ${n}). La copie n’est pas validée.`,
       );
   }
   query(

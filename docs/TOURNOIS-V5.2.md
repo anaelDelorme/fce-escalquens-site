@@ -86,7 +86,7 @@ node scripts/copy-tournaments.mjs --env staging --check
 
 Le script copie les contenus, associations aux équipes existantes, paramètres fermés, responsables, inscriptions, lignes, tentatives, paiements, historique et états mail. Il vérifie les identifiants et les nombres de lignes avant de marquer l’opération terminée. Les anciens liens externes d’inscription ne sont pas repris comme liens utilisables. Les fichiers images/PDF restent dans le même R2 : il n’y a pas de copie de médias à refaire.
 
-La destination doit être neuve au premier lancement. Une copie interrompue peut être relancée tant qu’elle n’est pas terminée, sans dupliquer ses lignes ; la source reste conservée. Après succès, le script refuse une nouvelle copie pour ne pas remplacer des données désormais actives. Les fichiers SQL temporaires privés sont supprimés à la fin de chaque lancement ; les sauvegardes de l’étape 3 restent à conserver par le club.
+La destination ne doit contenir aucune donnée métier au premier lancement. Des responsables déjà ajoutés dans `TOURNAMENTS.tournament_admins` sont autorisés et conservés ; un responsable désactivé localement n’est pas réactivé par la copie. Une copie interrompue peut être relancée tant qu’elle n’est pas terminée, sans dupliquer ses lignes ; la source reste conservée. Après succès, le script refuse une nouvelle copie pour ne pas remplacer des données désormais actives. Les fichiers SQL temporaires privés sont supprimés à la fin de chaque lancement ; les sauvegardes de l’étape 3 restent à conserver par le club.
 
 Les écritures du nouveau module sont bloquées tant que cette initialisation n’est pas validée. Les workflows vérifient également ce marqueur avant de déployer. Ne recréez pas manuellement le marqueur pour contourner une erreur de copie.
 
@@ -205,3 +205,24 @@ Créez une autre base `fce-escalquens-tournaments`, configurez-la avec `--env pr
 - [Cloudflare : validation des JWT Access](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/)
 - [Cloudflare : jeton d’application et AUD](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/application-token/)
 - [Cloudflare : commandes D1, exports et migrations](https://developers.cloudflare.com/d1/wrangler-commands/)
+
+## Correctif V5.2.1 : « Réponse Wrangler illisible » pendant la copie
+
+Le script initial tentait de décoder toute la sortie d’un import `--file` comme du JSON. Wrangler peut y ajouter des messages de progression, même avec `--json`. L’import peut donc avoir déjà écrit des lignes alors que le script s’arrête sur cette erreur. C’est un défaut du script de copie.
+
+Le correctif ne décode plus la progression des imports : il vérifie le code de sortie puis relit les identifiants et nombres de lignes dans D1 avant de créer le marqueur final. Les lectures `--command` restent contrôlées en JSON et les erreurs de commande restent bloquantes. Les données déjà copiées sont reprises sans duplication ; aucune base ni donnée source n’est à supprimer.
+
+Appliquer le patch V5.2.1, puis, dans Codespaces :
+
+```bash
+node scripts/copy-tournaments.mjs --env staging --apply
+node scripts/copy-tournaments.mjs --env staging --check
+```
+
+Après succès, committer/pousser le correctif et relancer le déploiement si nécessaire. Les contrôles d’initialisation du workflow restent actifs.
+
+## Correctif V5.2.2 : nombre de lignes dans tournament_admins
+
+La vérification initiale exigeait à tort le même nombre total de responsables dans la source et la destination. Elle pouvait bloquer après l’ajout du premier responsable dans la nouvelle D1. Le script vérifie toujours la présence de chaque adresse source, mais autorise les responsables supplémentaires déjà créés dans la destination. Leurs noms et états d’accès ne sont pas écrasés. Les contrôles stricts de nombre de lignes restent en place pour toutes les données métier.
+
+Remplacer `scripts/copy-tournaments.mjs` par la version corrigée, puis relancer `--apply` et `--check`. La copie interrompue est reprise ; il n’y a aucune suppression ni nouvelle migration D1 à effectuer.
