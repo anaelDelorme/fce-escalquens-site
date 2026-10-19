@@ -1,4 +1,4 @@
-import { questionMarkup, readQuestionAnswers } from "./tournament-form-fields";
+import { questionMarkup, readQuestionAnswers, sectionMarkup, readSections } from "./tournament-form-fields";
 import {
   api,
   esc,
@@ -12,7 +12,8 @@ dialog.className = "tournament-dialog";
 document.body.append(dialog);
 let sale,
   draft,
-  questions = [];
+  questions = [],
+  sections = [];
 async function open(id) {
   const data = await api("/api/tournaments/catalogue");
   sale = data.tournaments.find((item) => item.id === Number(id));
@@ -20,13 +21,12 @@ async function open(id) {
     throw new Error(
       "Les inscriptions ne sont plus ouvertes. Rechargez la page.",
     );
+  sections = sale.sections || ["Équipes"];
   questions = JSON.parse(sale.form_json || "[]");
-  const existing = readStorage("fce-tournament-draft");
+  const existing = readStorage(`fce-tournament-draft:${sale.id}`);
   draft = existing || { key: crypto.randomUUID() };
-  dialog.innerHTML = `<button type="button" data-close class="tournament-close" aria-label="Fermer">×</button><p class="eyebrow">Une inscription par équipe</p><h2>${esc(sale.name)}</h2><p class="tournament-fee">${money(sale.fee_cents)} <small>par équipe</small></p><p>Le club validera votre inscription. ${sale.allow_pay_later ? "Vous pouvez régler maintenant ou retrouver le paiement dans votre e-mail de suivi." : "Le paiement se fait avec HelloAsso."}</p><form class="commerce-form-grid">${[
+  dialog.innerHTML = `<button type="button" data-close class="tournament-close" aria-label="Fermer">×</button><p class="eyebrow">Inscription au tournoi</p><h2>${esc(sale.name)}</h2><p class="tournament-fee">${money(sale.fee_cents)} <small>par équipe</small></p><p>Le club validera votre inscription. ${sale.allow_pay_later ? "Vous pouvez régler maintenant ou retrouver le paiement dans votre e-mail de suivi." : "Le paiement se fait avec HelloAsso."}</p><form class="commerce-form-grid">${[
     ["club_name", "Club", "text", 120],
-    ["team_name", "Nom de l’équipe", "text", 120],
-    ["category", "Catégorie (ex. U11)", "text", 80],
     ["first_name", "Prénom du responsable adulte", "text", 80],
     ["last_name", "Nom du responsable adulte", "text", 80],
     ["email", "E-mail de suivi", "email", 254],
@@ -38,9 +38,21 @@ async function open(id) {
     )
     .join(
       "",
-    )}${questionMarkup(questions)}<div class="wide"><h3>Quand souhaitez-vous payer ?</h3><label class="tournament-choice"><input type="radio" name="payment_choice" value="now" checked> Maintenant avec HelloAsso</label>${sale.allow_pay_later ? '<label class="tournament-choice"><input type="radio" name="payment_choice" value="later"> Plus tard, depuis mon lien de suivi</label>' : ""}<p>Paiement au plus tard le ${date(sale.payment_deadline)}. La contribution volontaire proposée par HelloAsso peut être modifiée ou retirée sur sa page de paiement.</p><details open><summary>Conditions d’inscription et d’annulation</summary><p class="tournament-terms">${esc(sale.terms)}</p></details><label class="tournament-choice"><input type="checkbox" name="accept_terms" required> J’ai lu et j’accepte les conditions de ce tournoi. *</label><p class="commerce-help">Les champs * sont nécessaires à la gestion de l’inscription et du paiement. Coordonnées du responsable adulte uniquement ; aucune liste de joueurs n’est demandée. <a href="/confidentialite/" target="_blank" rel="noopener">Vos données et vos droits</a>.</p><button type="submit">Confirmer mon inscription →</button><p data-error role="status" tabindex="-1"></p><div data-recovery></div></div></form>`;
+    )}${sectionMarkup(sections)}${questionMarkup(questions)}<div class="wide tournament-total" aria-live="polite"><span data-total-count>Choisissez vos sections</span><strong data-total-price>${money(0)}</strong><small>Nombre d’équipes × ${money(sale.fee_cents)} par équipe</small></div><div class="wide"><h3>Quand souhaitez-vous payer ?</h3><label class="tournament-choice"><input type="radio" name="payment_choice" value="now" checked> Maintenant avec HelloAsso</label>${sale.allow_pay_later ? '<label class="tournament-choice"><input type="radio" name="payment_choice" value="later"> Plus tard, depuis mon lien de suivi</label>' : ""}<p>Paiement au plus tard le ${date(sale.payment_deadline)}. La contribution volontaire proposée par HelloAsso peut être modifiée ou retirée sur sa page de paiement.</p><details open><summary>Conditions d’inscription et d’annulation</summary><p class="tournament-terms">${esc(sale.terms)}</p></details><label class="tournament-choice"><input type="checkbox" name="accept_terms" required> J’ai lu et j’accepte les conditions de ce tournoi. *</label><p class="commerce-help">Les champs * sont nécessaires à la gestion de l’inscription et du paiement. Coordonnées du responsable adulte uniquement ; aucune liste de joueurs n’est demandée. <a href="/confidentialite/" target="_blank" rel="noopener">Vos données et vos droits</a>.</p><button type="submit">Confirmer mon inscription →</button><p data-error role="status" tabindex="-1"></p><div data-recovery></div></div></form>`;
   dialog.querySelector("[data-close]").onclick = () => dialog.close();
-  dialog.querySelector("form").onsubmit = submit;
+  const form=dialog.querySelector("form");
+  const updateTotal=()=>{
+    form.querySelectorAll("[data-section-row]").forEach((row)=>{
+      const selected=row.querySelector("input[type=radio]:checked")?.value==='yes';
+      row.querySelector("[data-section-quantity]").hidden=!selected;
+      const input=row.querySelector("input[type=number]");input.disabled=!selected;input.required=selected;
+    });
+    const count=readSections(form,sections).reduce((sum,row)=>sum+(Number.isInteger(row.quantity)&&row.quantity>0?row.quantity:0),0);
+    form.querySelector("[data-total-count]").textContent=`${count} équipe${count>1?'s':''} à inscrire`;
+    form.querySelector("[data-total-price]").textContent=money(count*sale.fee_cents);
+  };
+  form.addEventListener("change",updateTotal);form.addEventListener("input",updateTotal);
+  form.onsubmit = submit;
   dialog.showModal();
 }
 async function submit(event) {
@@ -48,17 +60,22 @@ async function submit(event) {
   const form = event.target,
     button = form.querySelector("button[type=submit]"),
     message = form.querySelector("[data-error]");
+  if (!form.reportValidity()) return;
+  const selection=readSections(form,sections);
+  const count=selection.reduce((sum,row)=>sum+row.quantity,0);
+  if(!count||count>100){message.textContent="Inscrivez entre 1 et 100 équipes au total.";message.focus();return;}
   button.disabled = true;
   const data = Object.fromEntries(new FormData(form));
   Object.assign(data, {
     tournament_id: sale.id,
     version: sale.version,
-    expected_total: sale.fee_cents,
+    expected_total: count * sale.fee_cents,
+    sections: selection,
     accept_terms: true,
     answers: readQuestionAnswers(form, questions),
   });
   for (const key of Object.keys(data))
-    if (key.startsWith("extra:")) delete data[key];
+    if (/^(extra|section|quantity):/.test(key)) delete data[key];
   const fingerprint = Array.from(
     new Uint8Array(
       await crypto.subtle.digest(
@@ -68,23 +85,24 @@ async function submit(event) {
     ),
     (x) => x.toString(16).padStart(2, "0"),
   ).join("");
-  const saved = readStorage("fce-tournament-draft");
+  const saved = readStorage(`fce-tournament-draft:${sale.id}`);
   if (saved?.fingerprint && saved.fingerprint !== fingerprint) {
     message.textContent =
       "Une inscription précédente reste à vérifier. Retrouvez-la par e-mail avant d’en créer une autre.";
     form.querySelector("[data-recovery]").innerHTML =
       '<a href="/tournois/suivi/">Retrouver mon inscription →</a>';
+    button.disabled=false;
     return;
   }
   data.idempotency_key = draft.key;
-  saveStorage("fce-tournament-draft", { ...draft, fingerprint });
+  saveStorage(`fce-tournament-draft:${sale.id}`, { ...draft, fingerprint });
   const remember = (result) => {
     saveStorage("fce-tournament-link", {
       id: result.order_id,
       token: result.tracking_token,
     });
     try {
-      sessionStorage.removeItem("fce-tournament-draft");
+      sessionStorage.removeItem(`fce-tournament-draft:${sale.id}`);
     } catch {}
     return `/tournois/suivi/#${result.order_id}.${result.tracking_token}`;
   };
@@ -110,7 +128,7 @@ async function submit(event) {
         error.code !== "IDEMPOTENCY_CONFLICT"
       ) {
         try {
-          sessionStorage.removeItem("fce-tournament-draft");
+          sessionStorage.removeItem(`fce-tournament-draft:${sale.id}`);
         } catch {}
         draft = { key: crypto.randomUUID() };
       }

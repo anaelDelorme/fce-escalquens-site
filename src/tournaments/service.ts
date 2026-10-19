@@ -1,5 +1,5 @@
 import { events } from "./events";
-import { formFields, formAnswers } from "./forms";
+import { formFields, formAnswers, registrationSections, tournamentSections } from "./forms";
 import {
   body,
   origin,
@@ -36,7 +36,7 @@ import { api, connectionStatus } from "../shop/helloasso";
 async function sales(env: ShopEnv, all = false) {
   return (
     await env.DB.prepare(
-      "SELECT t.id,t.name,t.starts_on,t.categories,t.status,s.* FROM tournaments t LEFT JOIN tournament_sales s ON s.tournament_id=t.id WHERE (?=1 OR t.status IN ('published','open')) ORDER BY t.starts_on",
+      "SELECT t.id,t.name,t.starts_on,t.categories,t.status,s.* FROM tournaments t LEFT JOIN tournament_sales s ON s.tournament_id=t.id WHERE (?=1 OR t.status IN ('published','open','finished')) ORDER BY t.starts_on",
     )
       .bind(all ? 1 : 0)
       .all<Row>()
@@ -84,8 +84,6 @@ async function create(request: Request, env: ShopEnv, s: Row) {
     last_name: text(data.last_name, 80, true),
     phone: text(data.phone, 30, true),
     club_name: text(data.club_name, 120, true),
-    team_name: text(data.team_name, 120, true),
-    category: text(data.category, 80, true),
   };
   if (!/^[+0-9 ().-]{6,30}$/.test(customer.phone))
     fail("PHONE", 400, "Vérifiez le numéro de téléphone.");
@@ -102,6 +100,7 @@ async function create(request: Request, env: ShopEnv, s: Row) {
       total: data.expected_total,
       choice: data.payment_choice,
       answers: data.answers || {},
+      sections: data.sections,
     }),
   );
   let order = await env.ORDERS.prepare("SELECT * FROM orders WHERE id=?")
@@ -126,7 +125,10 @@ async function create(request: Request, env: ShopEnv, s: Row) {
         409,
         "Les inscriptions sont fermées pour ce tournoi.",
       );
-    if (data.version !== sale.version || data.expected_total !== sale.fee_cents)
+    const selection = registrationSections(sale.categories, data.sections);
+    const total = selection.count * sale.fee_cents;
+    if (!Number.isSafeInteger(total) || total > 1000000) fail("TOTAL",400,"Le montant dépasse la limite d’inscription. Contactez le club.");
+    if (data.version !== sale.version || data.expected_total !== total)
       fail(
         "PRICE_CHANGED",
         409,
@@ -147,7 +149,7 @@ async function create(request: Request, env: ShopEnv, s: Row) {
     const guard = "EXISTS(SELECT 1 FROM orders WHERE id=? AND request_hash=?)";
     await env.ORDERS.batch([
       env.ORDERS.prepare(
-        `INSERT OR IGNORE INTO orders(id,reference,kind,request_hash,token_hash,token_expires,email,first_name,last_name,phone,team,delivery_method,total_cents,terms_version,terms_snapshot,terms_accepted_at,created_at,updated_at) SELECT ?,?,'tournament',?,?,?,?,?,?,?,?,'club',?,?,?,?,?,? WHERE ?=0 OR (SELECT count(*) FROM tournament_registrations WHERE tournament_id=? AND registration_status<>'cancelled')<?`,
+        `INSERT OR IGNORE INTO orders(id,reference,kind,request_hash,token_hash,token_expires,email,first_name,last_name,phone,team,delivery_method,total_cents,terms_version,terms_snapshot,terms_accepted_at,created_at,updated_at) SELECT ?,?,'tournament',?,?,?,?,?,?,?,?,'club',?,?,?,?,?,? WHERE ?=0 OR (SELECT COALESCE(SUM(team_count),0) FROM tournament_registrations WHERE tournament_id=? AND registration_status<>'cancelled')+?<=?`,
       ).bind(
         id,
         reference,
@@ -158,46 +160,41 @@ async function create(request: Request, env: ShopEnv, s: Row) {
         customer.first_name,
         customer.last_name,
         customer.phone,
-        customer.team_name,
-        sale.fee_cents,
+        `${selection.count} équipe${selection.count > 1 ? "s" : ""}`,
+        total,
         `tournament-${sale.id}-v${sale.version}`,
-        `${sale.name}\nTarif par équipe : ${(sale.fee_cents / 100).toFixed(2)} EUR\nPaiement avant le ${new Date(sale.payment_deadline * 1000).toISOString()}\n${sale.terms}`,
+        `${sale.name}\nTarif par équipe : ${(sale.fee_cents / 100).toFixed(2)} EUR\n${selection.sections.filter(row=>row.participating).map(row=>`${row.section} : ${row.quantity} équipe(s)`).join("\n")}\nTotal : ${(total / 100).toFixed(2)} EUR\nPaiement avant le ${new Date(sale.payment_deadline * 1000).toISOString()}\n${sale.terms}`,
         stamp,
         stamp,
         stamp,
         sale.capacity,
         tournamentId,
+        selection.count,
         sale.capacity,
       ),
       env.ORDERS.prepare(
-        `INSERT OR IGNORE INTO tournament_registrations(order_id,tournament_id,tournament_name,club_name,team_name,category,payment_choice,payment_deadline,created_at,answers_json,form_snapshot) SELECT ?,?,?,?,?,?,?,?,?,?,? WHERE ${guard}`,
+        `INSERT OR IGNORE INTO tournament_registrations(order_id,tournament_id,tournament_name,club_name,team_name,category,payment_choice,payment_deadline,created_at,answers_json,form_snapshot,team_count,sections_json) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,? WHERE ${guard}`,
       ).bind(
         id,
         tournamentId,
         sale.name,
         customer.club_name,
-        customer.team_name,
-        customer.category,
+        `${selection.count} équipe${selection.count > 1 ? "s" : ""}`,
+        selection.sections.filter(row=>row.participating).map(row=>row.section).join(", "),
         data.payment_choice,
         sale.payment_deadline,
         stamp,
         JSON.stringify(answers),
         JSON.stringify(fields),
+        selection.count,
+        JSON.stringify(selection.sections),
         id,
         hash,
       ),
-      env.ORDERS.prepare(
-        `INSERT OR IGNORE INTO order_items(id,order_id,product_id,variant_id,name,sku,supplier,size,color,options_json,unit_cents,quantity) SELECT ?,?,?,?,?,'','',?,'','[]',?,1 WHERE ${guard}`,
-      ).bind(
-        `${id}:0`,
-        id,
-        tournamentId,
-        `tournament:${tournamentId}`,
-        sale.name,
-        customer.category,
-        sale.fee_cents,
-        id,
-        hash,
+      ...selection.sections.filter(section=>section.participating).flatMap((section,index)=>
+        Array.from({length:Math.ceil(section.quantity/30)},(_,chunk)=>env.ORDERS.prepare(
+          `INSERT OR IGNORE INTO order_items(id,order_id,product_id,variant_id,name,sku,supplier,size,color,options_json,unit_cents,quantity) SELECT ?,?,?,?,?,'','',?,'','[]',?,? WHERE ${guard}`,
+        ).bind(`${id}:${index}:${chunk}`,id,tournamentId,`tournament:${tournamentId}`,sale.name,section.section,sale.fee_cents,Math.min(30,section.quantity-chunk*30),id,hash))
       ),
       env.ORDERS.prepare(
         `INSERT OR IGNORE INTO order_events(id,order_id,kind,actor,message,created_at) SELECT ?,?,'created','client','Inscription enregistrée, en attente de validation par le club et de paiement.',? WHERE ${guard}`,
@@ -259,6 +256,7 @@ export function tournamentEnv(env: ShopEnv): ShopEnv {
     );
   return {
     ...env,
+    SITE_DB: env.SITE_DB || env.DB,
     DB: env.TOURNAMENTS,
     ORDERS: env.TOURNAMENTS,
     PAYMENT_DB: env.PAYMENT_DB || env.ORDERS,
@@ -602,12 +600,12 @@ export async function tournamentRoute(
     if (path === "/api/tournaments/catalogue" && request.method === "GET") {
       const rows = await sales(env);
       return response({
-        tournaments: rows
-          .filter((r) => r.enabled)
-          .map((r) => ({
+        tournaments: rows.map((r) => ({
             ...r,
+            unavailable_reason: !r.enabled ? "Les inscriptions ne sont pas encore ouvertes." : r.status !== "open" ? "Les inscriptions ne sont pas ouvertes pour ce tournoi." : r.registration_deadline < now() || r.payment_deadline < now() ? "Les inscriptions sont closes." : "",
+            sections: tournamentSections(r.categories),
             available:
-              r.status === "open" &&
+              Boolean(r.enabled) && r.status === "open" &&
               r.registration_deadline >= now() &&
               r.payment_deadline >= now(),
           })),

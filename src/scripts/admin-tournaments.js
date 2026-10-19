@@ -1,3 +1,4 @@
+import { sectionsSummary } from "./tournament-form-fields";
 import { formEditor } from "./tournament-form-editor";
 import { eventEditor } from "./tournament-events-editor";
 import {
@@ -14,7 +15,7 @@ const call = (path, options) => api(`/admin-tournois/api/${path}`, options),
     pending: "À valider",
     accepted: "Acceptée",
     cancelled: "Annulée",
-    attended: "Équipe accueillie",
+    attended: "Équipes accueillies",
   };
 const field = (name, label, value = "", type = "text") =>
   `<label>${label}<input name="${name}" type="${type}" value="${esc(value)}" required></label>`;
@@ -41,7 +42,7 @@ async function action(button, fn) {
 }
 async function registrations() {
   const { registrations: rows } = await call("registrations");
-  root.innerHTML = `<section class="commerce-card"><h2>Inscriptions et paiements</h2><p>La validation d’une équipe reste indépendante de son paiement. Une annulation ici ne déclenche aucun remboursement : effectuez-le dans HelloAsso puis vérifiez le paiement.</p><div class="commerce-form-grid"><label>Rechercher<input id="registration-search" type="search" placeholder="Club, équipe, tournoi, référence…"></label><label>État du paiement<select id="payment-filter"><option value="">Tous</option>${Object.entries(
+  root.innerHTML = `<section class="commerce-card"><h2>Inscriptions et paiements</h2><p>La validation d’une inscription reste indépendante de son paiement. Une annulation ici ne déclenche aucun remboursement : effectuez-le dans HelloAsso puis vérifiez le paiement.</p><div class="commerce-form-grid"><label>Rechercher<input id="registration-search" type="search" placeholder="Club, équipe, tournoi, référence…"></label><label>État du paiement<select id="payment-filter"><option value="">Tous</option>${Object.entries(
     paymentLabels,
   )
     .map(([k, v]) => `<option value="${k}">${esc(v)}</option>`)
@@ -91,6 +92,8 @@ async function registrations() {
       "payment_status",
       "registration_status",
       "total_cents",
+      "team_count",
+      "sections_json",
     ];
     const questions = new Map();
     for (const r of visible)
@@ -126,7 +129,7 @@ async function show(id) {
     o = data.order,
     r = data.registration,
     target = root.querySelector("#registration-detail");
-  target.innerHTML = `<section class="commerce-card"><h2>${esc(o.reference)}</h2><p>${esc(r.tournament_name)} · ${esc(r.club_name)} · ${esc(r.team_name)}</p><p>${esc(o.first_name)} ${esc(o.last_name)} · ${esc(o.email)} · ${esc(o.phone)}</p>${
+  target.innerHTML = `<section class="commerce-card"><h2>${esc(o.reference)}</h2><p>${esc(r.tournament_name)} · ${esc(r.club_name)} · ${esc(r.team_name)}</p><p>${esc(o.first_name)} ${esc(o.last_name)} · ${esc(o.email)} · ${esc(o.phone)}</p>${sectionsSummary(r)}${
     JSON.parse(r.form_snapshot || "[]").length
       ? `<dl>${JSON.parse(r.form_snapshot)
           .map(
@@ -214,8 +217,9 @@ async function sales() {
       return;
     }
     root.querySelector("#sale-form").innerHTML =
-      `<form class="commerce-form-grid tournament-admin-form">${field("fee", "Tarif par équipe en euros", ((s.fee_cents || 100) / 100).toFixed(2), "number")}${field("capacity", "Places (0 = sans limite)", s.capacity || 0, "number")}${field("registration_deadline", "Clôture des inscriptions", localTime(s.registration_deadline), "datetime-local")}${field("payment_deadline", "Date limite de paiement", localTime(s.payment_deadline), "datetime-local")}<label class="wide">Conditions du tournoi : modalités d’inscription, annulation et remboursement<textarea name="terms" maxlength="12000" required>${esc(s.terms || "")}</textarea></label><label class="tournament-choice"><input type="checkbox" name="allow_pay_later" ${s.allow_pay_later !== 0 ? "checked" : ""}> Autoriser le paiement plus tard</label><label class="tournament-choice"><input type="checkbox" name="enabled" ${s.enabled ? "checked" : ""}> Activer les inscriptions intégrées</label><section class="wide" id="tournament-form-builder"></section><div class="wide"><button type="submit">Enregistrer le tarif et le formulaire</button></div></form>`;
+      `<form class="commerce-form-grid tournament-admin-form">${field("fee", "Tarif par équipe en euros", ((s.fee_cents || 100) / 100).toFixed(2), "number")}${field("capacity", "Capacité en équipes (0 = sans limite)", s.capacity || 0, "number")}${field("registration_deadline", "Clôture des inscriptions", localTime(s.registration_deadline), "datetime-local")}${field("payment_deadline", "Date limite de paiement", localTime(s.payment_deadline), "datetime-local")}<label class="wide">Conditions du tournoi : modalités d’inscription, annulation et remboursement<textarea name="terms" maxlength="12000" required>${esc(s.terms || "")}</textarea></label><label class="tournament-choice"><input type="checkbox" name="allow_pay_later" ${s.allow_pay_later !== 0 ? "checked" : ""}> Autoriser le paiement plus tard</label><label class="tournament-choice"><input type="checkbox" name="enabled" ${s.enabled ? "checked" : ""}> Activer les inscriptions intégrées</label><section class="wide" id="tournament-form-builder"></section><div class="wide"><button type="submit">Enregistrer le tarif et le formulaire</button></div></form>`;
     const form = root.querySelector("#sale-form form");
+    const preview=document.createElement("p");preview.className="wide commerce-help";preview.textContent="Sections avec réponse Oui/Non obligatoire : "+(JSON.parse(s.categories||"[]").join(", ")||"Équipes")+". Le total est calculé selon le nombre d’équipes inscrites.";form.prepend(preview);
     const readFields = formEditor(
       form.querySelector("#tournament-form-builder"),
       JSON.parse(s.form_json || "[]"),

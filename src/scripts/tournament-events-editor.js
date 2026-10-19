@@ -1,12 +1,12 @@
 import { api, esc } from "../../public/shop-common.js";
 export async function eventEditor(root, call, action) {
-  const { events } = await call("events");
+  const { events, venues = [] } = await call("events");
   const field = (name, label, value = "", type = "text", required = false) =>
     `<label>${label}<input type="${type}" name="${name}" value="${esc(value || "")}" ${required ? "required" : ""}></label>`;
-  root.innerHTML = `<section class="commerce-card"><h2>Tournois et visuels</h2><p>Gérez ici les tournois, puis leur formulaire et leur tarif dans Formulaires et tarifs.</p><p><button id="new-tournament">+ Créer un tournoi</button></p><div class="commerce-table-wrap"><table><thead><tr><th>Tournoi</th><th>Date</th><th>Visibilité</th><th>Action</th></tr></thead><tbody>${events.map((t) => `<tr><td>${esc(t.name)}</td><td>${esc(t.starts_on)}</td><td>${esc({ draft: "Brouillon", published: "À venir", open: "Inscriptions ouvertes", finished: "Terminé" }[t.status])}</td><td><button data-event="${t.id}">Modifier</button></td></tr>`).join("") || '<tr><td colspan="4">Aucun tournoi pour le moment.</td></tr>'}</tbody></table></div></section><section id="event-editor"></section>`;
+  root.innerHTML = `<section class="commerce-card"><h2>Tournois et visuels</h2><p>Gérez chaque tournoi et ses sections. Dans son formulaire, chaque section demandera une réponse Oui/Non et un nombre d’équipes. Configurez ensuite son tarif par équipe dans Formulaires et tarifs.</p><p><button id="new-tournament">+ Créer un tournoi</button></p><div class="commerce-table-wrap"><table><thead><tr><th>Tournoi</th><th>Date</th><th>Visibilité</th><th>Action</th></tr></thead><tbody>${events.map((t) => `<tr><td>${esc(t.name)}</td><td>${esc(t.starts_on)}</td><td>${esc({ draft: "Brouillon", published: "À venir", open: "Inscriptions ouvertes", finished: "Terminé" }[t.status])}</td><td><button data-event="${t.id}">Modifier</button></td></tr>`).join("") || '<tr><td colspan="4">Aucun tournoi pour le moment.</td></tr>'}</tbody></table></div></section><section id="event-editor"></section>`;
   function edit(t = {}) {
     const target = root.querySelector("#event-editor");
-    target.innerHTML = `<form class="commerce-card commerce-form-grid"><h2 class="wide">${t.id ? "Modifier le tournoi" : "Créer un tournoi"}</h2>${field("name", "Nom", t.name, "text", true)}${field("slug", "Nom du lien (facultatif à la création)", t.slug)}${field("starts_on", "Début", t.starts_on, "date", true)}${field("ends_on", "Fin", t.ends_on, "date")}${field("venue", "Lieu et adresse", t.venue)}${field("organizer", "Organisateur", t.organizer)}${field("categories", "Catégories (séparées par une virgule)", JSON.parse(t.categories || "[]").join(", "))}<label>Statut<select name="status">${[
+    target.innerHTML = `<form class="commerce-card commerce-form-grid"><h2 class="wide">${t.id ? "Modifier le tournoi" : "Créer un tournoi"}</h2>${field("name", "Nom", t.name, "text", true)}${field("slug", "Nom du lien (facultatif à la création)", t.slug)}${field("starts_on", "Début", t.starts_on, "date", true)}${field("ends_on", "Fin", t.ends_on, "date")}<label>Lieu du club<select name="venue_id"><option value="">Lieu à confirmer</option>${venues.filter(v=>v.active||v.id===t.venue_id).map(v=>`<option value="${v.id}" ${v.id===t.venue_id?'selected':''}>${esc(v.name)}${v.active?'':' (désactivé)'}</option>`).join('')}</select><small data-venue-address></small></label>${field("organizer", "Organisateur", t.organizer)}${field("categories", "Sections à inscrire (séparées par une virgule, ex. U11, U13)", JSON.parse(t.categories || "[]").join(", "))}<label>Statut<select name="status">${[
       ["draft", "Brouillon"],
       ["published", "À venir"],
       ["open", "Inscriptions ouvertes"],
@@ -20,6 +20,8 @@ export async function eventEditor(root, call, action) {
         "",
       )}</select></label><label class="wide">Présentation<textarea name="summary" maxlength="12000" rows="8">${esc(t.summary || "")}</textarea></label>${field("tournify_url", "Lien Tournify (facultatif)", t.tournify_url, "url")}${["image_key", "poster_key", "rules_key"].map((key, i) => `<label>${["Photo du tournoi", "Affiche", "Règlement PDF"][i]}<input name="${key}" value="${esc(t[key] || "")}" maxlength="500"><input type="file" data-upload="${key}" accept="${key === "rules_key" ? "application/pdf" : "image/jpeg,image/png,image/webp"}"><small>Importer un fichier ou conserver sa clé média existante.</small></label>`).join("")}<div class="wide"><button type="submit">Enregistrer le tournoi</button></div></form>`;
     const form = target.querySelector("form");
+    const updateVenue=()=>{const venue=venues.find(v=>v.id===Number(form.elements.venue_id.value));form.querySelector('[data-venue-address]').textContent=venue?.address||(!form.elements.venue_id.value&&t.venue?`Ancien lieu : ${t.venue}. Sélectionnez un lieu du club pour le rattacher à son adresse.`:'Adresse non renseignée.');};
+    form.elements.venue_id.onchange=updateVenue;updateVenue();
     form.querySelectorAll("[data-upload]").forEach(
       (input) =>
         (input.onchange = () => {
@@ -51,6 +53,7 @@ export async function eventEditor(root, call, action) {
       event.preventDefault();
       action(form.querySelector("[type=submit]"), async () => {
         const data = Object.fromEntries(new FormData(form));
+        data.venue_id = data.venue_id ? Number(data.venue_id) : null;
         data.categories = data.categories
           .split(",")
           .map((x) => x.trim())

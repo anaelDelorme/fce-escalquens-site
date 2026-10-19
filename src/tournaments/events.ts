@@ -8,6 +8,7 @@ export async function events(
 ): Promise<Response | null> {
   if (path === "/admin-tournois/api/events" && request.method === "GET")
     return response({
+      venues: (await env.SITE_DB!.prepare("SELECT id,name,address,maps_url,active FROM venues ORDER BY display_order,name").all()).results,
       events: (
         await env.DB.prepare(
           "SELECT * FROM tournaments ORDER BY starts_on DESC,id DESC",
@@ -51,7 +52,7 @@ export async function events(
   if (!Array.isArray(d.categories) || d.categories.length > 20)
     fail("EVENT", 400, "Vérifiez les catégories.");
   const categories = JSON.stringify(
-    d.categories.map((c: unknown) => text(c, 80, true)),
+    [...new Set(d.categories.map((c: unknown) => text(c, 80, true)))],
   );
   const media = (name: string) => {
     const v = text(d[name] || "", 500);
@@ -68,13 +69,21 @@ export async function events(
     if (!u || u.protocol !== "https:" || u.username || u.password)
       fail("URL", 400, "Le lien Tournify doit être en HTTPS.");
   }
+  const venueId = d.venue_id === undefined || d.venue_id === null || d.venue_id === '' ? null : integer(d.venue_id,1,2147483647);
+  const venue = venueId ? await env.SITE_DB!.prepare('SELECT id,name,active FROM venues WHERE id=?').bind(venueId).first<Row>() : null;
+  if (venueId && !venue) fail('VENUE',400,'Choisissez un lieu enregistré dans les lieux du club.');
+  if(venue && !venue.active){
+    const previous=id?await env.DB.prepare('SELECT venue_id FROM tournaments WHERE id=?').bind(id).first<Row>():null;
+    if(previous?.venue_id!==venueId)fail('VENUE',409,'Ce lieu est désactivé. Choisissez un lieu actif.');
+  }
   const values = [
     name,
     slug,
     text(d.summary || "", 12000),
     start,
     end || null,
-    text(d.venue || "", 300),
+    venue?.name || "",
+    venueId,
     text(d.organizer || "", 160),
     categories,
     media("image_key"),
@@ -91,12 +100,12 @@ export async function events(
   if (duplicate) fail("SLUG", 409, "Ce nom de lien est déjà utilisé.");
   const row = id
     ? await env.DB.prepare(
-        "UPDATE tournaments SET name=?,slug=?,summary=?,starts_on=?,ends_on=?,venue=?,organizer=?,categories=?,image_key=?,poster_key=?,rules_key=?,tournify_url=?,status=?,registration_url=NULL,version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND version=? RETURNING id,version",
+        "UPDATE tournaments SET name=?,slug=?,summary=?,starts_on=?,ends_on=?,venue=?,venue_id=?,organizer=?,categories=?,image_key=?,poster_key=?,rules_key=?,tournify_url=?,status=?,registration_url=NULL,version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND version=? RETURNING id,version",
       )
         .bind(...values, id, integer(d.version, 1, 2147483647))
         .first<Row>()
     : await env.DB.prepare(
-        "INSERT INTO tournaments(name,slug,summary,starts_on,ends_on,venue,organizer,categories,image_key,poster_key,rules_key,tournify_url,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id,version",
+        "INSERT INTO tournaments(name,slug,summary,starts_on,ends_on,venue,venue_id,organizer,categories,image_key,poster_key,rules_key,tournify_url,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id,version",
       )
         .bind(...values)
         .first<Row>();

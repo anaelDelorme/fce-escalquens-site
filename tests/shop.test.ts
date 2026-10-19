@@ -193,6 +193,7 @@ before(async () => {
   ORDERS = new TestDatabase();
   TOURNEYS=new TestDatabase();
   await TOURNEYS.exec(readFileSync(new URL("../migrations-tournaments/0001_tournaments.sql",import.meta.url),"utf8"));
+  await TOURNEYS.exec(readFileSync(new URL("../migrations-tournaments/0002_registration_sections.sql",import.meta.url),"utf8"));
   await TOURNEYS.exec("INSERT INTO module_imports(id,imported_at) VALUES('v5.2',0)");
   await TOURNEYS.exec(`INSERT INTO tournaments(id,slug,name,starts_on,categories,status) VALUES(1,'tournoi-u11','Tournoi U11','2027-06-10','["U11"]','open');`);
   await DB.exec(
@@ -234,6 +235,7 @@ before(async () => {
     .bind(ids.option)
     .run();
   await DB.exec(readFileSync(new URL('../migrations/0030_shop_suppliers.sql',import.meta.url),'utf8'));
+  await DB.exec("CREATE TABLE venues(id INTEGER PRIMARY KEY,name TEXT,address TEXT,maps_url TEXT,active INTEGER,display_order INTEGER); INSERT INTO venues VALUES(1,'Stade du club','1 rue du Stade','https://maps.example/stade',1,0);");
   await DB.exec("CREATE TABLE tournaments(id INTEGER PRIMARY KEY,name TEXT,starts_on TEXT,categories TEXT,status TEXT);INSERT INTO tournaments VALUES(1,'Tournoi U11','2027-06-10','[\"U11\"]','open');");
   await DB.exec(readFileSync(new URL('../migrations/0031_tournament_checkout.sql',import.meta.url),'utf8'));
 
@@ -1267,7 +1269,7 @@ test('fournisseur désactivé : aucune nouvelle affectation, libellé courant ac
 });
 
 const tournamentApi=async(path:string,data?:any,options:any={})=>{const res=await tournamentRoute(request(path,data,options),env,ctx);assert.ok(res);return {status:res.status,body:await res.json() as any};};
-const tournamentPayload=()=>({idempotency_key:crypto.randomUUID(),tournament_id:1,first_name:'Responsable',last_name:'Test',email:'responsable@example.org',phone:'0612345678',club_name:'Club test',team_name:'Équipe A',category:'U11',payment_choice:'later',version:1,expected_total:4900,accept_terms:true});
+const tournamentPayload=()=>({idempotency_key:crypto.randomUUID(),tournament_id:1,first_name:'Responsable',last_name:'Test',email:'responsable@example.org',phone:'0612345678',club_name:'Club test',sections:[{section:'U11',participating:true,quantity:1}],team_name:'Équipe A',category:'U11',payment_choice:'later',version:1,expected_total:4900,accept_terms:true});
 let registration:any;
 test('tournois : réglages versionnés, inscription différée atomique, capacité et prix figés',async()=>{
  const config={tournament_id:1,version:0,fee_cents:4900,capacity:1,enabled:true,allow_pay_later:true,registration_deadline:now()+86400,payment_deadline:now()+172800,terms:'Le club confirme les inscriptions. En cas d’annulation, contactez le club pour étudier les modalités de remboursement prévues au règlement.'};
@@ -1340,7 +1342,7 @@ test('tournois V5.2 : création dans la D1 dédiée, ancien CRUD fermé et formu
  const fields=[{id:'transport',label:'Besoin de stationnement ?',type:'select',required:true,choices:['Oui','Non']},{id:'comment',label:'Précision logistique',type:'textarea',required:false,choices:[]}];
  const config={tournament_id:id,version:0,fee_cents:4900,capacity:5,enabled:true,allow_pay_later:true,registration_deadline:now()+86400,payment_deadline:now()+172800,terms:'Inscription confirmée par le club. Les conditions d’annulation et de remboursement sont communiquées dans le règlement du tournoi.',form_fields:fields};
  assert.equal((await tournamentApi('/admin-tournois/api/sales',config,{admin:true,method:'PUT'})).status,200);
- const payload={...tournamentPayload(),tournament_id:id};
+ const payload={...tournamentPayload(),tournament_id:id,sections:[{section:'U13',participating:true,quantity:1}]};
  assert.equal((await tournamentApi('/api/tournaments/registrations',payload)).status,400);
  const result=await tournamentApi('/api/tournaments/registrations',{...payload,answers:{transport:'Oui',comment:'Un minibus'}});assert.equal(result.status,200,JSON.stringify(result.body));
  const detail=await tournamentApi(`/api/tournaments/registrations/${result.body.order_id}`,undefined,{token:result.body.tracking_token});assert.equal(JSON.parse(detail.body.registration.answers_json).comment,'Un minibus');assert.equal(await ORDERS.prepare('SELECT id FROM orders WHERE id=?').bind(result.body.order_id).first(),null);
@@ -1381,4 +1383,38 @@ test('copie initiale incomplète : inscriptions bloquées et webhook à réessay
   const callback=await worker.fetch(request('/api/shop/helloasso/webhook',{eventType:'Payment',metadata:{order_id:registration.order_id}}),env as any,ctx);assert.equal(callback.status,503);
   const before=sent;await maintenance(tournamentEnv(env));assert.equal(sent,before);
  }finally{await TOURNEYS.prepare("INSERT INTO module_imports(id,imported_at) VALUES('v5.2',?)").bind(now()).run();}
+});
+
+test('tournoi multi-sections : réponses obligatoires, total serveur, capacité en équipes et prix figé',async()=>{
+ await TOURNEYS.prepare("DELETE FROM rate_limits").run();
+ const event=await tournamentApi('/admin-tournois/api/events',{name:'Tournoi sections',starts_on:'2027-07-02',status:'open',venue_id:1,categories:['U11','U13']},{admin:true});assert.equal(event.status,200);
+ const id=event.body.id;
+ const config={tournament_id:id,version:0,fee_cents:2500,capacity:4,enabled:true,allow_pay_later:true,registration_deadline:now()+86400,payment_deadline:now()+172800,terms:'Le club confirme l’inscription. En cas d’annulation, contactez le club pour connaître les modalités de remboursement.'};
+ assert.equal((await tournamentApi('/admin-tournois/api/sales',config,{admin:true,method:'PUT'})).status,200);
+ const sections=[{section:'U11',participating:true,quantity:2},{section:'U13',participating:true,quantity:1}];
+ const payload={...tournamentPayload(),tournament_id:id,sections,expected_total:7500};
+ for(const invalid of [undefined,[],[{section:'U11',participating:true,quantity:2}],sections.map(s=>({...s,participating:false})),[{...sections[0],quantity:1.5},sections[1]],[sections[0],{...sections[1],section:'U99'}]]){
+   const denied=await tournamentApi('/api/tournaments/registrations',{...payload,sections:invalid});assert.equal(denied.status,400,JSON.stringify(denied.body));
+ }
+ const wrong=await tournamentApi('/api/tournaments/registrations',{...payload,expected_total:2500});assert.equal(wrong.body.code,'PRICE_CHANGED');
+ const registered=await tournamentApi('/api/tournaments/registrations',payload);assert.equal(registered.status,200,JSON.stringify(registered.body));
+ assert.equal((await tournamentApi('/api/tournaments/registrations',payload)).body.order_id,registered.body.order_id);
+ const detail=await tournamentApi(`/api/tournaments/registrations/${registered.body.order_id}`,undefined,{token:registered.body.tracking_token});assert.equal(detail.body.order.total_cents,7500);assert.equal(detail.body.registration.team_count,3);assert.deepEqual(JSON.parse(detail.body.registration.sections_json),sections);
+ assert.equal(detail.body.items.reduce((sum:number,row:any)=>sum+row.quantity*row.unit_cents,0),7500);
+ const full=await tournamentApi('/api/tournaments/registrations',{...payload,idempotency_key:crypto.randomUUID(),sections:[{section:'U11',participating:true,quantity:2},{section:'U13',participating:false,quantity:0}],expected_total:5000});assert.equal(full.body.code,'TOURNAMENT_FULL');
+ assert.equal((await tournamentApi('/admin-tournois/api/sales',{...config,version:1,fee_cents:3000,enabled:false},{admin:true,method:'PUT'})).status,200);
+ const catalogue=await tournamentApi('/api/tournaments/catalogue');const sale=catalogue.body.tournaments.find((row:any)=>row.id===id);assert.equal(sale.fee_cents,3000);assert.equal(sale.available,false);assert.match(sale.unavailable_reason,/pas encore ouvertes/);
+ assert.equal((await TOURNEYS.prepare('SELECT total_cents FROM orders WHERE id=?').bind(registered.body.order_id).first<any>()).total_cents,7500);
+ assert.equal((await tournamentApi('/admin-tournois/api/sales',{...config,version:2,fee_cents:3000,capacity:40},{admin:true,method:'PUT'})).status,200);
+ const many=await tournamentApi('/api/tournaments/registrations',{...payload,idempotency_key:crypto.randomUUID(),version:3,sections:[{section:'U11',participating:true,quantity:31},{section:'U13',participating:false,quantity:0}],expected_total:93000});assert.equal(many.status,200,JSON.stringify(many.body));
+ const lines=(await TOURNEYS.prepare('SELECT quantity,unit_cents FROM order_items WHERE order_id=?').bind(many.body.order_id).all<any>()).results;assert.equal(lines.length,2);assert.equal(lines.reduce((sum:number,row:any)=>sum+row.quantity*row.unit_cents,0),93000);
+});
+test('lieux tournois : sélection dans la D1 du site et refus des lieux inconnus ou désactivés',async()=>{
+ const listed=await tournamentApi('/admin-tournois/api/events',undefined,{admin:true});assert.equal(listed.status,200);assert.equal(listed.body.venues[0].address,'1 rue du Stade');
+ const payload={name:'Tournoi lieu',starts_on:'2027-07-04',status:'published',categories:['U11'],venue_id:1};
+ const created=await tournamentApi('/admin-tournois/api/events',payload,{admin:true});assert.equal(created.status,200);
+ const row=await TOURNEYS.prepare('SELECT venue_id,venue FROM tournaments WHERE id=?').bind(created.body.id).first<any>();assert.equal(row.venue_id,1);assert.equal(row.venue,'Stade du club');
+ assert.equal((await tournamentApi('/admin-tournois/api/events',{...payload,name:'Lieu invalide',venue_id:999},{admin:true})).body.code,'VENUE');
+ await DB.prepare('UPDATE venues SET active=0 WHERE id=1').run();
+ try{assert.equal((await tournamentApi('/admin-tournois/api/events',{...payload,name:'Lieu désactivé'},{admin:true})).status,409);}finally{await DB.prepare('UPDATE venues SET active=1 WHERE id=1').run();}
 });

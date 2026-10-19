@@ -1,4 +1,4 @@
-import { fail, text, type Row } from "../shop/domain";
+import { fail, text, integer, type Row } from "../shop/domain";
 export function formFields(value: unknown) {
   if (!Array.isArray(value) || value.length > 12)
     fail(
@@ -67,4 +67,27 @@ export function formAnswers(fields: Row[], value: unknown) {
     }
   }
   return result;
+}
+
+export function tournamentSections(value: unknown): string[] {
+  let rows: unknown;
+  try { rows = typeof value === 'string' ? JSON.parse(value) : value; } catch { rows = []; }
+  if (!Array.isArray(rows) || !rows.length) return ['Équipes'];
+  return [...new Set(rows.map((s: unknown) => text(s, 80, true)))];
+}
+export function registrationSections(categories: unknown, value: unknown) {
+  const sections = tournamentSections(categories);
+  if (!Array.isArray(value) || value.length !== sections.length)
+    fail('SECTIONS', 400, 'Répondez Oui ou Non pour chacune des sections du tournoi.');
+  const result = sections.map(section => {
+    const matches = value.filter((row: any) => row?.section === section);
+    const row = matches[0];
+    if (matches.length !== 1 || typeof row.participating !== 'boolean')
+      fail('SECTIONS', 400, `Indiquez Oui ou Non pour la section ${section}.`);
+    const quantity = integer(row.quantity, row.participating ? 1 : 0, row.participating ? 50 : 0);
+    return { section, participating: row.participating, quantity };
+  });
+  const count = result.reduce((sum, row) => sum + row.quantity, 0);
+  if (!count || count > 100) fail('SECTIONS', 400, 'Inscrivez entre 1 et 100 équipes au total.');
+  return { sections: result, count };
 }

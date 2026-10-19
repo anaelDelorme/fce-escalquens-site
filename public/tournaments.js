@@ -32,6 +32,8 @@ let tournaments=[],links=[],teams=[],venues=[],sales=[];
 function categories(row){try{return Array.isArray(row.categories)?row.categories:JSON.parse(row.categories||'[]')}catch{return []}}
 function participatingTeams(id){const ids=links.filter(link=>link.tournament_id===id).map(link=>link.team_id);return teams.filter(team=>ids.includes(team.id))}
 function visual(row){
+  const sale=sales.find(item=>item.id===row.id);
+  const badge=row.status==='open'&&!sale?.available?(sale?.enabled?'Inscriptions closes':'Inscriptions à venir'):(statusLabels[row.status]||'Tournoi');
   const source=row.image_key||row.poster_key||'';
   const posterOnly=!row.image_key&&row.poster_key;
   const image=source
@@ -40,7 +42,7 @@ function visual(row){
   const poster=row.poster_key&&row.image_key
     ?`<a class="tournament-poster-peek" href="/media/${esc(row.poster_key)}" target="_blank" rel="noopener"><img src="/media/${esc(row.poster_key)}" alt=""><span>Voir l’affiche</span></a>`
     :'';
-  return `<div class="tournament-visual">${image}<span class="tournament-status tournament-status--${esc(row.status)}">${esc(statusLabels[row.status]||'Tournoi')}</span>${poster}</div>`;
+  return `<div class="tournament-visual">${image}<span class="tournament-status tournament-status--${esc(row.status)}">${esc(badge)}</span>${poster}</div>`;
 }
 function draw(){
   const rows=tournaments.filter(row=>['published','open','finished'].includes(row.status));
@@ -51,10 +53,15 @@ function draw(){
     const venue=venues.find(item=>item.id===row.venue_id);
     const labels=participants.map(team=>team.name).filter(Boolean);
     const fallbackCategories=categories(row);
-    const audience=labels.length?labels:fallbackCategories;
+    const audience=fallbackCategories.length?fallbackCategories:labels;
     const location=venue?.name||row.venue||'Lieu à confirmer';
+    let mapUrl='';
+    if(venue){
+      try{const url=new URL(venue.maps_url);if(url.protocol==='https:')mapUrl=url.href;}catch{}
+      if(!mapUrl&&venue.address)mapUrl='https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(venue.name+' '+venue.address);
+    }
     const sale=sales.find(item=>item.id===row.id);
-    const price=sale?new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(sale.fee_cents/100)+' par équipe':String(row.registration_price||'').trim()||'Tarif à confirmer';
+    const price=sale?.fee_cents?new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(sale.fee_cents/100)+' par équipe':String(row.registration_price||'').trim()||'Tarif à confirmer';
     return `<article class="tournament-card">
       ${visual(row)}
       <div class="tournament-card-body">
@@ -63,12 +70,13 @@ function draw(){
         ${row.summary?`<div class="tournament-summary tournament-summary-rich">${richText(row.summary)}</div>`:''}
         <dl class="tournament-facts">
           <div><dt>Date</dt><dd>${esc(date(row.starts_on))}${row.ends_on&&row.ends_on!==row.starts_on?`<small>au ${esc(date(row.ends_on))}</small>`:''}</dd></div>
-          <div><dt>Lieu</dt><dd>${esc(location)}</dd></div>
+          <div><dt>Lieu</dt><dd>${esc(location)}${venue?.address?`<small>${esc(venue.address)}</small>`:''}${mapUrl?`<a class="tournament-map-link" href="${esc(mapUrl)}" target="_blank" rel="noopener noreferrer">Itinéraire ↗</a>`:''}</dd></div>
           <div class="tournament-price"><dt>Inscription</dt><dd>${esc(price)}</dd></div>
         </dl>
+        ${sale&&!sale.available?`<p class="tournament-registration-state">${esc(sale.unavailable_reason||"Les inscriptions ne sont pas ouvertes.")}</p>`:!sale?'<p class="tournament-registration-state">Les modalités d’inscription seront précisées ici.</p>':''}
         ${row.organizer?`<p class="tournament-organizer">Organisé par <b>${esc(row.organizer)}</b></p>`:''}
         <div class="tournament-actions">
-          ${sale?.available?`<button class="tournament-action tournament-action--primary" data-tournament-register="${row.id}">Inscrire mon équipe →</button>`:''}
+          ${sale?.available?`<button class="tournament-action tournament-action--primary" data-tournament-register="${row.id}">Inscrire mes équipes →</button>`:''}
           ${row.tournify_url?`<a class="tournament-action" href="${esc(row.tournify_url)}" target="_blank" rel="noopener">Tournify →</a>`:''}
           ${row.poster_key?`<a class="tournament-action" href="/media/${esc(row.poster_key)}" target="_blank" rel="noopener">Voir l’affiche</a>`:''}
           ${row.rules_key?`<a class="tournament-action" href="/media/${esc(row.rules_key)}" target="_blank" rel="noopener">Règlement</a>`:''}
@@ -77,14 +85,18 @@ function draw(){
     </article>`;
   }).join('')||'<div class="empty-state"><b>Les prochains tournois arrivent bientôt.</b><p>Les informations seront publiées ici dès leur confirmation.</p></div>';
 }
-fetch('/api/page/tournaments').then(async response=>{
+fetch('/api/page/tournaments',{cache:'no-store'}).then(async response=>{
   const data=await response.json();
   if(!response.ok)throw new Error(data.error||`Tournois : ${response.status}`);
   return data;
 }).then(async data=>{
-  const result=await fetch("/api/tournaments/catalogue");
-  if(!result.ok)throw new Error("Configuration des inscriptions indisponible");
-  sales=(await result.json()).tournaments||[];
+  try {
+    const result=await fetch("/api/tournaments/catalogue",{cache:"no-store"});
+    if(!result.ok)throw new Error("Configuration des inscriptions indisponible");
+    sales=(await result.json()).tournaments||[];
+  } catch(error) {
+    const message=document.createElement('p');message.className='tournament-registration-state';message.setAttribute('role','status');message.textContent='Les informations des tournois sont disponibles, mais les tarifs et inscriptions ne peuvent pas être chargés. Rechargez la page ou contactez le club.';document.querySelector('#tournaments-list').before(message);
+  }
   tournaments=data.tournaments||[];
   links=data.links||[];
   teams=data.teams||[];

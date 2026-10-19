@@ -896,6 +896,7 @@ async function cachedPageData(request: Request, env: Env, url: URL, ctx: Executi
     || url.pathname === "/api/page/teams"
     || url.pathname === "/api/page/shop"
     || url.pathname === "/api/page/social-assets"
+    || url.pathname === "/api/page/tournaments"
   ) {
     const response = await pageData(env, url);
     const headers = new Headers(response.headers);

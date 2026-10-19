@@ -1,3 +1,4 @@
+import { sectionsSummary } from "./tournament-form-fields";
 import {
   api,
   esc,
@@ -30,7 +31,7 @@ async function load(action = "") {
     );
     order = data.order;
     registration = data.registration;
-    content.innerHTML = `<section class="commerce-card"><p class="eyebrow">${esc(order.reference)}</p><h2>${esc(registration.tournament_name)}</h2><p>${esc(registration.club_name)} · ${esc(registration.team_name)} · ${esc(registration.category)}</p><dl><dt>Inscription</dt><dd>${esc(statuses[registration.registration_status])}</dd><dt>Paiement</dt><dd>${esc(paymentLabels[order.payment_status] || order.payment_status)} · ${money(order.total_cents)}</dd><dt>Date limite de paiement</dt><dd>${date(registration.payment_deadline)}</dd></dl>${
+    content.innerHTML = `<section class="commerce-card"><p class="eyebrow">${esc(order.reference)}</p><h2>${esc(registration.tournament_name)}</h2><p>${esc(registration.club_name)} · ${esc(registration.team_name)} · ${esc(registration.category)}</p><dl><dt>Inscription</dt><dd>${esc(statuses[registration.registration_status])}</dd><dt>Paiement</dt><dd>${esc(paymentLabels[order.payment_status] || order.payment_status)} · ${money(order.total_cents)}</dd><dt>Date limite de paiement</dt><dd>${date(registration.payment_deadline)}</dd></dl>${sectionsSummary(registration)}${
       JSON.parse(registration.form_snapshot || "[]").length
         ? `<h3>Vos réponses</h3><dl>${JSON.parse(registration.form_snapshot)
             .map((f) => {

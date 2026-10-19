@@ -1,1 +1,18 @@
 .tournament-dialog{width:min(720px,calc(100% - 24px));max-height:calc(100dvh - 24px);overflow:auto;border:0;border-radius:18px;padding:clamp(20px,4vw,36px);color:#332429}.tournament-dialog::backdrop{background:#201016b8}.tournament-close{float:right;font-size:1.5rem;padding:4px 15px}.tournament-fee{font-size:2rem;font-weight:800;color:#8d1739}.tournament-fee small{font-size:1rem;font-weight:400}.tournament-choice{display:flex!important;align-items:flex-start;gap:12px;margin:15px 0}.tournament-choice input[type=checkbox],.tournament-choice input[type=radio]{width:20px!important;height:20px!important;flex:0 0 20px;margin:0}.tournament-terms{white-space:pre-wrap;overflow-wrap:anywhere}.tournament-actions{display:flex;flex-wrap:wrap;gap:12px}.tournament-admin-table{overflow:auto}.tournament-admin-table table{width:100%;border-collapse:collapse}.tournament-admin-table th,.tournament-admin-table td{text-align:left;padding:12px;border-bottom:1px solid #eadcde;vertical-align:top}.tournament-admin-form{margin:24px 0}.tournament-admin-form textarea{min-height:120px}.tournament-dialog .wide{grid-column:1/-1}
+
+/* En-tête unique, inscription située dans chaque carte tournoi. */
+.tournaments-content{padding-top:clamp(32px,5vw,64px)!important}
+.tournaments-heading{display:flex;align-items:center;justify-content:space-between;gap:28px;margin:0 0 8px;padding-bottom:28px;border-bottom:1px solid #dfd2c9}
+.tournaments-heading h1{font-size:clamp(36px,4.5vw,60px);line-height:1.05;margin:10px 0 14px;color:#302426}
+.tournaments-heading p{margin:0;max-width:580px;line-height:1.6}
+.tournament-tracking-link{display:grid;gap:6px;padding:18px 22px;border:1px solid #dfd2c9;border-radius:14px;background:#fff;color:#7d192c;text-decoration:none;flex-shrink:0}
+.tournament-tracking-link span{font-size:.9rem}
+.tournament-registration-state{padding:12px 14px;border-left:3px solid #d2a820;background:#fcf6e8;line-height:1.5}
+.tournament-sections{border:1px solid #e1d4cc;border-radius:12px;padding:18px;min-width:0}
+.tournament-sections>legend{font-weight:800;padding:0 6px}.tournament-sections>p{font-size:.9rem;line-height:1.5}
+.tournament-section{display:grid;grid-template-columns:1fr 170px;align-items:center;gap:14px;padding:14px 0;border-top:1px solid #eadfda}
+.tournament-section fieldset{border:0;padding:0;margin:0}.tournament-section legend{font-weight:800;margin-bottom:8px}.tournament-section fieldset label{display:inline-flex;align-items:center;gap:8px;margin-right:16px}
+.tournament-section input[type=radio]{width:20px!important;height:20px!important;margin:0}.tournament-section [hidden]{display:none!important}
+.tournament-total{display:grid;gap:6px;padding:18px 22px;background:#faf2d8;border-radius:12px}.tournament-total strong{font-size:2rem;color:#7d192c}.tournament-total small{color:#65544c}
+@media(max-width:680px){.tournaments-heading{align-items:stretch;flex-direction:column;gap:18px}.tournament-tracking-link{padding:14px 18px}.tournament-section{grid-template-columns:1fr}.tournament-section [data-section-quantity]{max-width:180px}.tournament-dialog{padding:20px}}
+.tournament-map-link{display:inline-block;margin-top:8px;color:#7d192c;text-decoration:underline;text-underline-offset:3px;font-weight:800}
