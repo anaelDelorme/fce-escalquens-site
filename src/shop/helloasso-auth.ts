@@ -1,4 +1,4 @@
-import { fail, now, sha256, type Row } from "./domain";
+import { ShopError, fail, now, sha256, type Row } from "./domain";
 import type { ShopEnv } from "./service";
 const inflight = new Map<string, Promise<string>>();
 async function key(env: ShopEnv) {
@@ -99,6 +99,7 @@ export async function accessToken(env: ShopEnv, base: string, force = false) {
         503,
         "La connexion au paiement est en cours de renouvellement. Réessayez dans quelques instants.",
       );
+    let stage = "cache-read";
     try {
       const latest = await db
         .prepare(
@@ -128,6 +129,7 @@ export async function accessToken(env: ShopEnv, base: string, force = false) {
         });
       const hasRefresh =
         tokens?.refresh_token && tokens.refresh_expires > now();
+      stage = "oauth-request";
       let response = await grant(
         hasRefresh ? tokens!.refresh_token : undefined,
       );
@@ -137,10 +139,11 @@ export async function accessToken(env: ShopEnv, base: string, force = false) {
         fail(
           "HELLOASSO_AUTH",
           503,
-          "La connexion HelloAsso est indisponible. Le club doit vérifier ses identifiants et son environnement.",
+          `HelloAsso refuse l’authentification (HTTP ${response.status}). Vérifiez les identifiants du compte Sandbox ou Production correspondant.`,
         );
+      stage = "oauth-response";
       tokens = (await response.json()) as Row;
-      if (typeof tokens.access_token !== "string")
+      if (!tokens || typeof tokens !== "object" || typeof tokens.access_token !== "string" || !tokens.access_token)
         fail(
           "HELLOASSO_AUTH",
           502,
@@ -148,20 +151,29 @@ export async function accessToken(env: ShopEnv, base: string, force = false) {
         );
       tokens.refresh_expires = now() + 29 * 86400;
       const expires = now() + Math.min(1800, Number(tokens.expires_in) || 1800);
+      stage = "token-encryption";
+      const encrypted = await encryptTokens(env, tokens);
+      stage = "cache-write";
       await db
         .prepare(
           "UPDATE helloasso_tokens SET encrypted=?,expires_at=? WHERE cache_key=? AND lock_id=?",
         )
-        .bind(await encryptTokens(env, tokens), expires, cache, lock)
+        .bind(encrypted, expires, cache, lock)
         .run();
       return tokens.access_token as string;
     } catch (error) {
-      if ((error as any)?.code) throw error;
-      return fail(
-        "HELLOASSO_AUTH",
-        503,
-        "La connexion HelloAsso n’a pas répondu. Réessayez dans quelques instants.",
-      );
+      if (error instanceof ShopError) throw error;
+      // Only fixed stage information is exposed. Provider bodies and native messages may contain secrets.
+      if(stage === "oauth-request") {
+        if(["TimeoutError","AbortError"].includes((error as Error)?.name))
+          fail("HELLOASSO_TIMEOUT",503,"Le serveur d’authentification HelloAsso n’a pas répondu dans le délai prévu. Réessayez ultérieurement.");
+        fail("HELLOASSO_NETWORK",503,"Le Worker n’a pas pu joindre le serveur d’authentification HelloAsso. Vérifiez l’accès réseau à l’API de cet environnement.");
+      }
+      if(stage === "oauth-response")
+        fail("HELLOASSO_AUTH_RESPONSE",502,"La réponse d’authentification HelloAsso n’est pas un JSON valide. Aucun jeton n’a été enregistré.");
+      if(stage === "token-encryption")
+        fail("HELLOASSO_TOKEN_ENCRYPTION",503,"La connexion OAuth a répondu, mais le Worker n’a pas pu chiffrer les jetons. Le club doit vérifier le chiffrement côté serveur.");
+      fail("HELLOASSO_TOKEN_STORAGE",503,"Le Worker n’a pas pu lire ou enregistrer le cache OAuth dans la base des commandes. Vérifiez ses migrations et son accès.");
     } finally {
       await db
         .prepare(

@@ -1441,3 +1441,46 @@ test('tournoi chèque : instructions figées, pas de checkout, réception réser
  assert.equal((await tournamentApi('/admin-tournois/api/sales',{...config,version:2,allow_cheque:false},{admin:true,method:'PUT'})).status,200);
  const denied=await tournamentApi('/api/tournaments/registrations',{...payload,idempotency_key:crypto.randomUUID(),version:3});assert.equal(denied.body.code,'CHEQUE_CLOSED');
 });
+
+test('réglages tournoi : échéances indépendantes et conditions courtes acceptées, sans ouvrir une inscription expirée',async()=>{
+ const event=await tournamentApi('/admin-tournois/api/events',{name:'Dates libres',starts_on:'2027-08-01',status:'open',categories:['U11']},{admin:true});assert.equal(event.status,200);const id=event.body.id;
+ const config={tournament_id:id,version:0,fee_cents:2500,capacity:0,enabled:true,allow_pay_later:true,allow_cheque:true,cheque_payee:'FCE',cheque_address:'Adresse du club',registration_deadline:now()+3600,payment_deadline:now()+1800,cheque_deadline:now()+86400,terms:'Conditions du tournoi.'};
+ assert.equal((await tournamentApi('/admin-tournois/api/sales',config,{admin:true,method:'PUT'})).status,200);
+ assert.equal((await tournamentApi('/admin-tournois/api/sales',{...config,version:1,cheque_deadline:now()+900},{admin:true,method:'PUT'})).status,200);
+ assert.equal((await tournamentApi('/admin-tournois/api/sales',{...config,version:2,terms:''},{admin:true,method:'PUT'})).status,400);
+ assert.equal((await tournamentApi('/admin-tournois/api/sales',{...config,version:2,cheque_deadline:0},{admin:true,method:'PUT'})).status,400);
+ assert.equal((await tournamentApi('/admin-tournois/api/sales',{...config,version:2,registration_deadline:now()-60,payment_deadline:now()-30,cheque_deadline:now()-10},{admin:true,method:'PUT'})).status,200);
+ const catalogue=await tournamentApi('/api/tournaments/catalogue');assert.equal(catalogue.body.tournaments.find((t:any)=>t.id===id).available,false);
+});
+test('boutique : les champs médiateur retirés ne bloquent plus le paiement, les informations de vente restent contrôlées',async()=>{
+ const old=(await ORDERS.prepare('SELECT data FROM settings WHERE id=1').first<any>()).data;
+ try{
+   const data={...JSON.parse(old),checkout_enabled:true,legal_ready:true,mediator_name:'',mediator_url:''};
+   await ORDERS.prepare('UPDATE settings SET data=? WHERE id=1').bind(JSON.stringify(data)).run();
+   const catalogue=await route(request('/api/shop/catalogue'));assert.equal(catalogue.body.checkout_available,true,JSON.stringify(catalogue.body.checkout_unavailable));
+   await ORDERS.prepare('UPDATE settings SET data=? WHERE id=1').bind(JSON.stringify({...data,legal_ready:false})).run();
+   assert.equal((await route(request('/api/shop/catalogue'))).body.checkout_unavailable.code,'LEGAL_CONFIG');
+ }finally{await ORDERS.prepare('UPDATE settings SET data=? WHERE id=1').bind(old).run();}
+});
+
+test('diagnostic OAuth : réseau, délai, réponse et chiffrement distingués sans exposer les secrets',async()=>{
+ const originalFetch=globalThis.fetch,originalEncrypt=crypto.subtle.encrypt;
+ const probeEnv=()=>({...env,HELLOASSO_CLIENT_ID:crypto.randomUUID()});
+ const check=async(expected:string,probe=probeEnv())=>{
+   await assert.rejects(()=>accessToken(probe,'https://api.helloasso-sandbox.com'),(error:any)=>{assert.equal(error.code,expected);assert.doesNotMatch(error.message,/PRIVATE_TOKEN|PRIVATE_CREDENTIAL|native private/);return true;});
+ };
+ try{
+   globalThis.fetch=(async()=>{throw new TypeError('native private PRIVATE_CREDENTIAL');}) as any;
+   await check('HELLOASSO_NETWORK');
+   globalThis.fetch=(async()=>{throw new DOMException('native private','TimeoutError');}) as any;
+   await check('HELLOASSO_TIMEOUT');
+   globalThis.fetch=(async()=>new Response('PRIVATE_TOKEN',{status:200,headers:{'content-type':'text/html'}})) as any;
+   await check('HELLOASSO_AUTH_RESPONSE');
+   globalThis.fetch=(async()=>Response.json({error:'PRIVATE_CREDENTIAL'},{status:401})) as any;
+   await check('HELLOASSO_AUTH');
+   globalThis.fetch=(async()=>Response.json({access_token:'PRIVATE_TOKEN',expires_in:1800})) as any;
+   (crypto.subtle as any).encrypt=async()=>{throw new Error('native private');};
+   const probe=probeEnv();await check('HELLOASSO_TOKEN_ENCRYPTION',probe);
+   const key=await tokenKey(probe,'https://api.helloasso-sandbox.com');const row=await ORDERS.prepare('SELECT encrypted,locked_until FROM helloasso_tokens WHERE cache_key=?').bind(key).first<any>();assert.equal(row.encrypted,'');assert.equal(row.locked_until,0);
+ }finally{globalThis.fetch=originalFetch;(crypto.subtle as any).encrypt=originalEncrypt;}
+});

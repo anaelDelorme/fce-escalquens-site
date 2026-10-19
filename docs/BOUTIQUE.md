@@ -1,5 +1,7 @@
 # Guide technique boutique
 
+Pour raccorder la boutique en staging : [HelloAsso Sandbox — pas à pas](HELLOASSO-SANDBOX-PAS-A-PAS.md). Le correctif V5.2.7 supprime les contraintes entre dates du tournoi et le contrôle résiduel des anciens champs médiateur.
+
 **V5.2 :** suivre [TOURNOIS-V5.2.md](TOURNOIS-V5.2.md) pour les tableaux boutique, l’éditeur de formulaire et la migration obligatoire des tournois vers leur D1 dédiée.
 
 Pour une installation pas à pas **sans compte HelloAsso**, commencer par [INSTALLATION-STAGING.md](INSTALLATION-STAGING.md). La branche de préproduction s’appelle désormais `staging` ; l’administration boutique est entièrement sous `/admin-boutique/`.
@@ -234,4 +236,4 @@ Utiliser `http://localhost:8787` comme `SHOP_ORIGIN`. En local, la page de gesti
 
 ## V5.1 : HelloAsso Sandbox et tournois
 
-La procédure cumulative depuis la V4, la configuration réelle du compte Sandbox `fce`, les URL webhook/retour, les secrets Worker et la recette des inscriptions figurent dans [BOUTIQUE-V5.1-INSTALLATION.md](BOUTIQUE-V5.1-INSTALLATION.md). Elle remplace l’installation séparée de la V5 si celle-ci n’a pas été appliquée. Les inscriptions privées et paiements sont administrés dans `/admin-tournois/`, avec `CF_ACCESS_TOURNAMENT_AUD` et la liste distincte `ORDERS.tournament_admins`. La présentation éditoriale des tournois reste gérée par l’administration du site.
+La procédure cumulative depuis la V4, la configuration réelle du compte Sandbox `fce`, les URL webhook/retour, les secrets Worker et la recette des inscriptions figurent dans [BOUTIQUE-V5.1-INSTALLATION.md](BOUTIQUE-V5.1-INSTALLATION.md). Elle remplace l’installation séparée de la V5 si celle-ci n’a pas été appliquée. Les inscriptions privées et paiements sont administrés dans `/admin-tournois/`, avec `CF_ACCESS_TOURNAMENT_AUD` et la liste distincte `TOURNAMENTS.tournament_admins` depuis la V5.2. La présentation, le formulaire et les tarifs sont regroupés dans `/admin-tournois/tournois/` depuis la V5.2.5.

@@ -113,8 +113,6 @@ async function openForSales(env: ShopEnv, s: Settings) {
     !s.seller_address ||
     !s.seller_id ||
     !s.seller_phone ||
-    !s.mediator_name ||
-    !s.mediator_url ||
     !s.collection_address
   )
     fail(

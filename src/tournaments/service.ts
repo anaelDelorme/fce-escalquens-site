@@ -332,17 +332,7 @@ export async function tournamentRoute(
             registration = integer(d.registration_deadline, 0, 4102444800),
             payment = integer(d.payment_deadline, 0, 4102444800),
             terms = text(d.terms, 12000, true);
-          if (
-            d.enabled &&
-            (registration <= now() ||
-              payment < registration ||
-              terms.length < 60)
-          )
-            fail(
-              "CONFIG",
-              400,
-              "Précisez les dates et les conditions d’inscription, d’annulation et de remboursement (60 caractères minimum). Le paiement doit rester possible jusqu’à la clôture des inscriptions.",
-            );
+          if(d.enabled&&(!registration||!payment))fail('CONFIG',400,'Renseignez une date de clôture et une date limite de paiement.');
           const exists = await env.DB.prepare(
             "SELECT id FROM tournaments WHERE id=?",
           )
@@ -351,7 +341,7 @@ export async function tournamentRoute(
           if (!exists) fail("NOT_FOUND", 404, "Tournoi introuvable.");
           const allowCheque=d.allow_cheque===true;
           const chequePayee=text(d.cheque_payee||'',160,allowCheque),chequeAddress=text(d.cheque_address||'',1000,allowCheque),chequeDeadline=integer(d.cheque_deadline||0,0,4102444800);
-          if(allowCheque&&(chequeDeadline<registration||chequeDeadline>payment||(d.enabled&&chequeDeadline<=now())))fail('CHEQUE_CONFIG',400,'Précisez l’ordre du chèque, l’adresse et une échéance comprise entre la clôture des inscriptions et la date limite de paiement.');
+          if(allowCheque&&!chequeDeadline)fail('CHEQUE_CONFIG',400,'Renseignez la date limite d’envoi du chèque.');
           const fields = formFields(d.form_fields || []);
           const row =
             version === 0
