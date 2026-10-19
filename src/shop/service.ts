@@ -142,6 +142,29 @@ async function openForSales(env: ShopEnv, s: Settings) {
   origin(env);
 }
 async function shopAvailability(env:ShopEnv,s:Settings){try{await openForSales(env,s);return {ready:true,code:'READY',message:'Le paiement est ouvert.'};}catch(error){return {ready:false,code:error instanceof ShopError?error.code:'CONFIGURATION',message:error instanceof ShopError?error.message:'La configuration doit être vérifiée.'};}}
+async function adminShopAvailability(env: ShopEnv,s:Settings) {
+  const availability=await shopAvailability(env,s);
+  const missing: {key:string;label:string}[]=[];
+  const add=(condition:boolean,key:string,label:string)=>{if(condition)missing.push({key,label});};
+  const shop=await env.DB.prepare('SELECT shop_enabled FROM shop_settings WHERE id=1').first<Row>();
+  add(!shop?.shop_enabled,'shop_enabled','Activer l’affichage de la boutique dans Couverture et affichage.');
+  add(!s.checkout_enabled,'checkout_enabled','Cocher l’ouverture de la prise de commandes.');
+  add(!s.legal_ready,'legal_ready','Confirmer la vérification des coordonnées, CGV et informations sur les données.');
+  add(!s.seller_address,'seller_address','Renseigner l’adresse du vendeur.');
+  add(!s.seller_id,'seller_id','Renseigner le RNA / SIRET ou les mentions applicables au club.');
+  add(!s.seller_phone,'seller_phone','Renseigner le téléphone de contact.');
+  add(!s.collection_address,'collection_address','Renseigner l’adresse de retrait au club.');
+  add(!s.organization_slug,'organization_slug','Renseigner le slug de l’association HelloAsso.');
+  add(!env.HELLOASSO_CLIENT_ID||!env.HELLOASSO_CLIENT_SECRET,'helloasso_credentials','Configurer les identifiants HelloAsso du Worker.');
+  add((env.TRACKING_SECRET||'').length<32,'tracking_secret','Configurer la clé de suivi du Worker.');
+  add(!env.MAIL_FROM,'mail_from','Configurer l’adresse d’expédition des e-mails (MAIL_FROM).');
+  add(!['cloudflare','resend'].includes(env.MAIL_PROVIDER||''),'mail_provider','Choisir le transport d’e-mails (MAIL_PROVIDER).');
+  add(env.MAIL_PROVIDER==='cloudflare'&&!env.EMAIL,'mail_binding','Ajouter le binding EMAIL pour l’envoi Cloudflare.');
+  add(env.MAIL_PROVIDER==='resend'&&!env.RESEND_API_KEY,'mail_api_key','Configurer la clé du service d’envoi Resend.');
+  add(env.APP_ENV!=='production'&&!env.MAIL_TEST_TO,'mail_test_to','Renseigner le destinataire des mails de test (MAIL_TEST_TO).');
+  try{origin(env);}catch{missing.push({key:'origin',label:'Configurer l’origine exacte du site (SHOP_ORIGIN).'});}
+  return {...availability,missing};
+}
 export const event = (
   env: ShopEnv,
   id: string,
@@ -942,7 +965,6 @@ async function saveSettings(
       409,
       "L’association HelloAsso ne peut plus être changée après une tentative de paiement. Contactez le responsable technique.",
     );
-  if (s.checkout_enabled) await openForSales(env, s);
   const version = integer(data.version, 0, Number.MAX_SAFE_INTEGER);
   const results = await env.ORDERS.batch([
     env.ORDERS.prepare(
@@ -958,7 +980,7 @@ async function saveSettings(
       409,
       "Les paramètres ont changé. Rechargez la page.",
     );
-  return response({ ok: true });
+  return response({ ok: true, availability: await adminShopAvailability(env,s) });
 }
 async function saveVariant(request: Request, env: ShopEnv, option = false) {
   const data = await body(request);
@@ -1148,7 +1170,7 @@ export async function shopRoute(
             settings: s,
             environment: environment(env),
             origin: env.SHOP_ORIGIN || "",
-            availability: await shopAvailability(env,s),
+            availability: await adminShopAvailability(env,s),
             configuration: {
               credentials:
                 !!env.HELLOASSO_CLIENT_ID && !!env.HELLOASSO_CLIENT_SECRET,

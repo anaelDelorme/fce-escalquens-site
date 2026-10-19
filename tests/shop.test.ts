@@ -1497,3 +1497,16 @@ test('HelloAsso : appels compatibles Workers et aucune redirection suivie avec d
    await assert.rejects(()=>api(probe,'/organizations/test-fce/checkout-intents','POST',{totalAmount:2500}),(error:any)=>{assert.equal(error.code,'HELLOASSO_REDIRECT');assert.doesNotMatch(error.message,/untrusted|PRIVATE_TOKEN/);return true;});assert.equal(calls,1);
  }finally{globalThis.fetch=original;}
 });
+
+test('paramètres boutique : sauvegarde incomplète possible, diagnostic privé et paiement toujours bloqué',async()=>{
+ const row=await ORDERS.prepare('SELECT data,version FROM settings WHERE id=1').first<any>();
+ const old=JSON.parse(row.data),limited={...env,MAIL_PROVIDER:undefined,MAIL_FROM:undefined,MAIL_TEST_TO:undefined,EMAIL:undefined};
+ try{
+   const payload={...defaultSettings,organization_slug:(await settings(env)).organization_slug,version:row.version,checkout_enabled:true,contact_email:'nouveau@example.org',seller_name:'FCE',seller_address:'',seller_id:'',seller_phone:'',legal_ready:false};
+   const res=await shopRoute(request('/admin-boutique/api/settings',payload,{admin:true,method:'PUT'}),limited,ctx);assert.equal(res?.status,200);const saved=await res!.json() as any;assert.equal(saved.ok,true);assert.equal(saved.availability.ready,false);assert.ok(saved.availability.missing.some((item:any)=>item.key==='seller_address'));assert.ok(saved.availability.missing.some((item:any)=>item.key==='mail_provider'));
+   const persisted=await settings(env);assert.equal(persisted.contact_email,'nouveau@example.org');assert.equal(persisted.checkout_enabled,true);assert.equal(persisted.version,row.version+1);
+   const catalogue=await shopRoute(request('/api/shop/catalogue'),limited,ctx);const publicData=await catalogue!.json() as any;assert.equal(publicData.checkout_available,false);assert.equal(publicData.checkout_unavailable.code,'LEGAL_CONFIG');assert.equal(publicData.checkout_unavailable.missing,undefined);
+   const conflict=await shopRoute(request('/admin-boutique/api/settings',payload,{admin:true,method:'PUT'}),limited,ctx);assert.equal(conflict?.status,409);
+   const invalid=await shopRoute(request('/admin-boutique/api/settings',{...payload,version:persisted.version,contact_email:'invalide'},{admin:true,method:'PUT'}),limited,ctx);assert.equal(invalid?.status,400);
+ }finally{await ORDERS.prepare('UPDATE settings SET data=?,version=? WHERE id=1').bind(JSON.stringify(old),row.version).run();}
+});

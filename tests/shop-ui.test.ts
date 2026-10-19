@@ -94,3 +94,14 @@ test('administration boutique DOM : tableaux des modèles et des personnalisatio
  assert.equal(w.document.querySelector('[name=sku]'),null);assert.equal(w.document.querySelector('[name=color]'),null);w.document.querySelector<HTMLElement>('[data-edit-personalization="initials"]')!.click();assert.equal(w.document.querySelectorAll('#option-form input[type=checkbox]').length,0);assert.equal((w.document.querySelector('#option-form [name=label]') as HTMLInputElement).value,'Initiales');
  await w.happyDOM.abort();w.close();
 });
+
+test('paramètres boutique DOM : enregistrement du contact et avertissement distinct de la sauvegarde',async()=>{
+ const w=new Window({url:'https://example.org/admin-boutique/parametres/'});w.document.write('<main class="commerce-admin" data-page="settings"><div id="shop-environment"></div><p id="admin-shop-message"></p><div id="admin-shop-content"></div></main>');
+ let saved:any;
+ let settings={version:0,organization_slug:'fce',contact_email:'club@example.org',seller_name:'FCE',seller_address:'',seller_id:'',seller_phone:'',collection_address:'',collection_instructions:'',delivery_days:30,legal_ready:false,checkout_enabled:false};
+ w.fetch=(async(_path:any,init:any={})=>{if(init.method==='PUT'){saved=JSON.parse(init.body);settings={...saved,version:1};return Response.json({ok:true});}return Response.json({settings,environment:'sandbox',configuration:{},availability:{ready:false,missing:[{key:'mail_provider',label:'Configurer le transport mail.'}]}});}) as any;
+ const common=readFileSync(new URL('../public/shop-common.js',import.meta.url),'utf8').replace(/export /g,'');
+ const source=readFileSync(new URL('../src/scripts/admin-shop.js',import.meta.url),'utf8').replace(/^import[\s\S]*?from [^;]+;\n?/gm,'');w.eval(common+'\n'+source);await next();await next();
+ const form=w.document.querySelector<HTMLFormElement>('#settings-form')!;(form.elements.namedItem('contact_email') as HTMLInputElement).value='nouveau@example.org';(form.elements.namedItem('checkout_enabled') as HTMLInputElement).checked=true;form.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));await next();await next();await next();
+ assert.equal(saved.contact_email,'nouveau@example.org');assert.equal(saved.checkout_enabled,true);assert.match(w.document.querySelector('#admin-shop-message')!.textContent!,/Paramètres enregistrés/);assert.match(w.document.querySelector('#admin-shop-message')!.className,/commerce-success/);assert.match(w.document.querySelector('#admin-shop-content')!.textContent!,/Configurer le transport mail/);assert.equal((w.document.querySelector('[name=contact_email]') as HTMLInputElement).value,'nouveau@example.org');await w.happyDOM.abort();w.close();
+});
