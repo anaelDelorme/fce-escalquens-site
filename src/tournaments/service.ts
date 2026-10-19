@@ -1,3 +1,4 @@
+import { mailReady } from "../shop/mail-config";
 import { events } from "./events";
 import { formFields, formAnswers, registrationSections, tournamentSections } from "./forms";
 import {
@@ -53,13 +54,7 @@ function configured(env: ShopEnv, s: Row, helloasso=true) {
       "Le club doit terminer la configuration du paiement.",
     );
   origin(env);
-  if (
-    !env.MAIL_FROM ||
-    !["resend", "cloudflare"].includes(env.MAIL_PROVIDER || "") ||
-    (!env.RESEND_API_KEY && env.MAIL_PROVIDER === "resend") ||
-    (!env.EMAIL && env.MAIL_PROVIDER === "cloudflare") ||
-    (env.APP_ENV !== "production" && !env.MAIL_TEST_TO)
-  )
+  if (!mailReady(env))
     fail(
       "MAIL_CONFIG",
       503,

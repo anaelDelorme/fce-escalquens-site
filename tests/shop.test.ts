@@ -1510,3 +1510,27 @@ test('paramètres boutique : sauvegarde incomplète possible, diagnostic privé 
    const invalid=await shopRoute(request('/admin-boutique/api/settings',{...payload,version:persisted.version,contact_email:'invalide'},{admin:true,method:'PUT'}),limited,ctx);assert.equal(invalid?.status,400);
  }finally{await ORDERS.prepare('UPDATE settings SET data=?,version=? WHERE id=1').bind(JSON.stringify(old),row.version).run();}
 });
+
+test('mail de test : accès admin, même origine et destinataire configuré imposés, même en production',async()=>{
+ const messages:any[]=[];
+ const probe={...env,MAIL_TEST_TO:'contact@fcescalquens.fr',EMAIL:{send:async(message:any)=>{messages.push(message);return {messageId:'test-message'};}}};
+ await ORDERS.prepare('DELETE FROM rate_limits').run();
+ assert.notEqual((await shopRoute(request('/admin-boutique/api/mail/test',{}),probe,ctx))?.status,200);
+ const foreign=request('/admin-boutique/api/mail/test',{},{admin:true});foreign.headers.set('origin','https://untrusted.example');
+ assert.equal((await shopRoute(foreign,probe,ctx))?.status,403);
+ const result=await shopRoute(request('/admin-boutique/api/mail/test',{to:'victim@example.org'},{admin:true}),probe,ctx);
+ assert.equal(result?.status,200);assert.equal(messages.length,1);assert.equal(messages[0].to,'contact@fcescalquens.fr');assert.match(messages[0].subject,/^\[TEST\]/);assert.doesNotMatch(messages[0].text,/suivi\/#/);
+ const {testMail}=await import('../src/shop/mail');
+ await testMail({...probe,APP_ENV:'production'},await settings(env));assert.equal(messages.length,2);assert.equal(messages[1].to,'contact@fcescalquens.fr');
+ const noRecipient={...probe,MAIL_TEST_TO:''};
+ assert.equal((await shopRoute(request('/admin-boutique/api/mail/test',{},{admin:true}),noRecipient,ctx))?.status,502);assert.equal(messages.length,2);
+});
+test('mail de test OVH : diagnostic privé des paramètres manquants sans exposer le secret',async()=>{
+ const probe={...env,MAIL_PROVIDER:'ovh',SMTP_HOST:'ssl0.ovh.net',SMTP_USER:env.MAIL_FROM,SMTP_PASSWORD:undefined};
+ const result=await shopRoute(request('/admin-boutique/api/settings',undefined,{admin:true}),probe,ctx);const data=await result!.json() as any;
+ assert.equal(data.configuration.mail_ready,false);assert.ok(data.availability.missing.some((m:any)=>m.key==='mail_smtp'));
+ assert.equal(data.configuration.SMTP_PASSWORD,undefined);
+ const valid={...probe,SMTP_PASSWORD:'private-fixture-password'};
+ const response=await shopRoute(request('/admin-boutique/api/settings',undefined,{admin:true}),valid,ctx);const body=await response!.text();
+ assert.equal(JSON.parse(body).configuration.mail_ready,true);assert.doesNotMatch(body,/private-fixture-password/);
+});

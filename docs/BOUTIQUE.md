@@ -110,9 +110,9 @@ Une seule tentative active par commande est permise par un index SQL. Un retour 
 
 Si la création a expiré côté réseau **sans identifiant d’intention reçu**, la tentative est marquée `uncertain`. Aucun deuxième encaissement automatique n’est lancé. Rechercher la référence dans HelloAsso, récupérer l’identifiant puis le renseigner dans le détail de commande, rubrique « Tentatives de paiement ». Le serveur vérifie les metadata `order_id` et `attempt_id` avant de rattacher l’intention. Si une notification fournit entre-temps les références nécessaires, cette récupération est tentée automatiquement, avec les mêmes vérifications API. Ne pas effacer une tentative incertaine pour débloquer un client sans vérification HelloAsso.
 
-## Mails : choix conseillé et configuration
+## Mails : choix du transport et configuration
 
-**Cloudflare Email Service** permet maintenant l’envoi transactionnel depuis un Worker. Il est distinct du simple transfert d’e-mails Email Routing. Utiliser une adresse du domaine, par exemple `boutique@fcescalquens.fr`, après vérification du domaine d’envoi et de SPF/DKIM/DMARC.
+**Cloudflare Email Service** (activation et offre éligible requises) permet maintenant l’envoi transactionnel depuis un Worker. Il est distinct du simple transfert d’e-mails Email Routing. Utiliser une adresse du domaine, par exemple `boutique@fcescalquens.fr`, après vérification du domaine d’envoi et de SPF/DKIM/DMARC.
 
 Le transport Cloudflare est implémenté avec le builder `env.EMAIL.send({from,to,subject,text,html,replyTo})`. Après activation du service, ajouter le binding dans la configuration, à la racine **et dans `env.staging`** :
 
@@ -140,7 +140,7 @@ RESEND_API_KEY=secret_worker
 
 Déclarer et contractualiser le prestataire choisi, vérifier ses limites et sa délivrabilité. Le binding `EMAIL` n’est pas ajouté tant que le service n’est pas activé ; l’absence de transport configuré empêche l’ouverture des ventes.
 
-**OVH** : une boîte du domaine peut servir au contact et à la réception des réponses, tout en envoyant les confirmations via Cloudflare. Cela permet de garder une identité `@fcescalquens.fr`. Le transport SMTP OVH direct n’est pas implémenté dans cette version.
+**OVH MX Plan** : le transport SMTP direct est disponible depuis la V5.2.11 avec `MAIL_PROVIDER=ovh`. Il utilise la boîte `contact@fcescalquens.fr`, une connexion TLS sur le port 465 et le secret Worker `SMTP_PASSWORD`. Procédure détaillée : [CORRECTIF-V5.2.11.md](CORRECTIF-V5.2.11.md). Le mot de passe n’est jamais enregistré dans D1, Git ou les réponses de l’administration. Les limites d’envoi de l’offre OVH restent applicables. Le transport est commun à la boutique et aux tournois.
 
 **Gmail** : l’API Gmail permet techniquement l’envoi avec OAuth et le droit `gmail.send`, mais impose la gestion des autorisations, du renouvellement des jetons et des quotas. Ce transport n’est pas implémenté ici. Une adresse Gmail peut servir de contact de réponse, pas d’expéditeur Cloudflare non vérifié. Éviter le mot de passe personnel d’une boîte dans le site.
 
@@ -229,6 +229,8 @@ Utiliser `http://localhost:8787` comme `SHOP_ORIGIN`. En local, la page de gesti
 - Cloudflare Email Service : https://developers.cloudflare.com/email-service/
 - API Worker d’envoi : https://developers.cloudflare.com/email-service/api/send-emails/workers-api/
 - Validation Access JWT : https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/
+- OVH MX Plan, paramètres SMTP : https://docs.ovhcloud.com/fr/guides/web-cloud/email-and-collaborative-solutions/mx-plan/email-creation
+- Cloudflare sockets TCP/TLS : https://developers.cloudflare.com/workers/runtime-apis/tcp-sockets/
 - Gmail API : https://developers.google.com/workspace/gmail/api/guides/sending
 - CNIL, exemple d’information clients : https://www.cnil.fr/fr/exemple-dinformation-clients-dun-site-de-vente-en-ligne-prospection-par-courriel-et-transmission-de
 - CNIL, durées : https://www.cnil.fr/fr/passer-laction/les-durees-de-conservation-des-donnees

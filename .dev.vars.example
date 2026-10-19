@@ -20,3 +20,9 @@ MAIL_PROVIDER=cloudflare
 MAIL_FROM=
 MAIL_TEST_TO=
 RESEND_API_KEY=
+
+# Alternative OVH MX Plan : MAIL_PROVIDER=ovh, MAIL_FROM=SMTP_USER=adresse complète.
+# Port 465 avec TLS obligatoire. Secret dans .dev.vars.local seulement en local.
+SMTP_HOST=ssl0.ovh.net
+SMTP_USER=
+SMTP_PASSWORD=

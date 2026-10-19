@@ -1,3 +1,5 @@
+import { sendSmtp, type MailMessage } from "./smtp";
+import { mailTransportReady } from "./mail-config";
 import {
   email,
   escapeHtml,
@@ -86,40 +88,39 @@ export async function deliverMail(
     env.APP_ENV === "production" ? order.email : email(env.MAIL_TEST_TO);
   const from = email(env.MAIL_FROM);
   const subject = `${env.APP_ENV === "production" ? "" : "[TEST] "}${title} — ${order.reference}`;
-  if (env.MAIL_PROVIDER === "cloudflare") {
-    if (!env.EMAIL) throw new Error("MAIL_BINDING_MISSING");
-    const result = await env.EMAIL.send({
-      from: { email: from, name: "FC Escalquens" },
-      to,
-      replyTo: settings.contact_email,
-      subject,
-      text: content,
-      html: `<div style="font-family:Arial,sans-serif;max-width:650px;margin:auto;color:#291d1d"><h1 style="color:#9f1a1a">${escapeHtml(order.kind === "tournament" ? "Suivi de votre inscription" : title)}</h1><p>${order.kind === "tournament" ? "Inscription" : "Commande"} <strong>${escapeHtml(order.reference)}</strong></p><p>${escapeHtml(state)}</p><p><a style="display:inline-block;background:#9f1a1a;color:white;padding:16px" href="${escapeHtml(link)}">Ouvrir mon suivi</a></p><pre style="white-space:pre-wrap;font:inherit">${escapeHtml(content)}</pre></div>`,
-    });
-    return result.messageId;
+  return sendMessage(env, { from, to, replyTo: settings.contact_email, subject, text: content, html: `<div style="font-family:Arial,sans-serif;max-width:650px;margin:auto;color:#291d1d"><h1 style="color:#9f1a1a">${escapeHtml(order.kind === "tournament" ? "Suivi de votre inscription" : title)}</h1><p>${order.kind === "tournament" ? "Inscription" : "Commande"} <strong>${escapeHtml(order.reference)}</strong></p><p>${escapeHtml(state)}</p><p><a style="display:inline-block;background:#9f1a1a;color:white;padding:16px" href="${escapeHtml(link)}">Ouvrir mon suivi</a></p><pre style="white-space:pre-wrap;font:inherit">${escapeHtml(content)}</pre></div>`, id: job.id });
+}
+async function sendMessage(env: ShopEnv, message: MailMessage) {
+  const { from, to, replyTo, subject, text: content, html, id } = message;
+  if (env.MAIL_PROVIDER === 'ovh') {
+    return sendSmtp({ host: env.SMTP_HOST || '', user: env.SMTP_USER || '', password: env.SMTP_PASSWORD || '' }, message);
   }
-  if (env.MAIL_PROVIDER === "resend" && env.RESEND_API_KEY) {
-    const result = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      signal: AbortSignal.timeout(15000),
-      headers: {
-        authorization: `Bearer ${env.RESEND_API_KEY}`,
-        "content-type": "application/json",
-        "idempotency-key": job.id,
-      },
-      body: JSON.stringify({
-        from: `FC Escalquens <${from}>`,
-        to: [to],
-        reply_to: settings.contact_email,
-        subject,
-        text: content,
-      }),
+  if (env.MAIL_PROVIDER === 'cloudflare') {
+    if (!env.EMAIL) throw new Error('MAIL_BINDING_MISSING');
+    return (await env.EMAIL.send({ from: { email: from, name: 'FC Escalquens' }, to, replyTo, subject, text: content, html })).messageId;
+  }
+  if (env.MAIL_PROVIDER === 'resend' && env.RESEND_API_KEY) {
+    const result = await fetch('https://api.resend.com/emails', {
+      method: 'POST', signal: AbortSignal.timeout(15000),
+      headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json', 'idempotency-key': id },
+      body: JSON.stringify({ from: `FC Escalquens <${from}>`, to: [to], reply_to: replyTo, subject, text: content, html }),
     });
     if (!result.ok) throw new Error(`MAIL_HTTP_${result.status}`);
     return String(((await result.json()) as Row).id);
   }
-  throw new Error("MAIL_PROVIDER_MISSING");
+  throw new Error('MAIL_PROVIDER_MISSING');
 }
+/** Explicit admin action, fixed configured recipient even in production. No tracking token. */
+export async function testMail(env: ShopEnv, settings: Settings) {
+  if (!mailTransportReady(env) || !env.MAIL_TEST_TO) throw new Error('MAIL_TEST_CONFIG');
+  return sendMessage(env, {
+    id: `test-${crypto.randomUUID()}`, from: email(env.MAIL_FROM), to: email(env.MAIL_TEST_TO),
+    replyTo: email(settings.contact_email), subject: '[TEST] FC Escalquens — vérification des e-mails',
+    text: 'Le transport mail du FC Escalquens fonctionne. Ce message de test ne correspond à aucune commande ni inscription.',
+    html: '<p>Le transport mail du <strong>FC Escalquens</strong> fonctionne.</p><p>Ce message de test ne correspond à aucune commande ni inscription.</p>',
+  });
+}
+
 export async function drainMail(env: ShopEnv, settings: Settings) {
   if (!env.ORDERS) return;
   const jobs = (

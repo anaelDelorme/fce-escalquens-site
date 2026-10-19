@@ -27,7 +27,9 @@ import {
   secureHeaders,
 } from "./security";
 import { api, safeRedirect, verifiedPayments, connectionStatus } from "./helloasso";
-import { drainMail, queueMail } from "./mail";
+import { drainMail, queueMail, testMail } from "./mail";
+import { mailReady, mailTransportReady } from "./mail-config";
+import { smtpConfigured } from "./smtp";
 import { priceLabelStatement } from "./catalogue-pricing";
 export interface ShopEnv {
   DB: D1Database;
@@ -52,6 +54,9 @@ export interface ShopEnv {
   MAIL_FROM?: string;
   MAIL_TEST_TO?: string;
   RESEND_API_KEY?: string;
+  SMTP_HOST?: string;
+  SMTP_USER?: string;
+  SMTP_PASSWORD?: string;
   EMAIL?: {
     send(message: {
       from: { email: string; name: string };
@@ -127,13 +132,7 @@ async function openForSales(env: ShopEnv, s: Settings) {
     (env.TRACKING_SECRET || "").length < 32
   )
     fail("PAYMENT_CONFIG", 503, "Le paiement est en cours de configuration.");
-  if (
-    !env.MAIL_FROM ||
-    !["cloudflare", "resend"].includes(env.MAIL_PROVIDER || "") ||
-    (env.MAIL_PROVIDER === "cloudflare" && !env.EMAIL) ||
-    (env.MAIL_PROVIDER === "resend" && !env.RESEND_API_KEY) ||
-    (env.APP_ENV !== "production" && !env.MAIL_TEST_TO)
-  )
+  if (!mailReady(env))
     fail(
       "MAIL_CONFIG",
       503,
@@ -158,9 +157,10 @@ async function adminShopAvailability(env: ShopEnv,s:Settings) {
   add(!env.HELLOASSO_CLIENT_ID||!env.HELLOASSO_CLIENT_SECRET,'helloasso_credentials','Configurer les identifiants HelloAsso du Worker.');
   add((env.TRACKING_SECRET||'').length<32,'tracking_secret','Configurer la clé de suivi du Worker.');
   add(!env.MAIL_FROM,'mail_from','Configurer l’adresse d’expédition des e-mails (MAIL_FROM).');
-  add(!['cloudflare','resend'].includes(env.MAIL_PROVIDER||''),'mail_provider','Choisir le transport d’e-mails (MAIL_PROVIDER).');
+  add(!['cloudflare','resend','ovh'].includes(env.MAIL_PROVIDER||''),'mail_provider','Choisir le transport d’e-mails (MAIL_PROVIDER).');
   add(env.MAIL_PROVIDER==='cloudflare'&&!env.EMAIL,'mail_binding','Ajouter le binding EMAIL pour l’envoi Cloudflare.');
   add(env.MAIL_PROVIDER==='resend'&&!env.RESEND_API_KEY,'mail_api_key','Configurer la clé du service d’envoi Resend.');
+  add(env.MAIL_PROVIDER==='ovh'&&!smtpConfigured(env),'mail_smtp','Configurer SMTP_HOST, SMTP_USER et le secret SMTP_PASSWORD ; MAIL_FROM doit correspondre à la boîte OVH.');
   add(env.APP_ENV!=='production'&&!env.MAIL_TEST_TO,'mail_test_to','Renseigner le destinataire des mails de test (MAIL_TEST_TO).');
   try{origin(env);}catch{missing.push({key:'origin',label:'Configurer l’origine exacte du site (SHOP_ORIGIN).'});}
   return {...availability,missing};
@@ -1163,6 +1163,19 @@ export async function shopRoute(
           return response({ok:true});
         }
       }
+      if (path === "/admin-boutique/api/mail/test" && request.method === "POST") {
+        await rateLimit(env, `admin-mail-test:${actor}`, 3);
+        try { await testMail(env, s); }
+        catch (error) {
+          const code = error instanceof Error ? error.message : '';
+          const message = code === 'MAIL_SMTP_AUTH' ? 'OVH refuse l’authentification. Vérifiez SMTP_USER et le secret SMTP_PASSWORD de la boîte mail.' :
+            code === 'MAIL_SMTP_CONFIG' || code === 'MAIL_TEST_CONFIG' ? 'Vérifiez MAIL_FROM, MAIL_TEST_TO, MAIL_PROVIDER et la configuration du transport mail.' :
+            code === 'MAIL_SMTP_TIMEOUT' || code === 'MAIL_SMTP_NETWORK' ? 'Le serveur SMTP OVH est injoignable ou ne répond pas à temps. Réessayez puis vérifiez SMTP_HOST.' :
+            'Le serveur mail n’a pas confirmé l’envoi. Vérifiez la configuration puis réessayez.';
+          fail('MAIL_TEST_FAILED', 502, message);
+        }
+        return response({ ok: true, message: 'Le serveur mail a accepté le message de test. Vérifiez la réception et les courriers indésirables de MAIL_TEST_TO.' });
+      }
       if (path === "/admin-boutique/api/helloasso/test" && request.method === "POST") return response(await connectionStatus(env,s.organization_slug));
       if (path === "/admin-boutique/api/settings") {
         if (request.method === "GET")
@@ -1178,11 +1191,7 @@ export async function shopRoute(
               mail_provider: env.MAIL_PROVIDER || "",
               mail_from: env.MAIL_FROM || "",
               mail_test_to: env.MAIL_TEST_TO || "",
-              mail_ready:
-                !!env.MAIL_FROM &&
-                (env.MAIL_PROVIDER === "cloudflare"
-                  ? !!env.EMAIL
-                  : env.MAIL_PROVIDER === "resend" && !!env.RESEND_API_KEY),
+              mail_ready: mailTransportReady(env),
               webhook_signature: !!env.HELLOASSO_WEBHOOK_SECRET,
             },
           });

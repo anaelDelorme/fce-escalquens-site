@@ -64,7 +64,12 @@
         "CF_ACCESS_SHOP_AUD": "cbe8e9e32519dc9eb7c136a7e858326480881777f7359720d771e42f34973d7a",
         "SHOP_ORIGIN": "https://fce-escalquens-staging.fcescalquens.workers.dev",
         "HELLOASSO_ORGANIZATION_SLUG": "fce",
-        "CF_ACCESS_TOURNAMENT_AUD": "9f8aa0c1de144610ed89e32b49c62f63255632cdd4ba5f83abbce82160db73da"
+        "CF_ACCESS_TOURNAMENT_AUD": "9f8aa0c1de144610ed89e32b49c62f63255632cdd4ba5f83abbce82160db73da",
+        "MAIL_PROVIDER": "ovh",
+        "MAIL_FROM": "contact@fcescalquens.fr",
+        "MAIL_TEST_TO": "contact@fcescalquens.fr",
+        "SMTP_HOST": "ssl0.ovh.net",
+        "SMTP_USER": "contact@fcescalquens.fr"
       },
       "d1_databases": [
         {
