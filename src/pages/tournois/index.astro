@@ -11,20 +11,24 @@ import Footer from '../../components/Footer.astro';
     <link rel="stylesheet" href="/styles.css">
     <link rel="stylesheet" href="/enhancements.css?v=6">
     <link rel="stylesheet" href="/brand-charter.css">
-    <link rel="stylesheet" href="/contacts-tournaments.css?v=3"><link rel="stylesheet" href="/shop-commerce.css?v=51"><link rel="stylesheet" href="/tournament-checkout.css?v=525">
+    <link rel="stylesheet" href="/contacts-tournaments.css?v=3"><link rel="stylesheet" href="/shop-commerce.css?v=51"><link rel="stylesheet" href="/tournament-checkout.css?v=526">
   </head>
   <body>
     <Header/>
     <main>
+      <section class="page-hero wine">
+        <p class="eyebrow">Les rendez-vous du club</p>
+        <h1>Les tournois<br>du club.</h1>
+        <p>Choisissez votre tournoi et inscrivez les équipes de votre club.</p>
+      </section>
       <section class="content tournaments-content">
-        <div class="tournaments-heading">
-          <div><p class="eyebrow">FC Escalquens</p><h1>Les tournois du club</h1><p>Choisissez votre tournoi et inscrivez les équipes de votre club.</p></div>
+        <div class="tournament-followup">
           <a class="tournament-tracking-link" href="/tournois/suivi/"><strong>Déjà inscrit ?</strong><span>Suivre mon inscription ou régler →</span></a>
         </div>
         <div id="tournaments-list" class="tournament-grid" aria-live="polite"><p>Chargement des tournois…</p></div>
       </section>
     </main>
     <Footer/>
-    <script is:inline src="/tournaments.js?v=525"></script>
+    <script is:inline src="/tournaments.js?v=526"></script>
   <script src="../../scripts/tournaments-checkout.js"></script></body>
 </html>
