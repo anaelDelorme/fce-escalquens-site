@@ -113,7 +113,7 @@ export async function accessToken(env: ShopEnv, base: string, force = false) {
       const grant = async (refresh?: string) =>
         fetch(`${base}/oauth2/token`, {
           method: "POST",
-          redirect: "error",
+          redirect: "manual",
           signal: AbortSignal.timeout(12000),
           headers: { "content-type": "application/x-www-form-urlencoded" },
           body: refresh
@@ -135,6 +135,8 @@ export async function accessToken(env: ShopEnv, base: string, force = false) {
       );
       // Explicit invalid/expired refresh token requires a new connection; never replay a checkout POST.
       if (hasRefresh && response.status === 400) response = await grant();
+      if(response.status>=300&&response.status<400)
+        fail('HELLOASSO_REDIRECT',502,'L’API d’authentification HelloAsso a renvoyé une redirection inattendue. Aucun secret n’a été transmis à une autre URL.');
       if (!response.ok)
         fail(
           "HELLOASSO_AUTH",

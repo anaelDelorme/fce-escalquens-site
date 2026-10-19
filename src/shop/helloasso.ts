@@ -18,7 +18,7 @@ export async function api(
   const send = async (force = false) =>
     fetch(`${base}/v5${path}`, {
       method,
-      redirect: "error",
+      redirect: "manual",
       signal: AbortSignal.timeout(15000),
       headers: {
         authorization: `Bearer ${await accessToken(env, base, force)}`,
@@ -30,6 +30,8 @@ export async function api(
   let result = await send();
   // A rejected bearer token has not executed the operation; refresh once, no retries on timeouts.
   if (result.status === 401) result = await send(true);
+  if(result.status>=300&&result.status<400)
+    fail('HELLOASSO_REDIRECT',502,'L’API HelloAsso a renvoyé une redirection inattendue. La requête n’a pas été réémise.');
   if (!result.ok) {
     // Do not echo provider payloads: they can contain payer details or tokens.
     if (

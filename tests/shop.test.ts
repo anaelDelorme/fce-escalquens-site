@@ -1484,3 +1484,16 @@ test('diagnostic OAuth : réseau, délai, réponse et chiffrement distingués sa
    const key=await tokenKey(probe,'https://api.helloasso-sandbox.com');const row=await ORDERS.prepare('SELECT encrypted,locked_until FROM helloasso_tokens WHERE cache_key=?').bind(key).first<any>();assert.equal(row.encrypted,'');assert.equal(row.locked_until,0);
  }finally{globalThis.fetch=originalFetch;(crypto.subtle as any).encrypt=originalEncrypt;}
 });
+
+test('HelloAsso : appels compatibles Workers et aucune redirection suivie avec des secrets',async()=>{
+ const original=globalThis.fetch;const probe={...env,HELLOASSO_CLIENT_ID:crypto.randomUUID()};let calls=0;
+ try{
+   globalThis.fetch=(async(_url:any,init:any)=>{calls++;assert.equal(init.redirect,'manual');return new Response(null,{status:302,headers:{location:'https://untrusted.example/PRIVATE_TOKEN'}});}) as any;
+   await assert.rejects(()=>accessToken(probe,'https://api.helloasso-sandbox.com'),(error:any)=>{assert.equal(error.code,'HELLOASSO_REDIRECT');assert.doesNotMatch(error.message,/untrusted|PRIVATE_TOKEN/);return true;});assert.equal(calls,1);
+   globalThis.fetch=(async(_url:any,init:any)=>{assert.equal(init.redirect,'manual');return Response.json({access_token:'token',refresh_token:'refresh',expires_in:1800});}) as any;
+   await accessToken(probe,'https://api.helloasso-sandbox.com');
+   calls=0;globalThis.fetch=(async(_url:any,init:any)=>{calls++;assert.equal(init.redirect,'manual');return new Response(null,{status:307,headers:{location:'https://untrusted.example/PRIVATE_TOKEN'}});}) as any;
+   const {api}=await import('../src/shop/helloasso');
+   await assert.rejects(()=>api(probe,'/organizations/test-fce/checkout-intents','POST',{totalAmount:2500}),(error:any)=>{assert.equal(error.code,'HELLOASSO_REDIRECT');assert.doesNotMatch(error.message,/untrusted|PRIVATE_TOKEN/);return true;});assert.equal(calls,1);
+ }finally{globalThis.fetch=original;}
+});
