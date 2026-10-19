@@ -978,7 +978,7 @@ async function saveVariant(request: Request, env: ShopEnv, option = false) {
     ),
     active = data.active === true ? 1 : 0;
   const table=option?'shop_options':'shop_variants';
-  const existing=await env.DB.prepare(`SELECT product_id FROM ${table} WHERE id=?`).bind(id).first<Row>();
+  const existing=await env.DB.prepare(`SELECT ${option ? 'product_id' : 'product_id,color,sku'} FROM ${table} WHERE id=?`).bind(id).first<Row>();
   if(existing && existing.product_id!==productId)fail('VARIANT_PRODUCT',409,'Ce choix appartient à un autre article.');
   if(option) {
     await env.DB.prepare(`INSERT INTO shop_options(id,product_id,label,price_cents,requires_text,max_length,active) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET label=excluded.label,price_cents=excluded.price_cents,requires_text=excluded.requires_text,max_length=excluded.max_length,active=excluded.active WHERE shop_options.product_id=excluded.product_id`)
@@ -998,7 +998,7 @@ async function saveVariant(request: Request, env: ShopEnv, option = false) {
       statements.push(env.DB.prepare('UPDATE shop_options SET active=0 WHERE product_id=?').bind(productId));
     }
     statements.push(env.DB.prepare(`INSERT INTO shop_variants(id,product_id,label,size,color,sku,supplier,supplier_id,price_cents,active) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET label=excluded.label,size=excluded.size,color=excluded.color,sku=excluded.sku,supplier=excluded.supplier,supplier_id=excluded.supplier_id,price_cents=excluded.price_cents,active=excluded.active WHERE shop_variants.product_id=excluded.product_id`)
-      .bind(id,productId,simple?'Taille unique':label,simple?'':text(data.size||'',40),simple?'':text(data.color||'',60),text(data.sku,100,true),supplier.name,supplierId,price,active));
+      .bind(id,productId,simple?'Taille unique':label,simple?'':text(data.size||'',40),text(data.color===undefined?(existing?.color??''):data.color,60),text(data.sku===undefined?(existing?.sku??''):data.sku,100),supplier.name,supplierId,price,active));
     statements.push(priceLabelStatement(env.DB,productId));
     await env.DB.batch(statements);
   }

@@ -1244,6 +1244,18 @@ test('tarifs : prix affiché synchronisé, mode simple atomique et commandes pas
  const moved=await save({product_id:1,id:first.body.id});assert.equal(moved.status,409);
  const badSupplier=await save({supplier_id:'invented'});assert.equal(badSupplier.status,400);
 });
+test('variantes sans champs couleur et référence : création possible et anciennes données conservées',async()=>{
+ const supplier=(await DB.prepare("SELECT id FROM shop_suppliers WHERE name='Intersport'").first<any>()).id;
+ await DB.prepare("INSERT INTO shop_products(id,name,image_key,active,shop_category_id) VALUES(992,'Article sans référence','a.webp',1,1)").run();
+ const save=async(data:any={})=>route(request('/admin-boutique/api/variants',{product_id:992,label:'Unique',size:'',supplier_id:supplier,price_cents:1000,active:true,...data},{admin:true,method:'PUT'}));
+ const created=await save();assert.equal(created.status,200);
+ const row=()=>DB.prepare('SELECT color,sku,price_cents FROM shop_variants WHERE id=?').bind(created.body.id).first<any>();
+ assert.deepEqual({...await row()},{color:'',sku:'',price_cents:1000});
+ await DB.prepare('UPDATE shop_variants SET color=?,sku=? WHERE id=?').bind('Bordeaux','ANCIENNE-REF',created.body.id).run();
+ assert.equal((await save({id:created.body.id,simple:true,price_cents:1250})).status,200);
+ assert.deepEqual({...await row()},{color:'Bordeaux',sku:'ANCIENNE-REF',price_cents:1250});
+ assert.equal((await save({id:created.body.id,sku:'x'.repeat(101)})).status,400);
+});
 test('fournisseur désactivé : aucune nouvelle affectation, libellé courant actualisé, historique intact',async()=>{
  const supplier=await DB.prepare("SELECT * FROM shop_suppliers WHERE name='Intersport'").first<any>();
  const snapshot=await ORDERS.prepare('SELECT supplier FROM order_items ORDER BY id LIMIT 1').first<any>();
