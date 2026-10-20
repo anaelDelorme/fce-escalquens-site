@@ -12,11 +12,11 @@ import Footer from '../../components/Footer.astro';
     <link rel="stylesheet" href="/enhancements.css?v=6">
     <link rel="stylesheet" href="/brand-charter.css">
     <link rel="stylesheet" href="/shop.css?v=5">
-    <link rel="stylesheet" href="/shop-commerce.css?v=5">
+    <link rel="stylesheet" href="/shop-commerce.css?v=5"><link rel="stylesheet" href="/commerce-ux.css?v=5212">
   </head>
-  <body>
+  <body class="shop-storefront">
     <Header/>
-    <div class="commerce-toolbar"><a href="/boutique/suivi/">Suivre une commande</a><button type="button" id="open-cart">Mon panier <span id="cart-count">0</span></button></div>
+    <div class="commerce-toolbar"><span class="shop-toolbar-label">Boutique FCE</span><a href="/boutique/suivi/">Suivre une commande</a><button type="button" id="open-cart">Mon panier <span id="cart-count" aria-hidden="true">0</span><span id="cart-value" class="shop-cart-value"></span></button></div>
     <main class="shop-page is-loading" id="shop-page">
       <section id="shop-maintenance" class="shop-maintenance" hidden aria-label="Boutique temporairement fermée">
         <div class="shop-maintenance-inner">
@@ -33,7 +33,7 @@ import Footer from '../../components/Footer.astro';
         <div class="shop-hero-copy">
           <p class="eyebrow">La boutique du FC Escalquens</p>
           <h1>L’esprit du club.<br><em>À porter partout.</em></h1>
-          <p>Retrouvez les tenues et accessoires FCE pour les entraînements, les matchs et le quotidien.</p>
+          <p>Du terrain au quotidien, trouvez votre équipement aux couleurs du FC Escalquens.</p>
           <div class="shop-hero-actions"><a href="#selection">Trouver mon équipement <span>↓</span></a><a href="/boutique/suivi/">Suivre ma commande →</a></div><ul class="shop-promises"><li>Remise gratuite au club ou par le coach</li><li>Paiement sécurisé HelloAsso</li><li>Sans compte à créer</li></ul>
         </div>
         <div class="shop-hero-visual">
@@ -55,7 +55,7 @@ import Footer from '../../components/Footer.astro';
           <div><p class="eyebrow">À chacun ses couleurs</p><h2 id="selection-title">Les incontournables.</h2></div>
           <p>Une sélection pour les joueurs, les coachs, les familles et les supporters.</p>
         </div>
-        <div id="shop-categories" class="shop-category-list"><p>Chargement de la sélection…</p></div>
+        <div class="shop-browse" id="shop-browse" hidden><div class="shop-search-row"><label for="shop-search">Rechercher un article<input id="shop-search" type="search" placeholder="Maillot, veste, sac…" autocomplete="off"></label><p id="shop-results" role="status" aria-live="polite"></p></div><div id="shop-category-filters" class="shop-category-filters" role="group" aria-label="Filtrer par catégorie"></div><div id="shop-no-results" class="commerce-empty" hidden><h3>Aucun article trouvé</h3><p>Essayez un autre mot ou affichez toute la collection.</p><button id="shop-clear-search" type="button">Réinitialiser les filtres</button></div></div><div id="shop-categories" class="shop-category-list"><p>Chargement de la sélection…</p></div>
       </section>
 
       <section class="catalogue-band">

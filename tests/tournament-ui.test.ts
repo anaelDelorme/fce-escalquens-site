@@ -115,3 +115,15 @@ test('éditeur unique : présentation, tarif et questions dans un formulaire, re
  form.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));await until(()=>saleWrites.length===2);assert.equal(eventWrites.length,2);assert.equal(eventWrites[1].version,2);assert.equal(saleWrites[1].version,2);
  await w.happyDOM.abort();w.close();
 });
+
+test('administration tournois : filtres combinés, sélection vide et export désactivé',async()=>{
+ const w=new Window({url:'https://example.org/admin-tournois/'});w.document.write('<p id="tournament-environment"></p><p id="tournament-admin-message"></p><div id="tournament-admin" data-page="registrations"></div>');
+ const rows=[{order_id:'a',tournament_name:'Tournoi U11',reference:'T1',club_name:'Escalquens',team_name:'Équipe A',payment_status:'paid',registration_status:'pending',total_cents:5000},{order_id:'b',tournament_name:'Tournoi U13',reference:'T2',club_name:'Autre club',team_name:'Équipe B',payment_status:'pending',registration_status:'accepted',total_cents:5000}];
+ w.fetch=(async(path:any)=>Response.json(String(path).endsWith('/status')?{environment:'sandbox'}:{registrations:rows})) as any;
+ w.eval(common+'\n'+source('admin-tournaments'));await next();await next();
+ const d=w.document;assert.equal(d.querySelectorAll('[data-order]').length,2);
+ (d.querySelector('#registration-filter') as HTMLSelectElement).value='pending';d.querySelector('#registration-filter')!.dispatchEvent(new w.Event('change'));assert.equal(d.querySelectorAll('[data-order]').length,1);
+ (d.querySelector('#tournament-filter') as HTMLSelectElement).value='Tournoi U13';d.querySelector('#tournament-filter')!.dispatchEvent(new w.Event('change'));assert.equal(d.querySelectorAll('[data-order]').length,0);assert.equal(d.querySelector('#export-registrations')!.hasAttribute('disabled'),true);assert.match(d.querySelector('#registration-count')!.textContent!,/0 inscription/);
+ d.querySelector<HTMLElement>('#reset-registration-filters')!.click();assert.equal(d.querySelectorAll('[data-order]').length,2);assert.equal(d.querySelector('#export-registrations')!.hasAttribute('disabled'),false);
+ await w.happyDOM.abort();w.close();
+});

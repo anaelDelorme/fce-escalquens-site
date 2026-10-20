@@ -99,3 +99,23 @@ export function showError(node, error) {
 export function itemTable(items, { admin = false } = {}) {
   return `<div class="commerce-table-wrap"><table><thead><tr><th>Article</th><th>Quantité</th><th>Montant</th>${admin ? "<th>Reçue</th><th>Remise</th>" : ""}</tr></thead><tbody>${items.map((i) => `<tr><td><strong>${esc(i.name)}</strong><small>${esc(i.size || "Taille unique")} · ${esc(i.color)}${admin ? ` · Réf. ${esc(i.sku)}` : ""}</small>${(i.options || []).map((o) => `<small>${esc(o.label)}${o.text ? ` : <b>${esc(o.text)}</b>` : ""}</small>`).join("")}</td><td>${i.quantity}</td><td>${money(i.unit_cents * i.quantity)}</td>${admin ? `<td><input aria-label="Quantité reçue — ${esc(i.name)} ${esc(i.size)}" type="number" min="0" max="${i.quantity}" name="received:${esc(i.id)}" value="${i.received}" required></td><td><input aria-label="Quantité remise — ${esc(i.name)} ${esc(i.size)}" type="number" min="0" max="${i.quantity}" name="delivered:${esc(i.id)}" value="${i.delivered}" required></td>` : ""}</tr>`).join("")}</tbody></table></div>`;
 }
+
+/** Admin-only rendering: friendly states, never raw provider responses or message bodies. */
+export function mailStatusList(mails = []) {
+  const kinds = { created:'Confirmation', paid:'Paiement confirmé', tracking:'Lien de suivi', payment:'Mise à jour du paiement', fulfillment:'Préparation et remise' };
+  const states = { pending:['En attente','is-pending'], sending:['En cours','is-pending'], sent:['Accepté par le serveur','is-paid'], failed:['Échec à traiter','is-failed'] };
+  const advice = {
+    MAIL_SMTP_AUTH:'OVH refuse les identifiants. Vérifiez SMTP_USER et le secret SMTP_PASSWORD.',
+    MAIL_SMTP_CONFIG:'Vérifiez les paramètres SMTP OVH et l’adresse d’expédition du Worker.',
+    MAIL_SMTP_NETWORK:'La connexion au serveur OVH a échoué. Réessayez puis vérifiez SMTP_HOST.',
+    MAIL_SMTP_TIMEOUT:'Le serveur OVH n’a pas répondu à temps. Une nouvelle tentative est prévue si les reprises ne sont pas épuisées.',
+    MAIL_SMTP_RECIPIENT:'Le serveur a refusé le destinataire. Vérifiez son adresse et la réception de la boîte.',
+    MAIL_PROVIDER_MISSING:'Aucun transport mail n’est configuré sur ce Worker.',
+    MAIL_BINDING_MISSING:'Le service d’envoi Cloudflare n’est pas raccordé au Worker.',
+  };
+  return mails.map(m => {
+    const [state, tone] = states[m.status] || ['État inconnu','is-neutral'];
+    const code = /^MAIL_[A-Z0-9_]+$/.test(m.last_error || '') ? m.last_error : '';
+    return `<article class="commerce-mail-status"><div><strong>${esc(kinds[m.kind] || 'Notification de suivi')}</strong><span class="commerce-badge ${tone}">${state}</span></div><small>${Number(m.attempts)||0} tentative(s)${m.sent_at?' · '+date(m.sent_at):''}</small>${m.status==='sent'?'<p>Le transport a accepté le message. Cela ne confirme pas sa réception en boîte principale.</p>':code?`<p>${esc(advice[code] || 'L’envoi a échoué. Vérifiez le transport mail et relancez les envois depuis cette fiche.')}</p><small class="commerce-mail-code">${esc(code)}</small>`:'<p>Le message sera traité par la file d’envoi automatique.</p>'}</article>`;
+  }).join('') || '<p class="commerce-help">Aucun mail n’est encore placé dans la file d’envoi pour cette commande.</p>';
+}

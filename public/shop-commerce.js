@@ -21,6 +21,8 @@ cart = cart
       i.quantity > 0,
   )
   .slice(0, 40);
+let checkoutStep=1;
+let checkoutFields={};
 let toastTimer;
 const toast = (message) => {
   const node = document.querySelector("#commerce-notice");
@@ -32,6 +34,8 @@ const toast = (message) => {
 const persist = () => {
   saveStorage("fce-cart-v1", cart);
   const count = cart.reduce((n, i) => n + i.quantity, 0);
+  const valueNode=document.querySelector("#cart-value");
+  if(valueNode)valueNode.textContent=catalogue&&count?money(total()):"";
   document.querySelector("#cart-count").textContent = String(count);
   document.querySelector("#open-cart").setAttribute("aria-label", `Ouvrir mon panier, ${count} article(s)`);
   document.querySelector("#show-cart").textContent = count ? `Voir mes ${count} article(s) →` : "Ouvrir mon panier →";
@@ -43,6 +47,7 @@ for (const dialog of [productDialog, cartDialog, document.querySelector("#detail
     .addEventListener("click", () => dialog.close());
 async function loadCatalogue() {
   catalogue = await api("/api/shop/catalogue");
+  persist();
   return catalogue;
 }
 function variantFor(line) {
@@ -187,6 +192,7 @@ document.addEventListener("click", async (event) => {
 function renderCart() {
   const content = document.querySelector("#cart-content");
   if (!cart.length) {
+    checkoutStep=1;checkoutFields={};
     content.innerHTML =
       '<div class="commerce-empty"><h3>Le prochain équipement se choisit ici.</h3><p>Votre panier est vide. Découvrez la sélection puis choisissez vos tailles et options.</p></div><button type="button" id="continue-shopping">Continuer ma sélection →</button>';
     document.querySelector("#continue-shopping").onclick = () =>
@@ -194,16 +200,17 @@ function renderCart() {
     return;
   }
   const allValid = cart.every(validLine);
-  content.innerHTML = `${catalogue.environment === "sandbox" ? '<p class="commerce-message">Environnement de test : paiements HelloAsso Sandbox.</p>' : ""}${cart
+  content.innerHTML = `<ol class="commerce-checkout-steps" aria-label="Étapes de commande"><li id="cart-step-selection" aria-current="${checkoutStep===1?'step':'false'}">1. Votre panier</li><li id="cart-step-details" aria-current="${checkoutStep===2?'step':'false'}">2. Coordonnées et paiement</li></ol>${catalogue.environment === "sandbox" ? '<p class="commerce-message">Environnement de test : paiements HelloAsso Sandbox.</p>' : ""}${cart
     .map((line, index) => {
       const v = variantFor(line),
         p = catalogue.products.find((p) => p.id === v?.product_id);
-      return `<div class="commerce-cart-line"><div><strong>${esc(p?.name || "Article indisponible")}</strong><small>${esc(v?.label || "Modèle indisponible")} · ${esc(v?.color || "")} · Quantité : ${line.quantity}</small>${line.options.map((o) => `<small>${esc(catalogue.options.find((x) => x.id === o.id)?.label || "Option indisponible")}${o.text ? ` : <b>${esc(o.text)}</b>` : ""}</small>`).join("")}${!validLine(line) ? '<p class="commerce-error commerce-message">Cette sélection doit être retirée ou modifiée.</p>' : ""}</div><div><strong>${money(unit(line) * line.quantity)}</strong><div class="commerce-actions">${v ? `<button type="button" class="commerce-secondary" data-edit="${index}">Modifier</button>` : ""}<button type="button" class="commerce-secondary" data-remove="${index}">Retirer</button></div></div></div>`;
+      return `<div class="commerce-cart-line">${p?.image_key?`<img class="commerce-cart-image" src="/media/${encodeURIComponent(p.image_key).replace(/%2F/g,"/")}" alt="">`:'<span class="commerce-cart-placeholder" aria-hidden="true">—</span>'}<div><strong>${esc(p?.name || "Article indisponible")}</strong><small>${esc(v?.label || "Modèle indisponible")}${v?.color?` · ${esc(v.color)}`:""} · Quantité : ${line.quantity}</small>${line.options.map((o) => `<small>${esc(catalogue.options.find((x) => x.id === o.id)?.label || "Option indisponible")}${o.text ? ` : <b>${esc(o.text)}</b>` : ""}</small>`).join("")}${!validLine(line) ? '<p class="commerce-error commerce-message">Cette sélection doit être retirée ou modifiée.</p>' : ""}</div><div class="commerce-cart-price"><strong>${money(unit(line) * line.quantity)}</strong><div class="commerce-actions">${v ? `<button type="button" class="commerce-secondary" data-edit="${index}">Modifier</button>` : ""}<button type="button" class="commerce-secondary" data-remove="${index}">Retirer</button></div></div></div>`;
     })
     .join(
       "",
-    )}<div class="commerce-actions"><button type="button" id="continue-selection" class="commerce-secondary">← Continuer mes achats</button></div><div class="commerce-total"><span>Total</span><span>${money(total())}</span></div><p class="commerce-help">Remise gratuite · Prix recalculés à partir du catalogue actuel · Paiement exclusivement HelloAsso</p>${!catalogue.checkout_available ? `<p class="commerce-message">${esc(catalogue.checkout_unavailable?.message||"Le paiement n’est pas encore disponible. Votre panier est conservé.")}</p>` : ""}
- <form id="checkout-form" class="commerce-checkout"><h3>Où retrouver votre commande ?</h3><p>Sans compte ni mot de passe. Le récapitulatif et le lien de suivi seront envoyés à votre adresse e-mail.</p><div class="commerce-form-grid"><label>Prénom *<input name="first_name" autocomplete="given-name" maxlength="80" required></label><label>Nom *<input name="last_name" autocomplete="family-name" maxlength="80" required></label><label>E-mail *<input name="email" type="email" autocomplete="email" maxlength="254" required></label><label>Téléphone *<input name="phone" type="tel" autocomplete="tel" maxlength="30" required></label></div><fieldset><legend>Comment récupérer vos articles ?</legend><label class="commerce-check"><input name="delivery_method" type="radio" value="coach" checked><span>Par le coach de mon équipe</span></label><label class="commerce-check" style="margin-top:14px"><input name="delivery_method" type="radio" value="club"><span>Sur rendez-vous au club</span></label><p class="commerce-help">${esc(catalogue.collection_address)} · Au plus tard ${catalogue.delivery_days} jours après confirmation du paiement.</p></fieldset><div class="commerce-form-grid"><label><span>Nom du licencié <abbr class="commerce-required" data-coach-required title="obligatoire">*</abbr></span><input name="licensed_name" maxlength="120" required></label><label><span>Équipe / catégorie <abbr class="commerce-required" data-coach-required title="obligatoire">*</abbr></span><input name="team" placeholder="Ex. U11, Seniors féminines…" maxlength="80" required></label></div><p class="commerce-help">Le club utilise ces informations pour exécuter votre commande et organiser sa remise. Seules les données nécessaires sont partagées avec HelloAsso, les prestataires et les personnes habilitées. Aucun compte ni inscription publicitaire n’est créé. <a href="/confidentialite/" target="_blank" rel="noopener">Durées de conservation et vos droits</a>.</p><label class="commerce-check"><input type="checkbox" name="accept_terms" required><span>J’ai lu et j’accepte les <a href="/cgv/" target="_blank" rel="noopener">conditions générales de vente</a>, notamment les délais et les conditions applicables aux articles personnalisés. *</span></label><p class="commerce-help">Vérifiez les tailles, les personnalisations et votre adresse e-mail avant de payer. Sur HelloAsso, une contribution volontaire peut être proposée ; elle est distincte de votre panier et peut être retirée ou modifiée.</p><p id="checkout-error" role="alert" tabindex="-1" hidden></p><div id="checkout-recovery"></div><button type="submit" ${!allValid || !catalogue.checkout_available ? "disabled" : ""}>Commander et payer ${money(total())} avec HelloAsso →</button><p class="commerce-help">Les champs marqués * sont obligatoires. Le panier est conservé dans cet onglet jusqu’à sa fermeture.</p></form>`;
+    )}<div class="commerce-actions"><button type="button" id="continue-selection" class="commerce-secondary">← Continuer mes achats</button></div><div class="commerce-cart-summary"><div class="commerce-total"><span>Total articles</span><span>${money(total())}</span></div><p class="commerce-help">Remise gratuite · Prix recalculés à partir du catalogue actuel · Paiement exclusivement HelloAsso</p></div>${!catalogue.checkout_available ? `<p class="commerce-message">${esc(catalogue.checkout_unavailable?.message||"Le paiement n’est pas encore disponible. Votre panier est conservé.")}</p>` : ""}
+<div class="commerce-cart-next" id="cart-next" ${checkoutStep===2?'hidden':''}><button id="cart-to-checkout" type="button" ${!allValid||!catalogue.checkout_available?'disabled':''}>Passer à la commande →</button></div>
+ <form id="checkout-form" class="commerce-checkout" ${checkoutStep===1?'hidden':''}><div class="commerce-checkout-title"><h3>Vos coordonnées</h3><button id="cart-back" type="button" class="commerce-secondary">← Revoir mon panier</button></div><p>Sans compte ni mot de passe. Le récapitulatif et le lien de suivi seront envoyés à votre adresse e-mail.</p><div class="commerce-form-grid"><label>Prénom *<input name="first_name" autocomplete="given-name" maxlength="80" required></label><label>Nom *<input name="last_name" autocomplete="family-name" maxlength="80" required></label><label>E-mail *<input name="email" type="email" autocomplete="email" maxlength="254" required></label><label>Téléphone *<input name="phone" type="tel" autocomplete="tel" maxlength="30" required></label></div><fieldset><legend>Comment récupérer vos articles ?</legend><label class="commerce-check"><input name="delivery_method" type="radio" value="coach" checked><span>Par le coach de mon équipe</span></label><label class="commerce-check" style="margin-top:14px"><input name="delivery_method" type="radio" value="club"><span>Sur rendez-vous au club</span></label><p class="commerce-help">${esc(catalogue.collection_address)} · Au plus tard ${catalogue.delivery_days} jours après confirmation du paiement.</p></fieldset><div class="commerce-form-grid"><label><span>Nom du licencié <abbr class="commerce-required" data-coach-required title="obligatoire">*</abbr></span><input name="licensed_name" maxlength="120" required></label><label><span>Équipe / catégorie <abbr class="commerce-required" data-coach-required title="obligatoire">*</abbr></span><input name="team" placeholder="Ex. U11, Seniors féminines…" maxlength="80" required></label></div><p class="commerce-help">Le club utilise ces informations pour exécuter votre commande et organiser sa remise. Seules les données nécessaires sont partagées avec HelloAsso, les prestataires et les personnes habilitées. Aucun compte ni inscription publicitaire n’est créé. <a href="/confidentialite/" target="_blank" rel="noopener">Durées de conservation et vos droits</a>.</p><label class="commerce-check"><input type="checkbox" name="accept_terms" required><span>J’ai lu et j’accepte les <a href="/cgv/" target="_blank" rel="noopener">conditions générales de vente</a>, notamment les délais et les conditions applicables aux articles personnalisés. *</span></label><p class="commerce-help">Vérifiez les tailles, les personnalisations et votre adresse e-mail avant de payer. Sur HelloAsso, une contribution volontaire peut être proposée ; elle est distincte de votre panier et peut être retirée ou modifiée.</p><p id="checkout-error" role="alert" tabindex="-1" hidden></p><div id="checkout-recovery"></div><button type="submit" ${!allValid || !catalogue.checkout_available ? "disabled" : ""}>Commander et payer ${money(total())} avec HelloAsso →</button><p class="commerce-help">Les champs marqués * sont obligatoires. Le panier est conservé dans cet onglet jusqu’à sa fermeture.</p></form>`;
   content.querySelectorAll("[data-remove]").forEach(
     (b) =>
       (b.onclick = () => {
@@ -224,14 +231,26 @@ function renderCart() {
     );
   document.querySelector("#continue-selection").onclick=()=>cartDialog.close();
   const form = document.querySelector("#checkout-form");
-  form.addEventListener("change", () => {
+  const setStep=step=>{checkoutStep=step;form.hidden=step===1;document.querySelector('#cart-next').hidden=step===2;document.querySelector('#cart-step-selection').setAttribute('aria-current',step===1?'step':'false');document.querySelector('#cart-step-details').setAttribute('aria-current',step===2?'step':'false');if(step===2){form.querySelector('input')?.focus();}else document.querySelector('#cart-to-checkout').focus();};
+  document.querySelector('#cart-to-checkout').onclick=()=>setStep(2);
+  document.querySelector('#cart-back').onclick=()=>setStep(1);
+  for(const input of form.querySelectorAll('input')) {
+    const value=checkoutFields[input.name];if(value===undefined)continue;
+    if(input.type==='radio')input.checked=input.value===value;
+    else if(input.type==='checkbox')input.checked=!!value;
+    else input.value=value;
+  }
+  form.addEventListener('input',()=>{checkoutFields=Object.fromEntries(new FormData(form));checkoutFields.accept_terms=form.elements.accept_terms.checked;});
+
+  const updateDelivery = () => {
     const coach = form.elements.delivery_method.value === "coach";
     for (const name of ["licensed_name", "team"])
       form.elements[name].required = coach;
     form
       .querySelectorAll("[data-coach-required]")
       .forEach((n) => (n.hidden = !coach));
-  });
+  };
+  form.addEventListener("change", updateDelivery);updateDelivery();
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!form.reportValidity()) return;
@@ -331,3 +350,8 @@ document.addEventListener("click", async event => {
     document.querySelector("#detail-order").onclick=()=>{dialog.close();if(variants.length===1 && !options.length){const same=cart.find(i=>i.variant_id===variants[0].id&&!i.options.length);if(same && same.quantity>=30){toast('Maximum 30 exemplaires par article.');return;}if(same)same.quantity++;else cart.push({variant_id:variants[0].id,quantity:1,options:[]});persist();cartDialog.showModal();renderCart();}else openProduct(p.id);};
   }catch(error){content.textContent=error.message;}
 });
+
+const shopHeader=document.querySelector('.site-header');
+if(shopHeader&&typeof ResizeObserver!=='undefined')new ResizeObserver(()=>document.documentElement.style.setProperty('--shop-header-height',`${shopHeader.getBoundingClientRect().height}px`)).observe(shopHeader);
+
+document.addEventListener('shop-loaded',event=>{const data=event.detail;if(data&&Array.isArray(data.products)&&Array.isArray(data.variants)&&Array.isArray(data.options)){catalogue=data;persist();}});

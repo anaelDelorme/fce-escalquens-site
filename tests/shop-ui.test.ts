@@ -6,11 +6,11 @@ import {renderContent} from '../src/scripts/admin-shop-content.js';
 import {renderVariants} from '../src/scripts/admin-shop-variants.js';
 const next=()=>new Promise(resolve=>setImmediate(resolve));
 const fixture={products:[{id:1,name:'Maillot',image_key:'maillot.webp',short_description:'Accroche publique',description:'Composition uniquement dans les détails',active:1},{id:2,name:'Sac',image_key:'sac.webp',active:1}],variants:[{id:'v1',product_id:1,label:'6 ans',price_cents:2000},{id:'v2',product_id:1,label:'M',price_cents:2500},{id:'v3',product_id:2,label:'Unique',price_cents:1500}],options:[{id:'o1',product_id:1,label:'Initiales',price_cents:250,requires_text:1,max_length:4}],checkout_available:false,environment:'sandbox'};
-function setup(){
+function setup(catalogue=fixture){
  const window=new Window({url:'https://boutique.example/boutique/',settings:{disableCSSFileLoading:true,disableJavaScriptFileLoading:true}});
  window.document.write('<button id="open-cart"><span id="cart-count"></span></button><button id="show-cart"></button><div id="commerce-notice" hidden></div><button data-order-product="1">Choisir</button><button data-order-product="2">Ajouter</button><button data-product-detail="1">Détails</button><dialog id="product-dialog"><button data-close></button><div id="product-content"></div></dialog><dialog id="cart-dialog"><button data-close></button><div id="cart-content"></div></dialog><dialog id="detail-dialog"><button data-close></button><div id="detail-content"></div></dialog>');
  window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};window.HTMLDialogElement.prototype.close=function(){this.open=false;};
- window.fetch=(async()=>Response.json(fixture)) as any;
+ window.fetch=(async()=>Response.json(catalogue)) as any;
  const common=readFileSync(new URL('../public/shop-common.js',import.meta.url),'utf8').replace(/export /g,'');
  const commerce=readFileSync(new URL('../public/shop-commerce.js',import.meta.url),'utf8').replace(/^import[\s\S]*?from "\.\/shop-common.js";/,'');
  window.eval(common+'\n'+commerce);return window;
@@ -104,4 +104,50 @@ test('paramètres boutique DOM : enregistrement du contact et avertissement dist
  const source=readFileSync(new URL('../src/scripts/admin-shop.js',import.meta.url),'utf8').replace(/^import[\s\S]*?from [^;]+;\n?/gm,'');w.eval(common+'\n'+source);await next();await next();
  const form=w.document.querySelector<HTMLFormElement>('#settings-form')!;(form.elements.namedItem('contact_email') as HTMLInputElement).value='nouveau@example.org';(form.elements.namedItem('checkout_enabled') as HTMLInputElement).checked=true;form.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));await next();await next();await next();
  assert.equal(saved.contact_email,'nouveau@example.org');assert.equal(saved.checkout_enabled,true);assert.match(w.document.querySelector('#admin-shop-message')!.textContent!,/Paramètres enregistrés/);assert.match(w.document.querySelector('#admin-shop-message')!.className,/commerce-success/);assert.match(w.document.querySelector('#admin-shop-content')!.textContent!,/Configurer le transport mail/);assert.equal((w.document.querySelector('[name=contact_email]') as HTMLInputElement).value,'nouveau@example.org');await w.happyDOM.abort();w.close();
+});
+
+test('panier en deux étapes : retour et modification conservent les coordonnées uniquement en mémoire',async()=>{
+ const w=setup({...fixture,checkout_available:true}),d=w.document;
+ d.querySelector<HTMLElement>('[data-order-product="2"]')!.click();await next();
+ let form=d.querySelector<HTMLFormElement>('#checkout-form')!;assert.equal(form.hidden,true);
+ d.querySelector<HTMLElement>('#cart-to-checkout')!.click();assert.equal(form.hidden,false);assert.equal(d.querySelector('#cart-step-details')!.getAttribute('aria-current'),'step');
+ const email=form.elements.namedItem('email') as HTMLInputElement;email.value='prive@example.org';email.dispatchEvent(new w.Event('input',{bubbles:true}));
+ (form.querySelector('[value=club]') as HTMLInputElement).checked=true;form.dispatchEvent(new w.Event('input',{bubbles:true}));form.dispatchEvent(new w.Event('change',{bubbles:true}));
+ assert.equal((form.elements.namedItem('team') as HTMLInputElement).required,false);
+ d.querySelector<HTMLElement>('#cart-back')!.click();assert.equal(form.hidden,true);
+ d.querySelector<HTMLElement>('[data-edit]')!.click();await next();
+ const edit=d.querySelector<HTMLFormElement>('#product-form')!;(edit.elements.namedItem('quantity') as HTMLInputElement).value='2';edit.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));
+ form=d.querySelector<HTMLFormElement>('#checkout-form')!;assert.equal((form.elements.namedItem('email') as HTMLInputElement).value,'prive@example.org');assert.equal((form.elements.namedItem('team') as HTMLInputElement).required,false);
+ assert.doesNotMatch(w.sessionStorage.getItem('fce-cart-v1')||'',/prive@example/);
+ assert.equal(d.querySelectorAll('.commerce-cart-image').length,1);
+ await w.happyDOM.abort();w.close();
+});
+test('catalogue : recherche sans accents, filtres combinés, état vide et réinitialisation',async()=>{
+ const w=new Window({url:'https://boutique.example/boutique/',settings:{disableCSSFileLoading:true,disableJavaScriptFileLoading:true}});
+ w.document.write('<main id="shop-page"><div id="shop-featured"></div><div id="shop-categories"></div><div id="shop-browse" hidden><input id="shop-search"><div id="shop-category-filters"></div><p id="shop-results"></p><div id="shop-no-results" hidden></div><button id="shop-clear-search"></button></div></main>');
+ const data={products:[{...fixture.products[0],name:'Maillot entraînement',shop_category_id:1},{...fixture.products[1],shop_category_id:2}],categories:[{id:1,name:'Tenues'},{id:2,name:'Accessoires'}],settings:{shop_enabled:1}};
+ w.fetch=(async(path:any)=>Response.json(String(path).includes('/api/page/')?data:fixture)) as any;
+ w.eval(readFileSync(new URL('../public/shop.js',import.meta.url),'utf8'));await next();await next();
+ const d=w.document,search=d.querySelector<HTMLInputElement>('#shop-search')!;
+ assert.equal(d.querySelector('#shop-browse')!.hasAttribute('hidden'),false);assert.match(d.querySelector('#shop-results')!.textContent!,/2 articles/);
+ search.value='entrainement';search.dispatchEvent(new w.Event('input'));assert.match(d.querySelector('#shop-results')!.textContent!,/1 article/);
+ d.querySelector<HTMLElement>('[data-category="2"]')!.click();assert.equal((d.querySelector('#shop-no-results') as HTMLElement).hidden,false);
+ d.querySelector<HTMLElement>('#shop-clear-search')!.click();assert.equal(search.value,'');assert.match(d.querySelector('#shop-results')!.textContent!,/2 articles/);assert.equal(d.querySelector('[data-category=""]')!.getAttribute('aria-pressed'),'true');
+ await w.happyDOM.abort();w.close();
+});
+test('administration boutique : raccourcis de préparation et remise appliquent les filtres serveur',async()=>{
+ const w=new Window({url:'https://example.org/admin-boutique/'});w.document.write('<main class="commerce-admin" data-page="orders"><div id="shop-environment"></div><p id="admin-shop-message"></p><div id="admin-shop-content"></div></main>');
+ const queries:URL[]=[];
+ w.fetch=(async(path:any)=>{const url=new URL(String(path),'https://example.org');if(url.pathname.endsWith('/settings'))return Response.json({settings:{},environment:'sandbox',configuration:{}});queries.push(url);return Response.json({orders:[],has_more:false});}) as any;
+ const common=readFileSync(new URL('../public/shop-common.js',import.meta.url),'utf8').replace(/export /g,'');
+ const source=readFileSync(new URL('../src/scripts/admin-shop.js',import.meta.url),'utf8').replace(/^import[\s\S]*?from [^;]+;\n?/gm,'');w.eval(common+'\n'+source);await next();await next();
+ w.document.querySelector<HTMLElement>('[data-order-filter=prepare]')!.click();await next();assert.equal(queries.at(-1)!.searchParams.get('payment'),'paid');assert.equal(queries.at(-1)!.searchParams.get('fulfillment'),'new');
+ w.document.querySelector<HTMLElement>('[data-order-filter=ready]')!.click();await next();assert.equal(queries.at(-1)!.searchParams.get('fulfillment'),'ready');assert.equal(queries.at(-1)!.searchParams.get('payment'),'');
+ w.document.querySelector<HTMLElement>('#empty-reset-orders')!.click();await next();assert.equal(queries.at(-1)!.searchParams.get('fulfillment'),'');assert.equal(w.document.querySelector('#next-orders')!.hasAttribute('disabled'),true);
+ await w.happyDOM.abort();w.close();
+});
+test('mails : états compréhensibles et aucune réponse brute du prestataire affichée',async()=>{
+ const {mailStatusList}=await import('../public/shop-common.js');
+ const html=mailStatusList([{kind:'created',status:'failed',attempts:8,last_error:'MAIL_SMTP_AUTH'},{kind:'tracking',status:'sent',attempts:1,sent_at:1700000000},{kind:'<script>',status:'pending',last_error:'PRIVATE_TOKEN <img src=x onerror=alert(1)>'}]);
+ assert.match(html,/OVH refuse les identifiants/);assert.match(html,/Accepté par le serveur/);assert.match(html,/ne confirme pas sa réception/);assert.doesNotMatch(html,/PRIVATE_TOKEN|<script>|<img/);
 });

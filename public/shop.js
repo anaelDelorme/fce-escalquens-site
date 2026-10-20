@@ -24,7 +24,7 @@ const productMeta=product=>{
   </div>`;
 };
 const orderButton=product=>`<div class="product-actions"><button class="product-order" type="button" data-order-product="${product.id}" ${product.sellable?'':'disabled'}>${shopEsc(product.orderLabel||'Commande bientôt disponible')} →</button><button class="product-detail" type="button" data-product-detail="${product.id}">Détails de l’article</button></div>`;
-const productCard=product=>`<article class="shop-product-card">
+const productCard=product=>`<article class="shop-product-card" data-shop-product="${product.id}">
   <div class="product-card-visual">${productVisual(product)}</div>
   <div class="product-card-copy"><small>${shopEsc(product.price_label||'Prix à confirmer')}</small><h3>${shopEsc(product.name)}</h3>${productDescriptions(product)}${productMeta(product)}${orderButton(product)}</div>
 </article>`;
@@ -71,9 +71,37 @@ async function loadShop(){
     categoriesNode.innerHTML=categories.map((category,categoryIndex)=>{
       const visible=products.filter(product=>String(product.shop_category_id)===String(category.id)).sort((a,b)=>Number(b.highlighted)-Number(a.highlighted));
       if(!visible.length)return '';
-      return `<section class="shop-category"><header><span>${String(categoryIndex+1).padStart(2,'0')}</span><div><h3>${shopEsc(category.name)}</h3><p>${shopEsc(category.description||'')}</p></div></header><div class="shop-product-grid">${visible.map(productCard).join('')}</div></section>`;
+      return `<section class="shop-category" data-shop-category="${category.id}"><header><span>${String(categoryIndex+1).padStart(2,'0')}</span><div><h3>${shopEsc(category.name)}</h3><p>${shopEsc(category.description||'')}</p></div></header><div class="shop-product-grid">${visible.map(productCard).join('')}</div></section>`;
     }).join('')||'<p class="shop-empty">La sélection de la boutique arrive bientôt.</p>';
-    document.dispatchEvent(new Event('shop-loaded'));
-  }catch(error){document.querySelector('#shop-page')?.classList.remove('is-loading');revealShopHero(null);featuredNode.innerHTML='<p class="shop-empty">L’article à la une est momentanément indisponible.</p>';categoriesNode.innerHTML='<p class="shop-empty">La boutique ne peut pas être chargée pour le moment.</p>'}
+    setupShopBrowse(products,categories);
+    document.dispatchEvent(new CustomEvent('shop-loaded',{detail:commerce}));
+  }catch(error){document.querySelector('#shop-page')?.classList.remove('is-loading');revealShopHero(null);featuredNode.innerHTML='<p class="shop-empty">L’article à la une est momentanément indisponible.</p>';categoriesNode.innerHTML='<div class="shop-empty"><p>La boutique ne peut pas être chargée pour le moment. Vous pouvez réessayer.</p><button id="retry-shop" type="button">Recharger la boutique</button></div>';document.querySelector('#retry-shop').onclick=()=>loadShop()}
+}
+function setupShopBrowse(products,categories) {
+  const browse=document.querySelector('#shop-browse');if(!browse)return;
+  browse.hidden=false;
+  const search=document.querySelector('#shop-search'), chips=document.querySelector('#shop-category-filters');
+  let category='';
+  const used=categories.filter(c=>products.some(p=>String(p.shop_category_id)===String(c.id)));
+  chips.innerHTML=`<button type="button" data-category="" aria-pressed="true">Tout voir</button>${used.map(c=>`<button type="button" data-category="${c.id}" aria-pressed="false">${shopEsc(c.name)}</button>`).join('')}`;
+  const normalize=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const draw=()=>{
+    const term=normalize(search.value.trim());let count=0;
+    document.querySelectorAll('[data-shop-category]').forEach(section=>{
+      let matches=0;
+      section.querySelectorAll('[data-shop-product]').forEach(card=>{
+        const p=products.find(p=>String(p.id)===card.dataset.shopProduct);
+        const visible=(!category||section.dataset.shopCategory===category)&&!!p&&normalize(`${p.name} ${p.short_description||''}`).includes(term);
+        card.hidden=!visible;if(visible){matches++;count++;}
+      });section.hidden=!matches;
+    });
+    document.querySelector('#shop-results').textContent=`${count} article${count>1?'s':''} ${count>1?'disponibles':'disponible'}`;
+    document.querySelector('#shop-no-results').hidden=count!==0;
+    chips.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.category===category)));
+  };
+  chips.querySelectorAll('button').forEach(b=>b.onclick=()=>{category=b.dataset.category;draw();});
+  search.oninput=draw;
+  document.querySelector('#shop-clear-search').onclick=()=>{search.value='';category='';draw();search.focus();};
+  draw();
 }
 loadShop();
