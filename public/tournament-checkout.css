@@ -41,3 +41,13 @@
 /* Suivi sous le bandeau partagé .page-hero.wine du site. */
 .tournament-followup{display:flex;justify-content:flex-end}.tournament-followup .tournament-tracking-link{display:flex;align-items:center;gap:14px;padding:14px 20px}
 @media(max-width:680px){.tournament-followup{justify-content:stretch}.tournament-followup .tournament-tracking-link{width:100%;flex-wrap:wrap;gap:6px 12px}}
+
+/* V5.2.13: visible registration actions and comfortable touch targets. */
+.tournament-card .tournament-actions{gap:12px;align-items:stretch}
+.tournament-card .tournament-action{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:13px 18px;font:700 15px/1.35 Arial,sans-serif;border-radius:8px;text-align:center}
+.tournament-card .tournament-action--primary{grid-column:1/-1;flex:1 0 100%;min-height:58px;padding:17px 24px;background:var(--wine);color:#fff;font-size:18px;letter-spacing:0;box-shadow:0 4px 12px #58181c18}
+.tournament-card .tournament-action--primary:hover{background:var(--wine-dark)}
+.tournament-card .tournament-action:focus-visible{outline:3px solid #bd8c00;outline-offset:3px}
+.tournament-dialog button[type=submit]{min-height:58px;font-size:18px;padding:18px 24px}
+.commerce-layout .tournament-actions button{min-height:52px;padding:15px 20px;font-size:16px}
+@media(max-width:600px){.tournament-card .tournament-action--primary{width:100%;min-height:60px;font-size:18px}.tournament-card .tournament-action{flex:1 1 auto}.commerce-layout .tournament-actions{display:grid;grid-template-columns:1fr}.tournament-dialog button[type=submit]{min-height:58px}}

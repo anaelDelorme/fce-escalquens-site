@@ -15,7 +15,7 @@ function fixture(){
  for(const file of readdirSync(new URL('../migrations-orders/',import.meta.url)).filter(f=>f.endsWith('.sql')).sort())orders.exec(readFileSync(new URL(`../migrations-orders/${file}`,import.meta.url),'utf8'));
  orders.close();
  writeFileSync(join(folder,'node_modules/wrangler/package.json'),JSON.stringify({type:'commonjs'}));
- const target=new DatabaseSync(join(folder,'TOURNAMENTS.sqlite'));target.exec(readFileSync(new URL('../migrations-tournaments/0001_tournaments.sql',import.meta.url),'utf8'));target.close();
+ const target=new DatabaseSync(join(folder,'TOURNAMENTS.sqlite'));for(const file of readdirSync(new URL('../migrations-tournaments/',import.meta.url)).filter(f=>f.endsWith('.sql')).sort())target.exec(readFileSync(new URL(`../migrations-tournaments/${file}`,import.meta.url),'utf8'));target.close();
  writeFileSync(join(folder,'node_modules/wrangler/bin/wrangler.js'),String.raw`
 const {DatabaseSync}=require('node:sqlite');const {readFileSync}=require('node:fs');
 const args=process.argv.slice(2),db=new DatabaseSync(args[2]+'.sqlite');

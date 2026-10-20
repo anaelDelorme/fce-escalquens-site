@@ -27,7 +27,7 @@ import {
   secureHeaders,
 } from "./security";
 import { api, safeRedirect, verifiedPayments, connectionStatus } from "./helloasso";
-import { drainMail, queueMail, testMail } from "./mail";
+import { drainMail, queueMail, testMail, mailQueueStatus } from "./mail";
 import { mailReady, mailTransportReady } from "./mail-config";
 import { smtpConfigured } from "./smtp";
 import { priceLabelStatement } from "./catalogue-pricing";
@@ -223,7 +223,7 @@ export async function detail(env: ShopEnv, order: Row, admin = false) {
       "SELECT ease,catalogue,overall,comment,created_at FROM surveys WHERE order_id=?",
     ).bind(order.id),
     env.ORDERS.prepare(
-      "SELECT id,kind,status,attempts,last_error,sent_at FROM outbox WHERE order_id=? ORDER BY available_at DESC",
+      "SELECT id,kind,audience,recipient,status,attempts,last_error,sent_at FROM outbox WHERE order_id=? ORDER BY available_at DESC",
     ).bind(order.id),
     env.ORDERS.prepare(
       "SELECT id,intent_id,provider_order_id,state,created_at,last_error FROM checkout_attempts WHERE order_id=? ORDER BY created_at DESC",
@@ -902,31 +902,11 @@ async function updateFulfillment(
   return response({ ok: true });
 }
 function purchaseOrder(order: Row, items: Row[], s: Settings) {
-  return new Response(
-    `<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Bon ${escapeHtml(order.reference)}</title><style>body{font:14px Arial;max-width:1000px;margin:40px auto;padding:20px;color:#291d1d}h1{color:#9f1a1a}table{border-collapse:collapse;width:100%}th,td{border:1px solid #aaa;padding:12px;text-align:left}small{color:#555}@media print{body{margin:0}}</style><h1>Bon de commande fournisseur</h1><p><strong>${escapeHtml(s.seller_name)}</strong><br>${escapeHtml(s.seller_address)}<br>${escapeHtml(s.contact_email)} — ${escapeHtml(s.seller_phone)}</p><h2>${escapeHtml(order.reference)}</h2><p>Une commande client • Émis le ${new Date().toLocaleDateString("fr-FR")} • Fournisseur(s) : ${escapeHtml([...new Set(items.map((i) => i.supplier))].join(", "))}</p><table><thead><tr><th>Référence fournisseur</th><th>Article / couleur</th><th>Taille</th><th>Qté</th><th>Personnalisation / options</th></tr></thead><tbody>${items
-      .map(
-        (i) =>
-          `<tr><td>${escapeHtml(i.sku)}</td><td>${escapeHtml(i.name)}<br>${escapeHtml(i.color)}</td><td>${escapeHtml(i.size || "Unique")}</td><td>${i.quantity}</td><td>${
-            JSON.parse(i.options_json)
-              .map(
-                (o: Row) =>
-                  `${escapeHtml(o.label)}${o.text ? ` : <strong>${escapeHtml(o.text)}</strong>` : ""}`,
-              )
-              .join("<br>") || "Aucune"
-          }</td></tr>`,
-      )
-      .join(
-        "",
-      )}</tbody></table><p>Prix d’achat fournisseur et délai à confirmer par le fournisseur. Les prix de vente client ne constituent pas un tarif fournisseur.</p><p><small>Document réservé à la préparation de cette commande. Aucune adresse e-mail ni téléphone du client n’est transmis. Utilisez la fonction Imprimer du navigateur pour enregistrer un PDF. L’édition de ce document ne marque pas la commande comme transmise.</small></p></html>`,
-    {
-      headers: {
-        ...secureHeaders(),
-        "content-type": "text/html;charset=UTF-8",
-        "content-security-policy":
-          "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'",
-      },
-    },
-  );
+  return response({
+    order:Object.fromEntries(['reference','first_name','last_name','licensed_name','team'].map(key=>[key,order[key]])),
+    items:items.map(item=>Object.fromEntries(['name','supplier','size','quantity','options_json'].map(key=>[key,item[key]]))),
+    club:Object.fromEntries(['seller_name','seller_address','contact_email','seller_phone'].map(key=>[key,s[key as keyof Settings]])),
+  });
 }
 async function saveSettings(
   request: Request,
@@ -1051,7 +1031,7 @@ export async function maintenance(env: ShopEnv) {
   )
     .bind(now() - 120,env.ORDER_KIND||"shop")
     .run();
-  await drainMail(env, s);
+  await drainMail(env, s, 10);
   await env.ORDERS.batch([
     env.ORDERS.prepare("DELETE FROM rate_limits WHERE expires<?").bind(now()),
     env.ORDERS.prepare("DELETE FROM surveys WHERE created_at<?").bind(
@@ -1184,6 +1164,7 @@ export async function shopRoute(
             environment: environment(env),
             origin: env.SHOP_ORIGIN || "",
             availability: await adminShopAvailability(env,s),
+            mail_queue: await mailQueueStatus(env),
             configuration: {
               credentials:
                 !!env.HELLOASSO_CLIENT_ID && !!env.HELLOASSO_CLIENT_SECRET,
@@ -1284,14 +1265,15 @@ export async function shopRoute(
               .bind(order.id)
               .all<Row>()
           ).results;
+          const document=purchaseOrder(order,items,s);
           await event(
             env,
             order.id,
             "export",
             actor,
-            "Bon de commande fournisseur individuel édité.",
+            "Données du bon fournisseur individuel préparées.",
           ).run();
-          return purchaseOrder(order, items, s);
+          return document;
         }
         if (match[2] === "reconcile" && request.method === "POST") {
           await reconcile(env, s, order.id);
@@ -1521,6 +1503,7 @@ export async function shopRoute(
             409,
             "Merci, votre avis a déjà été enregistré.",
           );
+        ctx.waitUntil(drainMail(env,s));
         return response({ ok: true });
       }
     }

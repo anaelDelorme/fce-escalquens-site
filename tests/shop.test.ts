@@ -24,7 +24,7 @@ import {tournamentEnv,tournamentRoute} from "../src/tournaments/service";
 import {accessToken,tokenKey} from "../src/shop/helloasso-auth";
 import { staff } from "../src/shop/security";
 import { defaultSettings } from "../src/shop/terms";
-import { drainMail } from "../src/shop/mail";
+import { drainMail, deliverMail, mailRecipient } from "../src/shop/mail";
 const product = { id: 1, name: "Castolo", active: 1, image_key: "test.webp" };
 const variant = {
   id: "v",
@@ -195,6 +195,7 @@ before(async () => {
   await TOURNEYS.exec(readFileSync(new URL("../migrations-tournaments/0001_tournaments.sql",import.meta.url),"utf8"));
   await TOURNEYS.exec(readFileSync(new URL("../migrations-tournaments/0002_registration_sections.sql",import.meta.url),"utf8"));
   await TOURNEYS.exec(readFileSync(new URL("../migrations-tournaments/0003_cheque_payments.sql",import.meta.url),"utf8"));
+  await TOURNEYS.exec(readFileSync(new URL("../migrations-tournaments/0004_mail_audiences.sql",import.meta.url),"utf8"));
   await TOURNEYS.exec("INSERT INTO module_imports(id,imported_at) VALUES('v5.2',0)");
   await TOURNEYS.exec(`INSERT INTO tournaments(id,slug,name,starts_on,categories,status) VALUES(1,'tournoi-u11','Tournoi U11','2027-06-10','["U11"]','open');`);
   await DB.exec(
@@ -216,14 +217,7 @@ before(async () => {
   )
     .filter((f) => f.endsWith(".sql"))
     .sort()) {
-    for (const stmt of readFileSync(
-      new URL(`../migrations-orders/${file}`, import.meta.url),
-      "utf8",
-    )
-      .split(";")
-      .map((s) => s.trim())
-      .filter(Boolean))
-      await ORDERS.prepare(stmt).run();
+    await ORDERS.exec(readFileSync(new URL(`../migrations-orders/${file}`,import.meta.url),'utf8'));
   }
   await DB.prepare(
     "INSERT INTO shop_variants(id,product_id,label,size,color,sku,supplier,price_cents) VALUES(?,1,'Adulte M','M','Bordeaux','KAPPA-1','Intersport',2300)",
@@ -260,7 +254,7 @@ before(async () => {
     EMAIL: {
       async send(message) {
         assert.equal(message.to, "tester@example.org");
-        assert.match(message.text,/\/(boutique|tournois)\/suivi\/#/);
+        if(message.subject.includes("[CLUB]")){assert.match(message.text,/admin-(boutique|tournois)/);assert.doesNotMatch(message.text,/suivi\/#/);}else assert.match(message.text,/\/(boutique|tournois)\/suivi\/#/);
         if (mailFails) throw new Error("error leaking token http://secret");
         sent++;
         return { messageId: `m-${sent}` };
@@ -509,7 +503,7 @@ test("webhook répétable, vérification API et paiement/confirmation uniques", 
   assert.equal(
     (
       await env.ORDERS.prepare(
-        "SELECT COUNT(*) AS n FROM outbox WHERE kind='paid'",
+        "SELECT COUNT(*) AS n FROM outbox WHERE kind='paid' AND audience='customer'",
       ).first<any>()
     ).n,
     1,
@@ -526,11 +520,10 @@ test("bon individuel sans coordonnées client et protégé", async () => {
     ctx,
   );
   assert.equal(result?.status, 200);
-  const html = await result!.text();
-  assert.match(html, /KAPPA-1/);
-  assert.match(html, /AD/);
-  assert.ok(!html.includes("client@example.org"));
-  assert.ok(!html.includes("0612345678"));
+  const document=await result!.json() as any;
+  assert.equal(document.order.first_name,'Anaël');assert.equal(document.order.last_name,'Test');
+  assert.equal(document.order.email,undefined);assert.equal(document.order.phone,undefined);assert.equal(document.items[0].sku,undefined);assert.equal(document.items[0].unit_cents,undefined);assert.equal(document.order.token_hash,undefined);
+  assert.ok(document.items[0].options_json.includes('AD'));assert.doesNotMatch(JSON.stringify(document),/client@example.org|0612345678|KAPPA-1/);
 });
 test("mise à jour atomique, contrôle des quantités et conflit de version", async () => {
   const initial = await route(
@@ -1295,7 +1288,7 @@ test('tournois : paiement ultérieur HelloAsso, retour sans secret et validation
  const payload=checkoutBodies.at(-1);assert.equal(payload.totalAmount,4900);assert.match(payload.returnUrl,/\/paiements\/retour\//);assert.ok(!JSON.stringify(payload).includes(registration.tracking_token));
  const view=await tournamentApi(path,undefined,{token:registration.tracking_token});assert.equal(view.body.order.payment_status,'pending');assert.equal(view.body.registration.registration_status,'pending');
  paymentAuthorized=true;const confirmed=await tournamentApi(`${path}/refresh`,{}, {token:registration.tracking_token});assert.equal(confirmed.body.order.payment_status,'paid');assert.equal(confirmed.body.registration.registration_status,'pending');
- await Promise.allSettled(tasks);await drainMail(env,await settings(env));const jobs=await TOURNEYS.prepare('SELECT status FROM outbox WHERE order_id=?').bind(registration.order_id).all<any>();assert.ok(jobs.results.every((j:any)=>j.status==='sent'));
+ await Promise.allSettled(tasks);await drainMail(env,await settings(env),10);const jobs=await TOURNEYS.prepare('SELECT status FROM outbox WHERE order_id=?').bind(registration.order_id).all<any>();assert.ok(jobs.results.every((j:any)=>j.status==='sent'));
 });
 test('tournois : habilitations Cloudflare indépendantes et contrôle des modifications concurrentes',async()=>{
  const production={...env,APP_ENV:'production',SHOP_ORIGIN:'https://example.org',CF_ACCESS_ISSUER:'https://test.cloudflareaccess.com',CF_ACCESS_SHOP_AUD:'aud',CF_ACCESS_TOURNAMENT_AUD:'tournament-aud'};
@@ -1533,4 +1526,53 @@ test('mail de test OVH : diagnostic privé des paramètres manquants sans expose
  const valid={...probe,SMTP_PASSWORD:'private-fixture-password'};
  const response=await shopRoute(request('/admin-boutique/api/settings',undefined,{admin:true}),valid,ctx);const body=await response!.text();
  assert.equal(JSON.parse(body).configuration.mail_ready,true);assert.doesNotMatch(body,/private-fixture-password/);
+});
+
+test('notifications club : déclenchement transactionnel, idempotence et séparation des bases',async()=>{
+ for(const [db,kind,sourceId] of [[ORDERS,'shop',created.order_id],[TOURNEYS,'tournament',registration.order_id]] as const){
+  const source=await db.prepare('SELECT * FROM orders WHERE id=?').bind(sourceId).first<any>();
+  const order={...source,id:crypto.randomUUID(),reference:'NOTIF-'+crypto.randomUUID(),token_hash:crypto.randomUUID(),request_hash:crypto.randomUUID(),paid_at:now()};
+  const columns=Object.keys(order);await db.prepare(`INSERT INTO orders(${columns.join(',')}) VALUES(${columns.map(()=>'?').join(',')})`).bind(...columns.map(k=>order[k])).run();
+  const id='notify:'+order.id;
+  await db.batch([db.prepare("INSERT OR IGNORE INTO outbox(id,order_id,kind,available_at) VALUES(?,?,'created',?)").bind(id,order.id,now()),db.prepare("INSERT OR IGNORE INTO outbox(id,order_id,kind,available_at) VALUES(?,?,'created',?)").bind(id,order.id,now())]);
+  const jobs=(await db.prepare('SELECT * FROM outbox WHERE order_id=?').bind(order.id).all<any>()).results;
+  assert.equal(jobs.length,2);assert.deepEqual(new Set(jobs.map((j:any)=>j.audience)),new Set(['customer','club']));
+  await db.prepare("INSERT INTO outbox(id,order_id,kind,available_at) VALUES(?,?,'paid',?)").bind('paid:'+order.id,order.id,now()).run();
+  assert.equal((await db.prepare("SELECT COUNT(*) n FROM outbox WHERE order_id=? AND audience='club' AND kind='paid'").bind(order.id).first<any>()).n,1);
+  if(kind==='shop'){
+    await db.prepare('INSERT INTO surveys(order_id,ease,catalogue,overall,comment,created_at) VALUES(?,5,4,5,?,?)').bind(order.id,'Très simple <script>alert(1)</script>',now()).run();
+    await db.prepare('INSERT OR IGNORE INTO surveys(order_id,ease,catalogue,overall,comment,created_at) VALUES(?,5,4,5,?,?)').bind(order.id,'Second essai',now()).run();
+    assert.equal((await db.prepare("SELECT COUNT(*) n FROM outbox WHERE order_id=? AND audience='club' AND kind='survey'").bind(order.id).first<any>()).n,1);
+    let notification:any;await deliverMail({...env,EMAIL:{send:async(message:any)=>{notification=message;return {messageId:'survey-notification'};}}},await settings(env),{id:'club:survey:'+order.id,kind:'survey',audience:'club'},order);
+    assert.match(notification.subject,/Nouvel avis boutique/);assert.match(notification.text,/Très simple/);assert.doesNotMatch(notification.html,/<script>/);assert.match(notification.html,/&lt;script&gt;/);
+  }
+  assert.equal((await (kind==='shop'?TOURNEYS:ORDERS).prepare('SELECT COUNT(*) n FROM outbox WHERE order_id=?').bind(order.id).first<any>()).n,0);
+  await db.prepare('DELETE FROM orders WHERE id=?').bind(order.id).run();
+ }
+});
+test('mails clients et club : destinataires distincts en production, aucun lien magique dans la notification club',async()=>{
+ const original=await findOrder(env,created.order_id),s=await settings(env),messages:any[]=[];
+ const probe={...env,APP_ENV:'production',SHOP_ORIGIN:'https://fcescalquens.fr',MAIL_TEST_TO:'tester@example.org',EMAIL:{send:async(message:any)=>{messages.push(message);return {messageId:crypto.randomUUID()};}}};
+ const order={...original,email:'client-seulement@example.org'};
+ await deliverMail(probe,{...s,contact_email:'contact@fcescalquens.fr'},{id:'customer-delivery',kind:'created',audience:'customer'},order);
+ await deliverMail(probe,{...s,contact_email:'contact@fcescalquens.fr'},{id:'club-delivery',kind:'created',audience:'club'},order);
+ assert.equal(messages[0].to,'client-seulement@example.org');assert.equal(messages[1].to,'contact@fcescalquens.fr');assert.match(messages[1].subject,/\[CLUB\].*Nouvelle commande/);assert.doesNotMatch(messages[1].text,/suivi\/#/);assert.match(messages[1].text,/admin-boutique\/\?commande=/);
+ await deliverMail(tournamentEnv(probe),s,{id:'club-registration',kind:'created',audience:'club'},await TOURNEYS.prepare('SELECT * FROM orders WHERE id=?').bind(registration.order_id).first<any>());assert.match(messages[2].subject,/Nouvelle inscription au tournoi/);assert.doesNotMatch(messages[2].text,/suivi\/#/);
+ for(const audience of ['customer','club'])assert.equal(mailRecipient({...probe,APP_ENV:'staging'},{...s,contact_email:'contact@fcescalquens.fr'},{audience},order),'tester@example.org');
+});
+test('mails : l’échec club ne bloque pas le client et les deux reprises sont indépendantes',async()=>{
+ const order=await findOrder(env,created.order_id),s=await settings(env),stamp=now(),customerId='isolation-customer:'+crypto.randomUUID();
+ // Pause unrelated pending messages in this fixture, then restore them after this isolated batch.
+ const pending=(await ORDERS.prepare("SELECT id,available_at FROM outbox WHERE status IN ('pending','sending')").all<any>()).results;
+ await ORDERS.prepare("UPDATE outbox SET available_at=? WHERE status IN ('pending','sending')").bind(stamp+3600).run();
+ try{
+  await ORDERS.prepare("INSERT INTO outbox(id,order_id,kind,available_at) VALUES(?,?,'created',?)").bind(customerId,order.id,stamp).run();
+  const probe={...env,EMAIL:{send:async(message:any)=>{if(message.subject.includes('[CLUB]'))throw new Error('MAIL_SMTP_AUTH');return {messageId:'customer-ok'};}}};
+  await drainMail(probe,s);
+  const jobs=(await ORDERS.prepare('SELECT * FROM outbox WHERE id=? OR id=?').bind(customerId,'club:'+customerId).all<any>()).results;
+  assert.equal(jobs.find((j:any)=>j.audience==='customer').status,'sent');const club=jobs.find((j:any)=>j.audience==='club');assert.equal(club.status,'pending');assert.equal(club.last_error,'MAIL_SMTP_AUTH');assert.equal(club.recipient,env.MAIL_TEST_TO);
+ }finally{
+  await ORDERS.prepare('DELETE FROM outbox WHERE id=? OR id=?').bind(customerId,'club:'+customerId).run();
+  for(const job of pending)await ORDERS.prepare('UPDATE outbox SET available_at=? WHERE id=?').bind(job.available_at,job.id).run();
+ }
 });

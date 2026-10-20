@@ -102,7 +102,7 @@ export function itemTable(items, { admin = false } = {}) {
 
 /** Admin-only rendering: friendly states, never raw provider responses or message bodies. */
 export function mailStatusList(mails = []) {
-  const kinds = { created:'Confirmation', paid:'Paiement confirmé', tracking:'Lien de suivi', payment:'Mise à jour du paiement', fulfillment:'Préparation et remise' };
+  const kinds = { created:'Confirmation', paid:'Paiement confirmé', tracking:'Lien de suivi', payment:'Mise à jour du paiement', fulfillment:'Préparation et remise',survey:'Avis de satisfaction' };
   const states = { pending:['En attente','is-pending'], sending:['En cours','is-pending'], sent:['Accepté par le serveur','is-paid'], failed:['Échec à traiter','is-failed'] };
   const advice = {
     MAIL_SMTP_AUTH:'OVH refuse les identifiants. Vérifiez SMTP_USER et le secret SMTP_PASSWORD.',
@@ -116,6 +116,11 @@ export function mailStatusList(mails = []) {
   return mails.map(m => {
     const [state, tone] = states[m.status] || ['État inconnu','is-neutral'];
     const code = /^MAIL_[A-Z0-9_]+$/.test(m.last_error || '') ? m.last_error : '';
-    return `<article class="commerce-mail-status"><div><strong>${esc(kinds[m.kind] || 'Notification de suivi')}</strong><span class="commerce-badge ${tone}">${state}</span></div><small>${Number(m.attempts)||0} tentative(s)${m.sent_at?' · '+date(m.sent_at):''}</small>${m.status==='sent'?'<p>Le transport a accepté le message. Cela ne confirme pas sa réception en boîte principale.</p>':code?`<p>${esc(advice[code] || 'L’envoi a échoué. Vérifiez le transport mail et relancez les envois depuis cette fiche.')}</p><small class="commerce-mail-code">${esc(code)}</small>`:'<p>Le message sera traité par la file d’envoi automatique.</p>'}</article>`;
+    return `<article class="commerce-mail-status"><div><strong>${m.audience==='club'?'Club · ':'Client · '}${esc(kinds[m.kind] || 'Notification de suivi')}</strong><span class="commerce-badge ${tone}">${state}</span></div><small>${m.recipient?`Destinataire : ${esc(m.recipient)} · `:""}${Number(m.attempts)||0} tentative(s)${m.sent_at?' · '+date(m.sent_at):''}</small>${m.status==='sent'?'<p>Le transport a accepté le message. Cela ne confirme pas sa réception en boîte principale.</p>':code?`<p>${esc(advice[code] || 'L’envoi a échoué. Vérifiez le transport mail et relancez les envois depuis cette fiche.')}</p><small class="commerce-mail-code">${esc(code)}</small>`:'<p>Le message sera traité par la file d’envoi automatique.</p>'}</article>`;
   }).join('') || '<p class="commerce-help">Aucun mail n’est encore placé dans la file d’envoi pour cette commande.</p>';
+}
+
+export function mailQueueSummary(queue={}) {
+  const rows=queue.counts||[],count=(audience,status)=>rows.filter(r=>r.audience===audience&&r.status===status).reduce((n,r)=>n+Number(r.count),0);
+  return `<div class="commerce-mail-context"><strong>File d’envoi automatique</strong>${['customer','club'].map(a=>`<p>${a==='club'?'Notifications du club':'Messages clients'} : ${count(a,'pending')} en attente · ${count(a,'sending')} en cours · ${count(a,'failed')} en échec · ${count(a,'sent')} acceptés.</p>`).join('')}<p>Le test de connexion mail est indépendant de cette file et n’envoie pas les commandes.</p></div>`;
 }

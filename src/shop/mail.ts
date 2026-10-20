@@ -31,12 +31,29 @@ export async function queueMail(
     .bind(id, orderId, kind, now())
     .run();
 }
+/** Sandbox always uses the fixed tester, including club notifications. */
+export function mailRecipient(env: ShopEnv, settings: Settings, job: Row, order: Row) {
+  const target=email(job.audience==='club'?settings.contact_email:order.email);
+  if(env.APP_ENV==='production')return target;
+  return email(env.MAIL_TEST_TO);
+}
+async function deliverClubMail(env: ShopEnv, settings: Settings, job: Row, order: Row) {
+  const tournament=order.kind==='tournament';
+  const title=job.kind==='survey'?'Nouvel avis boutique':job.kind==='created'?(tournament?'Nouvelle inscription au tournoi':'Nouvelle commande boutique'):job.kind==='paid'?'Nouveau paiement confirmé':'Mise à jour du paiement';
+  const link=`${origin(env)}/${tournament?'admin-tournois/?inscription=':'admin-boutique/?commande='}${order.id}`;
+  let context='';
+  if(tournament){const r=await env.ORDERS.prepare('SELECT tournament_name,club_name,team_name FROM tournament_registrations WHERE order_id=?').bind(order.id).first<Row>();context=`Tournoi : ${r?.tournament_name||''}\nClub : ${r?.club_name||''}\nÉquipe : ${r?.team_name||''}\n`;}
+  if(job.kind==='survey'){const survey=await env.ORDERS.prepare('SELECT ease,catalogue,overall,comment FROM surveys WHERE order_id=?').bind(order.id).first<Row>();context=`Facilité de commande : ${survey?.ease}/5\nCatalogue : ${survey?.catalogue}/5\nEnsemble : ${survey?.overall}/5\nCommentaire : ${survey?.comment||'Aucun commentaire'}\n`;}
+  const content=`${title}\n\nRéférence : ${order.reference}\nClient / contact : ${order.first_name} ${order.last_name}\n${context}Montant : ${euros(order.total_cents)}\nÉtat du paiement : ${order.payment_status}\n\nOuvrir la fiche dans l’administration sécurisée : ${link}\nConnexion Cloudflare Access requise. Ce mail ne contient aucun lien personnel du client.`;
+  return sendMessage(env,{id:job.id,from:email(env.MAIL_FROM),to:mailRecipient(env,settings,job,order),replyTo:email(settings.contact_email),subject:`${env.APP_ENV==='production'?'':'[TEST] '}[CLUB] ${title} — ${order.reference}`,text:content,html:`<h1>${escapeHtml(title)}</h1><pre style="white-space:pre-wrap;font:inherit">${escapeHtml(content)}</pre>`});
+}
 export async function deliverMail(
   env: ShopEnv,
   settings: Settings,
   job: Row,
   order: Row,
 ) {
+  if(job.audience==='club')return deliverClubMail(env,settings,job,order);
   const token = await trackingToken(
     env.TRACKING_SECRET || "",
     order.id,
@@ -85,7 +102,7 @@ export async function deliverMail(
   }
   // In staging no customer address is used: all messages go to the configured tester.
   const to =
-    env.APP_ENV === "production" ? order.email : email(env.MAIL_TEST_TO);
+    mailRecipient(env,settings,job,order);
   const from = email(env.MAIL_FROM);
   const subject = `${env.APP_ENV === "production" ? "" : "[TEST] "}${title} — ${order.reference}`;
   return sendMessage(env, { from, to, replyTo: settings.contact_email, subject, text: content, html: `<div style="font-family:Arial,sans-serif;max-width:650px;margin:auto;color:#291d1d"><h1 style="color:#9f1a1a">${escapeHtml(order.kind === "tournament" ? "Suivi de votre inscription" : title)}</h1><p>${order.kind === "tournament" ? "Inscription" : "Commande"} <strong>${escapeHtml(order.reference)}</strong></p><p>${escapeHtml(state)}</p><p><a style="display:inline-block;background:#9f1a1a;color:white;padding:16px" href="${escapeHtml(link)}">Ouvrir mon suivi</a></p><pre style="white-space:pre-wrap;font:inherit">${escapeHtml(content)}</pre></div>`, id: job.id });
@@ -121,27 +138,29 @@ export async function testMail(env: ShopEnv, settings: Settings) {
   });
 }
 
-export async function drainMail(env: ShopEnv, settings: Settings) {
+export async function drainMail(env: ShopEnv, settings: Settings, limit = 2) {
   if (!env.ORDERS) return;
   const jobs = (
     await env.ORDERS.prepare(
-      "SELECT * FROM outbox WHERE status IN ('pending','sending') AND available_at<=? AND locked_until<? AND attempts<8 AND EXISTS(SELECT 1 FROM orders o WHERE o.id=outbox.order_id AND o.kind=?) ORDER BY available_at LIMIT 10",
+      "SELECT * FROM outbox WHERE status IN ('pending','sending') AND available_at<=? AND locked_until<? AND attempts<8 AND EXISTS(SELECT 1 FROM orders o WHERE o.id=outbox.order_id AND o.kind=?) ORDER BY available_at,id LIMIT ?",
     )
-      .bind(now(), now(),env.ORDER_KIND||"shop")
+      .bind(now(), now(),env.ORDER_KIND||"shop",limit)
       .all<Row>()
   ).results;
-  for (const job of jobs) {
+  const processJob=async (job: Row) => {
     const claimed = await env.ORDERS.prepare(
       "UPDATE outbox SET status='sending',locked_until=?,attempts=attempts+1 WHERE id=? AND locked_until<? AND status IN ('pending','sending') RETURNING id",
     )
       .bind(now() + 90, job.id, now())
       .first();
-    if (!claimed) continue;
+    if (!claimed) return;
     try {
       const order = await env.ORDERS.prepare("SELECT * FROM orders WHERE id=?")
         .bind(job.order_id)
         .first<Row>();
       if (!order) throw new Error("ORDER_MISSING");
+      const recipient=mailRecipient(env,settings,job,order);
+      await env.ORDERS.prepare('UPDATE outbox SET recipient=? WHERE id=?').bind(recipient,job.id).run();
       const messageId = await deliverMail(env, settings, job, order);
       await env.ORDERS.prepare(
         "UPDATE outbox SET status='sent',sent_at=?,provider_id=?,last_error='',locked_until=0 WHERE id=?",
@@ -164,5 +183,11 @@ export async function drainMail(env: ShopEnv, settings: Settings) {
         )
         .run();
     }
-  }
+  };
+  for(let i=0;i<jobs.length;i+=2)await Promise.all(jobs.slice(i,i+2).map(processJob));
+}
+
+export async function mailQueueStatus(env: ShopEnv) {
+  const rows=(await env.ORDERS.prepare("SELECT audience,status,COUNT(*) count FROM outbox WHERE EXISTS(SELECT 1 FROM orders o WHERE o.id=outbox.order_id AND o.kind=?) GROUP BY audience,status").bind(env.ORDER_KIND||'shop').all<Row>()).results;
+  return {counts:rows};
 }
