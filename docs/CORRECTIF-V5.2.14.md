@@ -1,5 +1,7 @@
 # V5.2.14 — tarifs boutique et aperçus des photos
 
+**Évolution V5.2.15 :** le code coach devient plus court et l’accès n’expire plus après 8 heures. Voir [le guide actuel](CORRECTIF-V5.2.15.md), également pour le tri et les tarifs groupés. Les instructions ci-dessous décrivent la V5.2.14 historique.
+
 Correctif cumulatif sur la V5.2.13 (commit de référence `2d1d9ba`). Aucun changement d’identifiant D1, de compte HelloAsso ou de configuration SMTP.
 
 ## Tarifs par article, taille et modèle

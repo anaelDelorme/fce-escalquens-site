@@ -1,4 +1,5 @@
-import {coachConfiguration,coachSession,coachLogin,coachLogout,changeCoachCode} from "./coach-access";
+import {sortVariants,changeVariants} from "./variant-order";
+import {coachConfiguration,coachSession,coachLogin,coachLogout,changeCoachCode,refreshCoachCookie} from "./coach-access";
 import {
   fail,
   ShopError,
@@ -88,7 +89,7 @@ async function catalogue(env: ShopEnv, coach=false) {
       "SELECT p.id,p.shop_category_id,p.display_order,p.name,p.short_description,p.description,p.price_label,p.price_details,p.sizes,p.options,p.delivery_delay,p.image_key,p.active FROM shop_products p WHERE p.active=1 AND p.image_key<>'' AND (p.shop_category_id IS NULL OR EXISTS(SELECT 1 FROM shop_categories c WHERE c.id=p.shop_category_id AND c.active=1)) ORDER BY p.display_order,p.name",
     ),
     env.DB.prepare(
-      `SELECT id,product_id,label,size,color,sku,supplier,price_cents AS fce_price_cents,catalogue_price_cents,${coach?'COALESCE(coach_price_cents,price_cents)':'price_cents'} AS price_cents,${coach?"CASE WHEN coach_price_cents IS NOT NULL THEN 'coach' ELSE 'fce' END":"'fce'"} AS price_kind,active FROM shop_variants WHERE active=1 ORDER BY product_id,label`,
+      `SELECT id,product_id,label,size,color,sku,supplier,display_order,price_cents AS fce_price_cents,catalogue_price_cents,${coach?'COALESCE(coach_price_cents,price_cents)':'price_cents'} AS price_cents,${coach?"CASE WHEN coach_price_cents IS NOT NULL THEN 'coach' ELSE 'fce' END":"'fce'"} AS price_kind,active FROM shop_variants WHERE active=1 ORDER BY product_id,label`,
     ),
     env.DB.prepare(
       "SELECT * FROM shop_options WHERE active=1 ORDER BY product_id,label",
@@ -100,7 +101,7 @@ async function catalogue(env: ShopEnv, coach=false) {
     pricing_mode: coach?"coach":"fce",
     products: result[0].results,
     categories: result[3].results,
-    variants: result[1].results.filter((v) => ids.has(v.product_id)),
+    variants: sortVariants(result[1].results.filter((v) => ids.has(v.product_id))),
     options: result[2].results.filter((o) => ids.has(o.product_id)),
   };
 }
@@ -326,7 +327,7 @@ async function createOrder(request: Request, env: ShopEnv, s: Settings) {
     );
   if (!order) {
     const coach=data.pricing_mode==='coach';
-    if(coach&&!await coachSession(request,env))fail('COACH_SESSION',403,'Votre accès coach a expiré ou a été révoqué. Renseignez le code à nouveau avant de commander.');
+    if(coach&&!await coachSession(request,env))fail('COACH_SESSION',403,'Votre accès coach n’est plus actif sur ce navigateur. Renseignez le code à nouveau avant de commander.');
     const cat = await catalogue(env,coach);
     const priced = priceCart(
       data.items,
@@ -1204,10 +1205,12 @@ export async function shopRoute(
         ]);
         return response({
           products: products.results,
-          variants: variants.results,
+          variants: sortVariants(variants.results),
           options: options.results,
         });
       }
+      if (path === "/admin-boutique/api/variants/prices" && request.method === "PUT") return await changeVariants(request,env);
+      if (path === "/admin-boutique/api/variants/order" && request.method === "PUT") return await changeVariants(request,env,true);
       if (path === "/admin-boutique/api/variants" && request.method === "PUT")
         return await saveVariant(request, env);
       if (path === "/admin-boutique/api/options" && request.method === "PUT")
@@ -1416,7 +1419,7 @@ export async function shopRoute(
         available = false;
         unavailable=error instanceof ShopError?{code:error.code,message:error.message}:{code:"CONFIGURATION",message:"Le paiement est temporairement indisponible. Votre panier est conservé."};
       }
-      return response({
+      const result=response({
         ...cat,
         coach_access_enabled:!!(await coachConfiguration(env)).enabled,
         checkout_available: available,
@@ -1427,6 +1430,8 @@ export async function shopRoute(
         collection_address: s.collection_address,
         contact_email: s.contact_email,
       });
+      if(coach)await refreshCoachCookie(result,env);
+      return result;
     }
     if (path === "/api/shop/checkout" && request.method === "POST") {
       const result = await createOrder(request, env, s);

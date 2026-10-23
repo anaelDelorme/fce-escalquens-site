@@ -1,4 +1,4 @@
-import {priceMarkup} from "./shop-common.js";
+import {priceMarkup,sizeSummary} from "./shop-common.js";
 const shopEsc=value=>String(value??'').replace(/[&<>'"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
 const shopLines=value=>String(value||'').split(/\s*\|\s*|\n+/).map(line=>line.trim()).filter(Boolean);
 const shopRichText=value=>{
@@ -59,7 +59,7 @@ async function loadShop(){
   const featuredNode=document.querySelector('#shop-featured'),categoriesNode=document.querySelector('#shop-categories');
   try{
     const [response,commerceResponse]=await Promise.all([fetch('/api/page/shop?v=3'),fetch('/api/shop/catalogue')]);const data=await response.json();const commerce=commerceResponse.ok?await commerceResponse.json():null;
-    for(const p of data.products||[]){const variants=commerce?.variants.filter(v=>v.product_id===p.id)||[],options=commerce?.options.filter(o=>o.product_id===p.id)||[];p.options=options.map(o=>o.label).join('\n');p.sellable=variants.length>0;p.orderLabel=!variants.length?'Tailles et tarifs bientôt disponibles':variants.length>1?(options.length?'Choisir ma taille et personnaliser':'Choisir ma taille'):options.length?'Personnaliser mon article':'Ajouter au panier';p.price_markup=priceMarkup(variants);if(variants.length){const prices=variants.map(v=>v.price_cents),min=Math.min(...prices),max=Math.max(...prices);const money=n=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(n/100);p.price_label=min!==max?'De '+money(min)+' à '+money(max):money(min);p.price_details='';p.sizes=variants.map(v=>v.label).join('\n');p.options=options.map(o=>o.label+(o.price_cents?' · +'+money(o.price_cents):'')).join('\n');}}
+    for(const p of data.products||[]){const variants=commerce?.variants.filter(v=>v.product_id===p.id)||[],options=commerce?.options.filter(o=>o.product_id===p.id)||[];p.options=options.map(o=>o.label).join('\n');p.sellable=variants.length>0;p.orderLabel=!variants.length?'Tailles et tarifs bientôt disponibles':variants.length>1?(options.length?'Choisir ma taille et personnaliser':'Choisir ma taille'):options.length?'Personnaliser mon article':'Ajouter au panier';p.price_markup=priceMarkup(variants);if(variants.length){const prices=variants.map(v=>v.price_cents),min=Math.min(...prices),max=Math.max(...prices);const money=n=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(n/100);p.price_label=min!==max?'De '+money(min)+' à '+money(max):money(min);p.price_details='';p.sizes=sizeSummary(variants);p.options=options.map(o=>o.label+(o.price_cents?' · +'+money(o.price_cents):'')).join('\n');}}
     if(!response.ok)throw new Error(data.error||'Boutique indisponible');
     const products=data.products||[],categories=data.categories||[],featured=products.find(product=>Number(product.featured)===1)||products[0];
     window.shopSettings=data.settings||{};

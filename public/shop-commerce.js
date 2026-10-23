@@ -367,14 +367,18 @@ document.addEventListener('shop-loaded',event=>{const data=event.detail;if(data&
 function coachAccess() {
   let host=document.querySelector('#coach-access');
   if(!host){host=document.createElement('section');host.id='coach-access';host.className='shop-coach-access';const target=document.querySelector('#shop-browse');if(!target)return;target.before(host);}
-  if(!catalogue?.coach_access_enabled&&catalogue?.pricing_mode!=='coach'){host.hidden=true;return;}
+  if(!catalogue?.coach_access_enabled&&catalogue?.pricing_mode!=='coach'){host.hidden=false;host.innerHTML='<details><summary>Vous êtes coach ?</summary><p>Les tarifs coach ne sont pas encore activés. Contactez le club pour obtenir votre code.</p></details>';return;}
   host.hidden=false;
   if(catalogue.pricing_mode==='coach'){
     host.innerHTML='<p>Tarifs coach activés <button type="button" class="commerce-secondary" id="coach-logout">Quitter les tarifs coach</button></p>';
     host.querySelector('button').onclick=async e=>{e.target.disabled=true;try{await api('/api/shop/coach/session',{method:'DELETE'});location.reload();}catch(error){e.target.disabled=false;toast(error.message);}};
   } else {
-    host.innerHTML='<details><summary>Vous êtes coach ?</summary><form id="coach-code-form"><label>Code transmis par le club<input name="code" type="password" autocomplete="off" maxlength="80" required></label><button type="submit">Accéder aux tarifs coach</button><p class="commerce-help">Accès valable 8 heures sur cet appareil. Les articles sans tarif coach restent au tarif FCE.</p><p role="alert" hidden></p></form></details>';
-    const form=host.querySelector('form');form.onsubmit=async e=>{e.preventDefault();if(!form.reportValidity())return;const button=form.querySelector('button');button.disabled=true;try{await api('/api/shop/coach/session',{method:'POST',data:{code:form.elements.code.value.trim()}});form.reset();location.reload();}catch(error){showError(form.querySelector('[role=alert]'),error);button.disabled=false;}};
+    host.innerHTML='<details><summary>Vous êtes coach ? <span>Saisir mon code →</span></summary><form id="coach-code-form"><label>Code transmis par le club<input name="code" type="password" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="FCE-XXXX-XXXX" maxlength="80" required></label><button type="button" class="commerce-secondary" id="reveal-coach" aria-pressed="false">Afficher le code</button><button type="submit">Accéder aux tarifs coach</button><p class="commerce-help">Accès conservé jusqu’à votre déconnexion ou sa révocation par le club. Les articles sans tarif coach restent au tarif FCE.</p><p role="alert" hidden></p></form></details>';
+    const form=host.querySelector('form');form.querySelector('#reveal-coach').onclick=e=>{const input=form.elements.code,visible=input.type==='password';input.type=visible?'text':'password';e.target.textContent=visible?'Masquer le code':'Afficher le code';e.target.setAttribute('aria-pressed',String(visible));};form.onsubmit=async e=>{e.preventDefault();if(!form.reportValidity())return;const button=form.querySelector('[type=submit]');button.disabled=true;try{await api('/api/shop/coach/session',{method:'POST',data:{code:form.elements.code.value.trim()}});form.reset();location.reload();}catch(error){showError(form.querySelector('[role=alert]'),error);button.disabled=false;}};
   }
 }
 document.addEventListener('shop-loaded',coachAccess);
+
+document.querySelector('#open-coach')?.addEventListener('click',async event=>{
+ event.preventDefault();try{await loadCatalogue();const host=document.querySelector('#coach-access');host?.querySelector('details')?.setAttribute('open','');host?.scrollIntoView({behavior:'smooth',block:'center'});host?.querySelector('input')?.focus();}catch(error){toast(error.message);}
+});

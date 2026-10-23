@@ -135,10 +135,10 @@ export function priceMarkup(variants) {
   const kinds=new Set(variants.map(v=>v.price_kind||'fce'));
   const label=kinds.size>1?'Votre tarif':kinds.has('coach')?'Tarif coach':'Tarif FCE';
   const references=variants.filter(v=>Number(v.catalogue_price_cents)>0);
-  // A range only compares a complete set; otherwise show it for the selected model.
-  const comparison=references.length===variants.length
-    ? `<span class="shop-price-reference">Prix catalogue : ${esc(range(references.map(v=>v.catalogue_price_cents)))}</span>`:'';
-  return `<div class="shop-prices"><span class="shop-price-applied"><span>${label}</span> <strong>${esc(range(variants.map(v=>v.price_cents)))}</strong></span>${comparison}</div>`;
+  const partial=references.length>0&&references.length<variants.length;
+  const comparison=references.length
+    ? `<span class="shop-price-reference"><span>Prix catalogue${partial?' · selon taille':''}</span> <strong>${esc(range(references.map(v=>v.catalogue_price_cents)))}</strong></span>`:'';
+  return `<div class="shop-prices${comparison?' has-reference':''}"><span class="shop-price-applied"><span>${label}</span> <strong>${esc(range(variants.map(v=>v.price_cents)))}</strong></span>${comparison}${partial?`<span class="shop-price-note">Référence catalogue renseignée pour certaines tailles${sizeSummary(references)?' ('+esc(sizeSummary(references).replace(/\n/g,' · '))+')':''}.</span>`:''}</div>`;
 }
 
 export function mediaPreview(key, field) {
@@ -151,4 +151,21 @@ export function bindMediaPreviews(form) {
     image.onerror=()=>{image.hidden=true;empty.hidden=false;empty.textContent='Aperçu indisponible. Vérifiez le fichier ou sa clé média.';};
     field.addEventListener('input',update);field.addEventListener('change',update);
   });
+}
+
+// Card summaries show the bounds of each size family, not every size chip.
+export function sizeSummary(variants) {
+ const children=[],adults=[],other=[];
+ const letters=['XXXS','XXS','XS','S','M','L','XL','2XL','3XL','4XL','5XL','6XL'];
+ for(const v of variants){
+  const value=String(v.size||v.label||'').trim(),upper=value.toUpperCase();
+  const age=upper.match(/(\d+(?:[.,]\d+)?)\s*(ANS?|MOIS)\b/);
+  if(age){children.push({rank:Number(age[1].replace(',','.'))*(age[2]==='MOIS'?1/12:1),label:age[1]+' '+age[2].toLowerCase()});continue;}
+  const alpha=upper.replace(/^ADULTES?\s*/,'').replace(/\bXXL\b/,'2XL').replace(/\bXXXL\b/,'3XL').replace(/\bXXXXL\b/,'4XL'),rank=letters.indexOf(alpha);
+  if(rank>=0){adults.push({rank,label:alpha});continue;}
+  if(/^\d+$/.test(alpha)){adults.push({rank:Number(alpha),label:alpha});continue;}
+  if(value&&!other.includes(value))other.push(value);
+ }
+ const bounds=(name,rows)=>{if(!rows.length)return '';rows.sort((a,b)=>a.rank-b.rank);return name+' : '+rows[0].label+(rows[0].rank!==rows.at(-1).rank?' à '+rows.at(-1).label:'');};
+ return [bounds('Enfant',children),bounds('Adulte',adults),...other].filter(Boolean).join('\n');
 }

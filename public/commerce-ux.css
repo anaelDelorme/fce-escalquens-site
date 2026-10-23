@@ -68,3 +68,15 @@
 .commerce-media-preview img{display:block;max-width:100%;width:auto;max-height:240px;object-fit:contain;border-radius:6px}
 .commerce-media-preview [hidden]{display:none}
 @media(max-width:600px){.shop-coach-access form>*{width:100%}.shop-price-applied>strong{font-size:1.2rem}}
+
+.shop-prices.has-reference{grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch;gap:8px;border-top:1px solid #eadcdf;padding-top:12px;margin-top:12px}
+.shop-prices.has-reference .shop-price-applied{grid-column:2;grid-row:1;display:grid;align-content:start;gap:3px;background:#f8ebd5;border-left:3px solid #b68b27;padding:9px 10px;border-radius:6px}
+.shop-prices.has-reference .shop-price-reference{grid-column:1;grid-row:1;display:grid;align-content:start;gap:3px;padding:9px 0;font-size:.82rem;color:#74666a}
+.shop-price-reference strong{font-size:1.05rem;font-weight:500;color:#74666a}.shop-price-note{grid-column:1/-1;font-size:.73rem;color:#74666a;line-height:1.4}
+.shop-coach-access{scroll-margin-top:160px}.shop-coach-access summary{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}.shop-coach-access summary span{font-size:.85rem;text-decoration:underline;text-underline-offset:3px}
+.commerce-bulk{background:#faf6ee;border:1px solid #e6d8be;border-radius:12px;padding:18px;margin:12px 0 18px}.commerce-bulk h4{margin-top:0}.commerce-bulk>.commerce-actions{margin-bottom:16px}.commerce-size-order{display:flex;gap:6px;margin-top:6px}.commerce-size-order button{min-width:44px;min-height:44px;padding:5px 10px}.commerce-bulk input[type=number]{margin-top:8px}.commerce-bulk [hidden]{display:none}.shop-storefront .commerce-toolbar #open-coach{white-space:nowrap}
+@media(max-width:600px){.shop-prices.has-reference{grid-template-columns:minmax(0,1fr) minmax(0,1.2fr)}.shop-price-applied>strong{font-size:1.1rem}.commerce-bulk{padding:14px}.shop-storefront .commerce-toolbar{gap:8px;flex-wrap:wrap}}
+
+.commerce-bulk-dock{position:sticky;bottom:12px;z-index:4;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;background:#fffdf7;border:1px solid #d5bf85;border-radius:10px;padding:10px 14px;box-shadow:0 5px 18px #43202212;margin:10px 0}.commerce-bulk-dock[hidden]{display:none}.commerce-bulk-dock span{font-size:.85rem;font-weight:600}[data-variant-table] input[type=checkbox]{width:24px;height:24px;cursor:pointer}
+
+.commerce-bulk #bulk-prices{grid-template-columns:repeat(3,minmax(0,1fr))}@media(max-width:700px){.commerce-bulk #bulk-prices{grid-template-columns:1fr}}

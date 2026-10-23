@@ -231,6 +231,7 @@ before(async () => {
     .run();
   await DB.exec(readFileSync(new URL('../migrations/0030_shop_suppliers.sql',import.meta.url),'utf8'));
   await DB.exec(readFileSync(new URL('../migrations/0033_shop_reference_coach_prices.sql',import.meta.url),'utf8'));
+  await DB.exec(readFileSync(new URL('../migrations/0034_shop_variant_order.sql',import.meta.url),'utf8'));
   await DB.exec("CREATE TABLE venues(id INTEGER PRIMARY KEY,name TEXT,address TEXT,maps_url TEXT,active INTEGER,display_order INTEGER); INSERT INTO venues VALUES(1,'Stade du club','1 rue du Stade','https://maps.example/stade',1,0);");
   await DB.exec("CREATE TABLE tournaments(id INTEGER PRIMARY KEY,name TEXT,starts_on TEXT,categories TEXT,status TEXT);INSERT INTO tournaments VALUES(1,'Tournoi U11','2027-06-10','[\"U11\"]','open');");
   await DB.exec(readFileSync(new URL('../migrations/0031_tournament_checkout.sql',import.meta.url),'utf8'));
@@ -1598,11 +1599,12 @@ test('tarifs coach : code hashé, cookie privé, prix caché, révocation et tot
  assert.equal((await raw('/api/shop/coach/session',{code:generated.body.code},'',false,'https://attacker.example')).status,403);
  assert.equal((await raw('/api/shop/coach/session',{code:'wrong'})).body.code,'COACH_CODE');
  const login=await raw('/api/shop/coach/session',{code:generated.body.code});assert.equal(login.status,200);
- const cookie=login.headers.get('set-cookie')!;assert.match(cookie,/HttpOnly/);assert.match(cookie,/SameSite=Strict/);assert.match(cookie,/Max-Age=28800/);assert.ok(!cookie.includes(generated.body.code));assert.deepEqual(login.body,{ok:true});
+ const cookie=login.headers.get('set-cookie')!;assert.match(cookie,/HttpOnly/);assert.match(cookie,/SameSite=Strict/);assert.match(cookie,/Max-Age=34560000/);assert.match(generated.body.code,/^FCE-[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}$/);assert.ok(!cookie.includes(generated.body.code));assert.deepEqual(login.body,{ok:true});
  const session=cookie.split(';')[0],cat=await raw('/api/shop/catalogue',undefined,session);variant=cat.body.variants.find((v:any)=>v.id===ids.variant);assert.equal(cat.body.pricing_mode,'coach');assert.equal(variant.price_cents,1700);assert.equal(variant.price_kind,'coach');
  assert.ok([401,403,503].includes((await raw('/admin-boutique/api/catalogue',undefined,session)).status));
  const tampered=session.slice(0,-1)+(session.endsWith('a')?'b':'a');assert.equal((await raw('/api/shop/catalogue',undefined,tampered)).body.pricing_mode,'fce');
- const expired=session.replace(/=\d+\./,'=1000000000.');assert.equal((await raw('/api/shop/catalogue',undefined,expired)).body.pricing_mode,'fce');
+ const altered=session.replace('=v2.','=1000000000.');assert.equal((await raw('/api/shop/catalogue',undefined,altered)).body.pricing_mode,'fce');
+ const clock=Date.now;try{Date.now=()=>clock()+90*86400000;const retained=await raw('/api/shop/catalogue',undefined,session);assert.equal(retained.body.pricing_mode,'coach');assert.match(retained.headers.get('set-cookie')!,/Max-Age=34560000/);}finally{Date.now=clock;}
  assert.equal((await raw('/api/shop/checkout',{...payload(),pricing_mode:'coach',expected_total:3700})).body.code,'COACH_SESSION');
  assert.equal((await raw('/api/shop/checkout',{...payload(),pricing_mode:'coach',expected_total:1},session)).body.code,'PRICE_CHANGED');
  const coachOrderPayload={...payload(),pricing_mode:'coach',expected_total:3700};
@@ -1636,4 +1638,51 @@ test('prix facultatifs : validation, effacement et compatibilité des anciennes 
  for(const key of ['catalogue_price_cents','coach_price_cents'])for(const value of [-1,0,1.5,1000001,'bad'])assert.equal((await put({...base,id,[key]:value})).status,400);
  assert.equal((await put({...base,id,catalogue_price_cents:null,coach_price_cents:''})).status,200);
  row=await DB.prepare('SELECT * FROM shop_variants WHERE id=?').bind(id).first<any>();assert.equal(row.catalogue_price_cents,null);assert.equal(row.coach_price_cents,null);
+});
+
+test('tailles : ordre naturel enfant/adulte, équivalents XXL et ordre manuel prioritaire',async()=>{
+ const {sortVariants}=await import('../src/shop/variant-order');
+ const sizes=['XL','10 ans','2XL','S','6ans','XXL','XS','L','8 ans','M','3XL'];
+ const rows=sizes.map((size,i)=>({id:String(i),product_id:1,size}));
+ assert.deepEqual(sortVariants(rows).map(v=>v.size),['6ans','8 ans','10 ans','XS','S','M','L','XL','2XL','XXL','3XL']);
+ assert.equal(sortVariants(rows.map(v=>({...v,display_order:v.size==='XL'?0:null})))[0].size,'XL');
+});
+
+test('tarifs groupés et tri : isolation des articles, validation complète et commandes inchangées',async()=>{
+ await DB.prepare("INSERT INTO shop_products(id,name,image_key,active,shop_category_id) VALUES(995,'Article groupé','test.webp',1,1)").run();
+ const keys=Array.from({length:4},()=>crypto.randomUUID()),sizes=['10 ans','M','6 ans','XS'];
+ for(let i=0;i<keys.length;i++)await DB.prepare("INSERT INTO shop_variants(id,product_id,label,size,sku,price_cents,catalogue_price_cents,coach_price_cents) VALUES(?,995,?,?,'',2500,3500,1900)").bind(keys[i],sizes[i],sizes[i]).run();
+ const snapshot=JSON.stringify((await ORDERS.prepare('SELECT id,total_cents FROM orders ORDER BY id').all()).results);
+ const put=async(path:string,data:any,admin=true,origin='http://localhost:8787')=>route(request('/admin-boutique/api/variants/'+path,data,{method:'PUT',admin,origin}));
+ const data={product_id:995,variant_ids:[keys[0],keys[2]],prices:{price_cents:2300,catalogue_price_cents:3200}};
+ assert.ok([401,403,503].includes((await put('prices',data,false)).status));assert.equal((await put('prices',data,true,'https://attacker.example')).status,403);
+ for(const bad of [[],[keys[0],keys[0]],[keys[0],ids.variant]])assert.equal((await put('prices',{...data,variant_ids:bad})).status,400);
+ for(const prices of [{},{price_cents:null},{price_cents:-1},{coach_price_cents:1.5},{supplier:'other'}])assert.equal((await put('prices',{...data,prices})).status,400);
+ assert.equal((await put('prices',data)).status,200);
+ let rows=(await DB.prepare('SELECT * FROM shop_variants WHERE product_id=995').all<any>()).results;
+ for(const row of rows){const selected=data.variant_ids.includes(row.id);assert.equal(row.price_cents,selected?2300:2500);assert.equal(row.catalogue_price_cents,selected?3200:3500);assert.equal(row.coach_price_cents,1900);}
+ assert.equal((await put('prices',{...data,prices:{catalogue_price_cents:null,coach_price_cents:1700}})).status,200);
+ rows=(await DB.prepare('SELECT * FROM shop_variants WHERE product_id=995').all<any>()).results;
+ assert.equal(rows.find(v=>v.id===keys[0])!.catalogue_price_cents,null);assert.equal(rows.find(v=>v.id===keys[1])!.catalogue_price_cents,3500);
+ const catalogue=()=>route(request('/api/shop/catalogue'));
+ assert.deepEqual((await catalogue()).body.variants.filter((v:any)=>v.product_id===995).map((v:any)=>v.size),['6 ans','10 ans','XS','M']);
+ assert.equal((await put('order',{product_id:995,variant_ids:keys.slice(1)})).status,409);
+ assert.equal((await put('order',{product_id:995,variant_ids:keys})).status,200);
+ assert.deepEqual((await catalogue()).body.variants.filter((v:any)=>v.product_id===995).map((v:any)=>v.id),keys);
+ assert.equal((await put('order',{product_id:995,action:'automatic'})).status,200);
+ assert.deepEqual((await catalogue()).body.variants.filter((v:any)=>v.product_id===995).map((v:any)=>v.size),['6 ans','10 ans','XS','M']);
+ assert.equal(JSON.stringify((await ORDERS.prepare('SELECT id,total_cents FROM orders ORDER BY id').all()).results),snapshot);
+});
+
+test('code coach court : saisie tolérante, anciens codes conservés et ancienne session mise à niveau',async()=>{
+ const {normalizeCode}=await import('../src/shop/coach-access');
+ assert.equal(normalizeCode('fce-7k3m-9r2a'),'7K3M9R2A');assert.equal(normalizeCode('7k3m 9r2a'),'7K3M9R2A');assert.equal(normalizeCode('FCE23456'),'FCE23456');
+ const legacy='abcdef0123456789abcdef0123456789';assert.equal(normalizeCode(legacy),legacy);
+ await ORDERS.prepare('DELETE FROM rate_limits').run();
+ const version=crypto.randomUUID();await ORDERS.prepare('UPDATE coach_access SET enabled=1,code_hash=?,version=? WHERE id=1').bind(await sha256(`${env.TRACKING_SECRET}:coach-code:7K3M9R2A`),version).run();
+ const login=await route(request('/api/shop/coach/session',{code:'fce 7k3m-9r2a'}));assert.equal(login.status,200);
+ await ORDERS.prepare('UPDATE coach_access SET code_hash=? WHERE id=1').bind(await sha256(`${env.TRACKING_SECRET}:coach-code:${legacy}`)).run();assert.equal((await route(request('/api/shop/coach/session',{code:legacy}))).status,200);
+ const value=`1000000000.${version}`,key=await crypto.subtle.importKey('raw',new TextEncoder().encode(env.TRACKING_SECRET),{name:'HMAC',hash:'SHA-256'},false,['sign']);
+ const mac=Array.from(new Uint8Array(await crypto.subtle.sign('HMAC',key,new TextEncoder().encode('fce-coach-session:'+value))),v=>v.toString(16).padStart(2,'0')).join('');
+ const req=request('/api/shop/catalogue');req.headers.set('cookie',`fce-coach-local=${value}.${mac}`);const upgraded=await shopRoute(req,env,ctx);assert.equal((await upgraded!.json() as any).pricing_mode,'coach');assert.match(upgraded!.headers.get('set-cookie')!,/^fce-coach-local=v2\./);
 });

@@ -6,9 +6,10 @@ import {renderContent} from '../src/scripts/admin-shop-content.js';
 import {renderVariants} from '../src/scripts/admin-shop-variants.js';
 const next=()=>new Promise(resolve=>setImmediate(resolve));
 const fixture={products:[{id:1,name:'Maillot',image_key:'maillot.webp',short_description:'Accroche publique',description:'Composition uniquement dans les détails',active:1},{id:2,name:'Sac',image_key:'sac.webp',active:1}],variants:[{id:'v1',product_id:1,label:'6 ans',price_cents:2000},{id:'v2',product_id:1,label:'M',price_cents:2500},{id:'v3',product_id:2,label:'Unique',price_cents:1500}],options:[{id:'o1',product_id:1,label:'Initiales',price_cents:250,requires_text:1,max_length:4}],checkout_available:false,environment:'sandbox'};
-function setup(catalogue=fixture){
+function setup(catalogue=fixture,coachMarkup=false){
  const window=new Window({url:'https://boutique.example/boutique/',settings:{disableCSSFileLoading:true,disableJavaScriptFileLoading:true}});
  window.document.write('<button id="open-cart"><span id="cart-count"></span></button><button id="show-cart"></button><div id="commerce-notice" hidden></div><button data-order-product="1">Choisir</button><button data-order-product="2">Ajouter</button><button data-product-detail="1">Détails</button><dialog id="product-dialog"><button data-close></button><div id="product-content"></div></dialog><dialog id="cart-dialog"><button data-close></button><div id="cart-content"></div></dialog><dialog id="detail-dialog"><button data-close></button><div id="detail-content"></div></dialog>');
+ if(coachMarkup)window.document.body.insertAdjacentHTML("beforeend",'<a href="#coach-access" id="open-coach">Tarifs coach</a><section id="coach-access"></section><div id="shop-browse"></div>');
  window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};window.HTMLDialogElement.prototype.close=function(){this.open=false;};
  window.fetch=(async()=>Response.json(catalogue)) as any;
  const common=readFileSync(new URL('../public/shop-common.js',import.meta.url),'utf8').replace(/export /g,'');
@@ -157,7 +158,7 @@ test('prix : comparaison discrète, tailles cohérentes et absence de référenc
  assert.doesNotMatch(priceMarkup([{price_cents:2000}]),/Prix catalogue/);
  const exact=priceMarkup([{price_cents:2000,catalogue_price_cents:3000}]);assert.match(exact,/Tarif FCE/);assert.match(exact,/Prix catalogue/);assert.doesNotMatch(exact,/économ|%|promo/i);
  assert.match(priceMarkup([{price_cents:1800,price_kind:'coach'}]),/Tarif coach/);
- const mixed=priceMarkup([{price_cents:2000,catalogue_price_cents:3000},{price_cents:2500,catalogue_price_cents:null}]);assert.doesNotMatch(mixed,/Prix catalogue/);
+ const mixed=priceMarkup([{price_cents:2000,catalogue_price_cents:3000},{price_cents:2500,catalogue_price_cents:null}]);assert.match(mixed,/Prix catalogue/);assert.match(mixed,/certaines tailles/);
  const w=setup({...fixture,variants:fixture.variants.map(v=>({...v,catalogue_price_cents:v.id==='v2'?4000:null}))}),d=w.document;
  d.querySelector<HTMLElement>('[data-order-product="1"]')!.click();await next();
  const select=d.querySelector<HTMLSelectElement>('[name=variant]')!;select.value='v2';select.dispatchEvent(new w.Event('input',{bubbles:true}));assert.match(d.querySelector('#product-price-comparison')!.textContent!,/40,00/);
@@ -197,5 +198,49 @@ test('tournois : photo et affiche visibles dans leurs zones d’upload, PDF sans
  w.document.querySelector<HTMLElement>('[data-event="1"]')!.click();
  const form=w.document.querySelector('form')!;assert.equal(form.querySelectorAll('[data-media-preview]').length,2);
  assert.match(form.querySelector('[data-media-preview=image_key]')!.getAttribute('src')!,/tournoi.webp$/);assert.match(form.querySelector('[data-media-preview=poster_key]')!.getAttribute('src')!,/affiche.png$/);assert.equal(form.querySelector('[data-media-preview=rules_key]'),null);
+ await w.happyDOM.abort();w.close();
+});
+
+test('résumé des tailles : bornes enfant/adulte uniquement, XXL normalisé et taille unique conservée',async()=>{
+ const {sizeSummary}=await import('../public/shop-common.js');
+ const summary=sizeSummary(['10 ans','6ans','14 ans','XS','M','XXL','S','XL','L'].map(size=>({size})));
+ assert.equal(summary,'Enfant : 6 ans à 14 ans\nAdulte : XS à 2XL');assert.doesNotMatch(summary,/10 ans|Adulte : M/);
+ assert.equal(sizeSummary([{size:'',label:'Taille unique'}]),'Taille unique');
+});
+
+test('tarifs groupés DOM : sélectionner enfant, appliquer deux prix, préserver le troisième et trier',async()=>{
+ const w=new Window({url:'https://example.org/admin-boutique/articles/'});w.document.body.innerHTML='<p id="admin-shop-message"></p><div id="root"></div>';
+ Object.assign(globalThis,{document:w.document,location:w.location,sessionStorage:w.sessionStorage,FormData:w.FormData});
+ const variants=['6 ans','10 ans','XS','L'].map((size,i)=>({id:'bulk'+i,product_id:1,label:size,size,price_cents:2500,catalogue_price_cents:3500,coach_price_cents:1900,active:1}));
+ const calls:any[]=[];const call=async(path:string,options:any={})=>{if(options.method){calls.push({path,...options});return {ok:true};}if(path==='catalogue')return {products:[{id:1,name:'Maillot'}],variants,options:[]};if(path==='suppliers')return {suppliers:[]};throw new Error(path);};
+ await renderVariants(w.document.querySelector('#root'),call,()=>{},1);
+ const d=w.document,form=d.querySelector<HTMLFormElement>('#bulk-prices')!;assert.ok(form);assert.equal((form.querySelector('[type=submit]') as HTMLButtonElement).disabled,true);
+ d.querySelector<HTMLElement>('[data-size-preset=child]')!.click();assert.equal(d.querySelectorAll('[data-select-variant]:checked').length,2);
+ for(const [key,value] of [['price_cents','23'],['catalogue_price_cents','32']]){const select=form.querySelector<HTMLSelectElement>(`[data-bulk-action=${key}]`)!;select.value='set';select.dispatchEvent(new w.Event('change'));const input=form.querySelector<HTMLInputElement>(`[data-bulk-price=${key}]`)!;assert.equal(input.hidden,false);input.step='any';input.value=value;} // Happy DOM uses binary floating-point modulo for step validity.
+ assert.equal((form.querySelector('[type=submit]') as HTMLButtonElement).disabled,false);form.dispatchEvent(new w.Event('submit',{cancelable:true,bubbles:true}));await next();await next();
+ assert.equal(calls[0].path,'variants/prices');assert.deepEqual(calls[0].data,{product_id:1,variant_ids:['bulk0','bulk1'],prices:{price_cents:2300,catalogue_price_cents:3200}});
+ d.querySelector<HTMLElement>('[data-move-variant=bulk1][data-direction="-1"]')!.click();await next();await next();assert.equal(calls[1].path,'variants/order');assert.deepEqual(calls[1].data.variant_ids,['bulk1','bulk0','bulk2','bulk3']);
+ d.querySelector<HTMLElement>('[data-size-preset=adult]')!.click();assert.equal(d.querySelectorAll('[data-select-variant]:checked').length,2);
+ d.querySelector<HTMLElement>('#natural-size-order')!.click();await next();assert.equal(calls[2].data.action,'automatic');
+ await w.happyDOM.abort();w.close();
+});
+
+test('accès coach visible : lien du haut ouvre le formulaire et affiche le code à la demande',async()=>{
+ const w=setup({...fixture,coach_access_enabled:true},true),d=w.document;w.HTMLElement.prototype.scrollIntoView=()=>{};
+ d.dispatchEvent(new w.CustomEvent('shop-loaded',{detail:{...fixture,coach_access_enabled:true}}));
+ d.querySelector<HTMLElement>('#open-coach')!.click();await next();assert.equal((d.querySelector('#coach-access details') as HTMLDetailsElement).open,true);
+ const input=d.querySelector<HTMLInputElement>('#coach-code-form [name=code]')!;assert.equal(input.placeholder,'FCE-XXXX-XXXX');d.querySelector<HTMLElement>('#reveal-coach')!.click();assert.equal(input.type,'text');d.querySelector<HTMLElement>('#reveal-coach')!.click();assert.equal(input.type,'password');
+ assert.doesNotMatch(d.querySelector('#coach-access')!.textContent!,/8 heures/);
+ await w.happyDOM.abort();w.close();
+});
+
+test('carte publique : référence catalogue partielle visible avant de choisir une taille et tailles condensées',async()=>{
+ const w=new Window({url:'https://example.org/boutique/',settings:{disableCSSFileLoading:true,disableJavaScriptFileLoading:true,enableImageFileLoading:false}});
+ w.document.body.innerHTML='<main id="shop-page"><div id="shop-featured"></div><div id="shop-categories"></div></main>';
+ const variants=['6 ans','8 ans','14 ans','XS','M','2XL'].map((size,i)=>({id:'price'+i,product_id:1,size,label:size,price_cents:i<3?2500:2700,catalogue_price_cents:i===5?4000:null}));
+ const data={products:[{...fixture.products[0],shop_category_id:1}],categories:[{id:1,name:'Tenues'}],settings:{shop_enabled:1}};
+ w.fetch=(async(path:any)=>Response.json(String(path).includes('/api/page/')?data:{...fixture,variants})) as any;
+ w.eval(readFileSync(new URL('../public/shop-common.js',import.meta.url),'utf8').replace(/export /g,'')+'\n'+readFileSync(new URL('../public/shop.js',import.meta.url),'utf8').replace(/^import[^\n]*\n/,''));await next();await next();
+ const card=w.document.querySelector('.shop-product-card')!;assert.match(card.textContent!,/Prix catalogue/);assert.match(card.textContent!,/40,00/);assert.match(card.textContent!,/Tarif FCE/);assert.match(card.textContent!,/Enfant : 6 ans à 14 ans/);assert.match(card.textContent!,/Adulte : XS à 2XL/);assert.doesNotMatch(card.querySelector('.product-meta')!.textContent!,/8 ans/);
  await w.happyDOM.abort();w.close();
 });

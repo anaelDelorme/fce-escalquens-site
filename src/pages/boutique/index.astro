@@ -12,11 +12,11 @@ import Footer from '../../components/Footer.astro';
     <link rel="stylesheet" href="/enhancements.css?v=6">
     <link rel="stylesheet" href="/brand-charter.css">
     <link rel="stylesheet" href="/shop.css?v=5">
-    <link rel="stylesheet" href="/shop-commerce.css?v=5"><link rel="stylesheet" href="/commerce-ux.css?v=5214">
+    <link rel="stylesheet" href="/shop-commerce.css?v=5"><link rel="stylesheet" href="/commerce-ux.css?v=5215">
   </head>
   <body class="shop-storefront">
     <Header/>
-    <div class="commerce-toolbar"><span class="shop-toolbar-label">Boutique FCE</span><a href="/boutique/suivi/">Suivre une commande</a><button type="button" id="open-cart">Mon panier <span id="cart-count" aria-hidden="true">0</span><span id="cart-value" class="shop-cart-value"></span></button></div>
+    <div class="commerce-toolbar"><span class="shop-toolbar-label">Boutique FCE</span><a href="#coach-access" id="open-coach">Tarifs coach</a><a href="/boutique/suivi/">Suivre une commande</a><button type="button" id="open-cart">Mon panier <span id="cart-count" aria-hidden="true">0</span><span id="cart-value" class="shop-cart-value"></span></button></div>
     <main class="shop-page is-loading" id="shop-page">
       <section id="shop-maintenance" class="shop-maintenance" hidden aria-label="Boutique temporairement fermée">
         <div class="shop-maintenance-inner">
@@ -30,9 +30,11 @@ import Footer from '../../components/Footer.astro';
         </div>
       </section>
       <section class="shop-welcome" aria-labelledby="shop-welcome-title">
-        <div class="shop-welcome-copy"><p class="eyebrow">La boutique du FC Escalquens</p><h1 id="shop-welcome-title">Le club, sur le terrain.<br><span>Et partout avec vous.</span></h1><p>Des tenues pour jouer, des accessoires pour tous les jours. Retrouvez vos couleurs, au tarif FCE.</p><a class="shop-welcome-cta" href="#selection">Découvrir la collection <span aria-hidden="true">↓</span></a><ul class="shop-welcome-promises"><li>Remise au club ou par le coach</li><li>Paiement HelloAsso</li><li>Sans compte à créer</li></ul></div>
+        <div class="shop-welcome-copy"><p class="eyebrow">La boutique du FC Escalquens</p><h1 id="shop-welcome-title">Portez les couleurs<br><span>du FCE.</span></h1><p>Tenues et accessoires pour l’entraînement, les matchs et le quotidien, au tarif FCE.</p><a class="shop-welcome-cta" href="#selection">Découvrir la collection <span aria-hidden="true">↓</span></a><ul class="shop-welcome-promises"><li>Remise au club ou par le coach</li><li>Paiement HelloAsso</li><li>Sans compte à créer</li></ul></div>
         <div class="shop-welcome-visual"><img id="shop-hero-image" data-fallback-src="/hero-foot.webp" alt="Les couleurs du FC Escalquens"><span class="shop-welcome-label"><img src="/logo-fce.webp" alt=""><span>Du terrain au quotidien.<br><strong>Toujours FCE.</strong></span></span></div>
       </section>
+
+      <section id="coach-access" class="shop-coach-access" aria-label="Accès aux tarifs coach"></section>
 
       <section class="shop-feature" aria-labelledby="featured-title">
         <div class="section-intro">
