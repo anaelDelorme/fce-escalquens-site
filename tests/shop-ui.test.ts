@@ -60,7 +60,7 @@ test('carte publique : texte court seulement et aucun bouton Ajouter trompeur sa
  const w=new Window({url:'https://boutique.example/boutique/',settings:{disableCSSFileLoading:true,disableJavaScriptFileLoading:true}});
  w.document.body.innerHTML='<main id="shop-page" class="is-loading"><div id="shop-featured"></div><div id="shop-categories"></div></main><section id="shop-maintenance" hidden></section>';
  w.fetch=(async(url:string)=>Response.json(String(url).includes('/api/page/')?{products:fixture.products.map(p=>({...p,shop_category_id:1})),categories:[{id:1,name:'Collection'}],settings:{shop_enabled:1}}:{...fixture,variants:[],options:[]})) as any;
- w.eval(readFileSync(new URL('../public/shop.js',import.meta.url),'utf8'));await next();await next();
+ w.eval(readFileSync(new URL('../public/shop-common.js',import.meta.url),'utf8').replace(/export /g,'')+'\n'+readFileSync(new URL('../public/shop.js',import.meta.url),'utf8').replace(/^import[^\n]*\n/,''));await next();await next();
  assert.match(w.document.querySelector('#shop-featured')!.textContent!,/Accroche publique/);assert.doesNotMatch(w.document.querySelector('#shop-featured')!.textContent!,/Composition uniquement/);
  const order=w.document.querySelector<HTMLButtonElement>('[data-order-product="1"]')!;assert.equal(order.disabled,true);assert.match(order.textContent!,/Tailles et tarifs bientôt disponibles/);assert.doesNotMatch(order.textContent!,/Ajouter/);
  await w.happyDOM.abort();w.close();
@@ -127,7 +127,7 @@ test('catalogue : recherche sans accents, filtres combinés, état vide et réin
  w.document.write('<main id="shop-page"><div id="shop-featured"></div><div id="shop-categories"></div><div id="shop-browse" hidden><input id="shop-search"><div id="shop-category-filters"></div><p id="shop-results"></p><div id="shop-no-results" hidden></div><button id="shop-clear-search"></button></div></main>');
  const data={products:[{...fixture.products[0],name:'Maillot entraînement',shop_category_id:1},{...fixture.products[1],shop_category_id:2}],categories:[{id:1,name:'Tenues'},{id:2,name:'Accessoires'}],settings:{shop_enabled:1}};
  w.fetch=(async(path:any)=>Response.json(String(path).includes('/api/page/')?data:fixture)) as any;
- w.eval(readFileSync(new URL('../public/shop.js',import.meta.url),'utf8'));await next();await next();
+ w.eval(readFileSync(new URL('../public/shop-common.js',import.meta.url),'utf8').replace(/export /g,'')+'\n'+readFileSync(new URL('../public/shop.js',import.meta.url),'utf8').replace(/^import[^\n]*\n/,''));await next();await next();
  const d=w.document,search=d.querySelector<HTMLInputElement>('#shop-search')!;
  assert.equal(d.querySelector('#shop-browse')!.hasAttribute('hidden'),false);assert.match(d.querySelector('#shop-results')!.textContent!,/2 articles/);
  search.value='entrainement';search.dispatchEvent(new w.Event('input'));assert.match(d.querySelector('#shop-results')!.textContent!,/1 article/);
@@ -150,4 +150,52 @@ test('mails : états compréhensibles et aucune réponse brute du prestataire af
  const {mailStatusList}=await import('../public/shop-common.js');
  const html=mailStatusList([{kind:'created',status:'failed',attempts:8,last_error:'MAIL_SMTP_AUTH'},{kind:'tracking',status:'sent',attempts:1,sent_at:1700000000},{kind:'<script>',status:'pending',last_error:'PRIVATE_TOKEN <img src=x onerror=alert(1)>'}]);
  assert.match(html,/OVH refuse les identifiants/);assert.match(html,/Accepté par le serveur/);assert.match(html,/ne confirme pas sa réception/);assert.doesNotMatch(html,/PRIVATE_TOKEN|<script>|<img/);
+});
+
+test('prix : comparaison discrète, tailles cohérentes et absence de référence gérée',async()=>{
+ const {priceMarkup}=await import('../public/shop-common.js');
+ assert.doesNotMatch(priceMarkup([{price_cents:2000}]),/Prix catalogue/);
+ const exact=priceMarkup([{price_cents:2000,catalogue_price_cents:3000}]);assert.match(exact,/Tarif FCE/);assert.match(exact,/Prix catalogue/);assert.doesNotMatch(exact,/économ|%|promo/i);
+ assert.match(priceMarkup([{price_cents:1800,price_kind:'coach'}]),/Tarif coach/);
+ const mixed=priceMarkup([{price_cents:2000,catalogue_price_cents:3000},{price_cents:2500,catalogue_price_cents:null}]);assert.doesNotMatch(mixed,/Prix catalogue/);
+ const w=setup({...fixture,variants:fixture.variants.map(v=>({...v,catalogue_price_cents:v.id==='v2'?4000:null}))}),d=w.document;
+ d.querySelector<HTMLElement>('[data-order-product="1"]')!.click();await next();
+ const select=d.querySelector<HTMLSelectElement>('[name=variant]')!;select.value='v2';select.dispatchEvent(new w.Event('input',{bubbles:true}));assert.match(d.querySelector('#product-price-comparison')!.textContent!,/40,00/);
+ select.value='v1';select.dispatchEvent(new w.Event('input',{bubbles:true}));assert.doesNotMatch(d.querySelector('#product-price-comparison')!.textContent!,/catalogue/);
+ await w.happyDOM.abort();w.close();
+});
+
+test('photos : aperçu existant, nouvelle clé et erreur explicite dans la zone d’envoi',async()=>{
+ const {mediaPreview,bindMediaPreviews}=await import('../public/shop-common.js');
+ const w=new Window({url:"https://boutique.example/admin-boutique/",settings:{enableImageFileLoading:false}});w.document.body.innerHTML=`<form><input name="image_key" value="articles/maillot.webp">${mediaPreview('articles/maillot.webp','image_key')}</form>`;
+ const form=w.document.querySelector('form')!;bindMediaPreviews(form);
+ const image=form.querySelector<HTMLImageElement>('img')!;assert.match(image.getAttribute('src')!,/\/media\/articles\/maillot.webp$/);
+ const input=form.querySelector('input')!;input.value='articles/nouveau.webp';input.dispatchEvent(new w.Event('change'));assert.match(image.getAttribute('src')!,/nouveau.webp$/);
+ image.dispatchEvent(new w.Event('error'));assert.equal(image.hidden,true);assert.match(form.textContent!,/Aperçu indisponible/);
+ input.value='';input.dispatchEvent(new w.Event('input'));assert.equal(image.hidden,true);assert.match(form.textContent!,/Aucun visuel/);
+ input.value='image.webp';input.dispatchEvent(new w.Event('change'));assert.equal(image.hidden,false);
+ await w.happyDOM.abort();w.close();
+});
+
+test('accès coach : formulaire discret, erreur explicite, code absent du stockage et sortie accessible',async()=>{
+ const w=setup(),d=w.document;d.body.insertAdjacentHTML('beforeend','<div id="shop-browse"></div>');
+ d.dispatchEvent(new w.CustomEvent('shop-loaded',{detail:{...fixture,coach_access_enabled:true,pricing_mode:'fce'}}));
+ const input=d.querySelector<HTMLInputElement>('#coach-code-form [name=code]')!;assert.equal(input.type,'password');input.value='code-confidentiel';
+ let submitted:any;w.fetch=(async(path:any,options:any)=>{submitted=JSON.parse(options.body);return Response.json({error:'Code incorrect.',code:'COACH_CODE'},{status:403});}) as any;
+ d.querySelector('form')!.dispatchEvent(new w.Event('submit',{cancelable:true,bubbles:true}));await next();assert.equal(submitted.code,'code-confidentiel');assert.match(d.querySelector('#coach-access [role=alert]')!.textContent!,/Code incorrect/);
+ assert.doesNotMatch(JSON.stringify(Object.entries(w.sessionStorage)),/code-confidentiel/);assert.equal(w.location.search,'');
+ d.dispatchEvent(new w.CustomEvent('shop-loaded',{detail:{...fixture,coach_access_enabled:true,pricing_mode:'coach'}}));assert.ok(d.querySelector('#coach-logout'));assert.equal(d.querySelector('#coach-code-form'),null);
+ await w.happyDOM.abort();w.close();
+});
+
+test('tournois : photo et affiche visibles dans leurs zones d’upload, PDF sans faux aperçu',async()=>{
+ const {eventEditor}=await import('../src/scripts/tournament-events-editor.js');
+ const w=new Window({url:'https://example.org/admin-tournois/',settings:{enableImageFileLoading:false}});w.document.body.innerHTML='<div id="root"></div>';w.HTMLElement.prototype.scrollIntoView=()=>{};
+ Object.assign(globalThis,{document:w.document,location:w.location,sessionStorage:w.sessionStorage,FormData:w.FormData});
+ const call=async(path:string)=>path==='events'?{events:[{id:1,name:'Tournoi',categories:'[]',image_key:'tournoi.webp',poster_key:'affiche.png',rules_key:'regles.pdf'}]}:{sales:[]};
+ await eventEditor(w.document.querySelector('#root'),call,async(_button:any,fn:any)=>fn());
+ w.document.querySelector<HTMLElement>('[data-event="1"]')!.click();
+ const form=w.document.querySelector('form')!;assert.equal(form.querySelectorAll('[data-media-preview]').length,2);
+ assert.match(form.querySelector('[data-media-preview=image_key]')!.getAttribute('src')!,/tournoi.webp$/);assert.match(form.querySelector('[data-media-preview=poster_key]')!.getAttribute('src')!,/affiche.png$/);assert.equal(form.querySelector('[data-media-preview=rules_key]'),null);
+ await w.happyDOM.abort();w.close();
 });

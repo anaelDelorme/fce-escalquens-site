@@ -1,0 +1,860 @@
+diff --git a/docs/BOUTIQUE.md b/docs/BOUTIQUE.md
+index ef02e7a..4dba89c 100644
+--- a/docs/BOUTIQUE.md
++++ b/docs/BOUTIQUE.md
+@@ -146,7 +146,7 @@ Déclarer et contractualiser le prestataire choisi, vérifier ses limites et sa
+ 
+ ### File d’envoi et erreurs
+ 
+-Les confirmations de commande, paiement, préparation et récupération sont mises dans une outbox D1. Les transactions de création et de mise à jour ajoutent les événements et mails ensemble. Chaque mail métier a une clé unique. Le traitement immédiat est doublé par le cron : reprise exponentielle jusqu’à huit tentatives, puis état `failed` visible dans le backoffice. Le gestionnaire peut relancer les échecs. Les erreurs stockées sont des codes, jamais le contenu du mail ou le jeton.
++Les confirmations de commande, paiement, préparation et récupération sont mises dans une outbox D1. Les transactions de création et de mise à jour ajoutent les événements et mails ensemble. Chaque mail métier a une clé unique. Depuis la V5.2.13, les nouvelles commandes, inscriptions et mises à jour de paiement créent aussi une notification club indépendante à l’adresse de contact configurée ; chaque nouvel avis crée une notification club. Ces notifications portent un lien vers l’administration Cloudflare Access et ne reprennent jamais le lien personnel du client. Les notifications client et club ont des états, destinataires et reprises séparés. En staging, les deux sont redirigés vers MAIL_TEST_TO. Le traitement immédiat est doublé par le cron : reprise exponentielle jusqu’à huit tentatives, puis état `failed` visible dans le backoffice. Le gestionnaire peut relancer les échecs. Les erreurs stockées sont des codes, jamais le contenu du mail ou le jeton.
+ 
+ Un prestataire peut avoir accepté un mail juste avant une panne réseau : la livraison est « au moins une fois », un doublon exceptionnel reste possible. Le transport Resend utilise en plus une clé d’idempotence. L’état `sent` signifie accepté par le transport, pas une preuve que le mail a été lu ou est arrivé en boîte principale. Surveiller aussi les rejets et suppressions dans le tableau de bord du prestataire.
+ 
+@@ -164,7 +164,7 @@ Un prestataire peut avoir accepté un mail juste avant une panne réseau : la li
+ 
+ Le paiement et la préparation sont indépendants. Préparation : `new` → `ordered` → `partial` → `ready` → `delivered`, ou `cancelled`. Une commande doit être payée pour être préparée/remise. Les quantités reçues sont comprises entre 0 et la quantité commandée ; les quantités remises ne dépassent pas les reçues. L’état « disponible » exige réception complète, l’état « remis » exige remise complète. Les modifications concurrentes sont détectées par version ; recharger avant de réessayer.
+ 
+-L’export **unitaire**, disponible uniquement pour une commande payée et non annulée, est un document HTML imprimable (enregistrement PDF possible depuis le navigateur). Il contient référence fournisseur, article/couleur/taille, quantité et personnalisations exactes. Il ne contient ni téléphone ni e-mail du client, ni prix de vente utilisé à tort comme prix d’achat. Le bon est téléchargé ; il n’est jamais envoyé automatiquement au fournisseur. Marquer séparément la commande comme commandée après transmission.
++L’export **unitaire**, disponible uniquement pour une commande payée et non annulée, est un PDF avec logo du club, référence de commande, nom du client, article, taille/modèle, quantité et personnalisations exactes. Les anciennes références produit, les prix et le paragraphe relatif aux tarifs fournisseur sont retirés. Il ne contient ni téléphone ni e-mail du client. Les commandes longues sont paginées automatiquement. Le bon est téléchargé ; il n’est jamais envoyé automatiquement au fournisseur. Marquer séparément la commande comme commandée après transmission.
+ 
+ Les notes internes restent privées. Le message public apparaît sur le suivi et dans les prochains mails. Une annulation n’effectue pas de remboursement ; traiter celui-ci dans HelloAsso.
+ 
+diff --git a/docs/CORRECTIF-V5.2.13.md b/docs/CORRECTIF-V5.2.13.md
+new file mode 100644
+index 0000000..3400a4e
+--- /dev/null
++++ b/docs/CORRECTIF-V5.2.13.md
+@@ -0,0 +1,109 @@
++# V5.2.13 — bandeau boutique, bon fournisseur PDF et notifications du club
++
++À appliquer après la V5.2.12. Cette version ajoute **une migration dans ORDERS et une dans TOURNAMENTS**, sans modification de la base du site. Conserver les identifiants D1, les règles Access et les secrets existants.
++
++## Haut de la boutique et boutons tournois
++
++Le grand bandeau est remplacé par un composant indépendant des anciennes classes « hero » : titre plus court et moins grand, une action principale, visuel contenu et engagements compacts. Il conserve le visuel de couverture configuré dans l’administration et son image de secours. La fermeture de la boutique reste prioritaire sur ce bandeau.
++
++Les boutons d’inscription aux tournois passent à 18 px, avec une hauteur minimale de 58 px sur ordinateur et 60 px sur mobile. Le bouton principal occupe une ligne entière sur mobile. Les actions secondaires, le formulaire d’inscription et le suivi de paiement ont aussi des zones tactiles agrandies. Les anciennes règles à 10 px avec `!important`, qui empêchaient une surcharge normale, sont corrigées à la source.
++
++## Bon fournisseur PDF
++
++Le bouton de la fiche d’une commande payée télécharge directement un **PDF**, sans passer par l’impression d’un document HTML. Le navigateur génère le document à partir de données minimales fournies par l’API privée, pour éviter le coût CPU de génération PDF sur un Worker gratuit.
++
++- Logo du FC Escalquens, date, référence de commande et nom du client.
++- Licencié et équipe si renseignés ; coordonnées de contact du club.
++- Articles, tailles/modèles, quantités et personnalisations exactes, regroupés par fournisseur.
++- Pagination automatique avec répétition de l’en-tête ; les articles tiennent sur une seule page quand leur hauteur le permet, et les très longues personnalisations se poursuivent si nécessaire.
++- Suppression de l’ancienne référence produit et du paragraphe « Prix d’achat fournisseur et délai à confirmer… ».
++- Aucun prix de vente, e-mail ou téléphone du client. Le nom du client figure désormais dans les informations de confidentialité relatives au bon fournisseur.
++
++L’API de préparation du bon reste protégée par Cloudflare Access, les droits boutique et la vérification d’une commande payée et non annulée. Sa réponse contient uniquement les données nécessaires au document, sans téléphone ni e-mail du client et sans secret de suivi. L’historique note la préparation des données ; il n’atteste pas que le fichier a été enregistré sur l’ordinateur. Le PDF est téléchargé uniquement ; il n’est pas envoyé automatiquement au fournisseur. Le logo utilise l’asset PNG du club présent dans le dépôt.
++
++## Mails clients et notifications club
++
++L’envoi existant fonctionne : en staging, il est normal que les messages clients arrivent sur `MAIL_TEST_TO`. Cette redirection est **conservée**.
++
++La nouvelle version crée des notifications club indépendantes :
++
++| Événement | Notification club |
++| --- | --- |
++| Nouvelle commande boutique | Référence, nom du client, montant et lien vers la fiche admin. |
++| Nouvelle inscription tournoi | Référence, tournoi, club/équipe, nom du contact et lien vers la fiche admin. |
++| Paiement confirmé | Référence et état du paiement ; le montant indiqué est celui de la commande ou inscription. |
++| Autre changement de paiement | Notification de changement d’état, notamment remboursement ou montant à vérifier. |
++| Nouvel avis de satisfaction | Notes et commentaire facultatif, avec lien vers la commande dans l’administration. |
++
++Les notifications club portent `[CLUB]` dans leur objet. Elles vont à **l’e-mail de contact renseigné dans les paramètres boutique** (`settings.contact_email`) en production. Vérifier que cette adresse est bien `contact@fcescalquens.fr`, avec l’orthographe exacte du domaine. Les tournois utilisent ces mêmes coordonnées de contact partagées pour les paiements et e-mails.
++
++Les mails clients conservent le lien personnel de suivi. Les mails club contiennent uniquement un lien vers l’administration protégée par Cloudflare Access, jamais le lien magique du client.
++
++### Staging et production
++
++| Environnement | Messages clients | Notifications club |
++| --- | --- | --- |
++| Staging | Redirigés vers `MAIL_TEST_TO`, préfixe `[TEST]`. | Redirigées vers `MAIL_TEST_TO`, préfixes `[TEST] [CLUB]`. |
++| Production | Adresse de la commande ou de l’inscription. | Adresse de contact configurée dans les paramètres. |
++
++En staging, une nouvelle commande peut donc produire **deux messages dans la même boîte de test** : un exemplaire client et un exemplaire club. Un paiement confirmé produit également les deux notifications correspondantes. Le bouton « Tester l’envoi d’un e-mail » envoie seulement son message de test ; il ne représente pas ces notifications métier.
++
++### Fiabilité et confidentialité
++
++La migration ajoute `audience` et `recipient` dans la file D1. Les notifications club sont créées par des triggers SQLite dans la même transaction que les événements d’envoi ou le nouvel avis. Une répétition de la même création ou du même événement de paiement ne crée pas de deuxième notification club.
++
++La création d’un avis et son envoi club sont atomiques. Les deux destinataires ont leurs propres états et reprises : un refus de la boîte club ne marque pas le mail client comme échoué. La fiche de commande affiche l’audience et le destinataire réellement utilisé pour chaque tentative ; les paramètres affichent des compteurs séparés client/club. L’état « Accepté par le serveur » reste une confirmation du transport, pas une preuve d’arrivée en boîte principale.
++
++Les traitements HTTP en arrière-plan prennent un petit lot de messages avec deux envois simultanés, pour éviter l’accumulation d’envois SMTP séquentiels au-delà de la durée de `waitUntil`. Le cron traite un lot plus important. Les verrous, les reprises exponentielles et la limitation du nombre d’essais restent actifs. SMTP peut exceptionnellement produire un doublon lors d’une perte de connexion après acceptation ; l’identifiant stable du message ne constitue pas une garantie d’unicité de livraison.
++
++Les nouveaux triggers sont limités au module concerné et restent inactifs pendant la copie initiale des tournois : les anciennes inscriptions conservées dans ORDERS ne déclenchent pas de notifications boutique. Il n’y a **aucun renvoi massif des événements historiques** lors de la migration. Les destinataires effectifs restent des données privées d’administration et suivent la purge des traces d’envoi.
++
++## Installation sur la branche staging
++
++Télécharger le patch à la racine du dépôt, après la V5.2.12 :
++
++```bash
++git branch --show-current
++git apply --check fce-correctif-v5.2.13.patch
++git apply fce-correctif-v5.2.13.patch
++npm test
++npm run typecheck:shop
++npm run build
++```
++
++Si `git apply --check` échoue, ne pas forcer le patch : vérifier les versions installées et les modifications locales.
++
++Le workflow staging existant applique déjà toutes les migrations de `ORDERS` et `TOURNAMENTS` avant le déploiement. Il suffit donc de commiter **les deux nouveaux fichiers SQL avec le code** puis de pousser :
++
++```bash
++git add migrations-orders/0004_mail_audiences.sql migrations-tournaments/0004_mail_audiences.sql public/commerce-ux.css public/contacts-tournaments.css public/tournament-checkout.css public/shop-common.js src/components/ShopAdminLayout.astro src/components/TournamentLayout.astro src/pages/boutique/index.astro src/pages/tournois/index.astro src/pages/confidentialite/index.astro src/scripts/admin-shop.js src/scripts/admin-tournaments.js src/shop/mail.ts src/shop/service.ts src/shop/purchase-order-pdf.ts tests/shop.test.ts tests/purchase-order.test.ts tests/tournament-copy-cli.test.ts docs/BOUTIQUE.md docs/CORRECTIF-V5.2.13.md
++git commit -m "Ajoute les notifications club et le bon fournisseur PDF"
++git push origin staging
++```
++
++Pour un déploiement manuel uniquement, appliquer d’abord les deux migrations distantes :
++
++```bash
++npx wrangler d1 migrations apply ORDERS --remote --env staging
++npx wrangler d1 migrations apply TOURNAMENTS --remote --env staging
++npx wrangler deploy --env staging
++```
++
++Ne pas appliquer ces migrations sur `DB`. Pour la production, utiliser la racine de la configuration Wrangler (`--env=""`) et les bases de production déjà configurées. Ne pas déployer le nouveau code avant l’application des migrations de l’environnement concerné.
++
++## Recette staging
++
++1. Recharger la boutique : bandeau compact, image correctement contenue et actions lisibles sur ordinateur et smartphone.
++2. Vérifier les grands boutons de la page tournois, la confirmation du formulaire et le paiement depuis le suivi.
++3. Créer une nouvelle commande : deux lignes d’envoi « Client » / « Club », deux messages dans `MAIL_TEST_TO`, aucun envoi à l’adresse fictive saisie.
++4. Payer dans HelloAsso Sandbox : mail client de confirmation et notification `[CLUB]`. Rafraîchir le suivi ou répéter le webhook ne doit pas créer une nouvelle notification pour le même état de paiement.
++5. Télécharger le PDF depuis une commande payée. Vérifier le logo, le nom du client, les tailles et personnalisations, l’absence de référence produit et des mentions supprimées, puis tester une commande longue.
++6. Envoyer un nouvel avis : une notification club avec les notes et le commentaire, aucun lien magique client dans son contenu.
++7. Créer une inscription tournoi, puis la payer : les notifications doivent figurer dans la base et l’administration des tournois, jamais dans la liste des commandes boutique.
++8. Vérifier que le lien admin d’un mail club demande bien Cloudflare Access et les droits propres à son module.
++
++Aucun secret SMTP, identifiant HelloAsso ni règle Cloudflare Access n’est modifié par ce patch.
++
++Références techniques :
++- Cloudflare `waitUntil` : https://developers.cloudflare.com/workers/best-practices/workers-best-practices/
++- Durées des Workers et crons : https://developers.cloudflare.com/workers/platform/limits/
+diff --git a/migrations-orders/0004_mail_audiences.sql b/migrations-orders/0004_mail_audiences.sql
+new file mode 100644
+index 0000000..89bd647
+--- /dev/null
++++ b/migrations-orders/0004_mail_audiences.sql
+@@ -0,0 +1,15 @@
++-- Independent customer/club deliveries. No historical notifications are replayed.
++ALTER TABLE outbox ADD COLUMN audience TEXT NOT NULL DEFAULT 'customer' CHECK(audience IN ('customer','club'));
++ALTER TABLE outbox ADD COLUMN recipient TEXT NOT NULL DEFAULT '';
++CREATE TRIGGER club_business_notification AFTER INSERT ON outbox
++WHEN NEW.audience='customer' AND NEW.kind IN ('created','paid','payment') AND (SELECT kind FROM orders WHERE id=NEW.order_id)='shop'
++BEGIN
++ INSERT OR IGNORE INTO outbox(id,order_id,kind,audience,available_at)
++ VALUES('club:'||NEW.id,NEW.order_id,NEW.kind,'club',NEW.available_at);
++END;
++CREATE TRIGGER club_survey_notification AFTER INSERT ON surveys
++WHEN (SELECT kind FROM orders WHERE id=NEW.order_id)='shop'
++BEGIN
++ INSERT OR IGNORE INTO outbox(id,order_id,kind,audience,available_at)
++ VALUES('club:survey:'||NEW.order_id,NEW.order_id,'survey','club',NEW.created_at);
++END;
+diff --git a/migrations-tournaments/0004_mail_audiences.sql b/migrations-tournaments/0004_mail_audiences.sql
+new file mode 100644
+index 0000000..1ef26ef
+--- /dev/null
++++ b/migrations-tournaments/0004_mail_audiences.sql
+@@ -0,0 +1,15 @@
++-- Independent customer/club deliveries. No historical notifications are replayed.
++ALTER TABLE outbox ADD COLUMN audience TEXT NOT NULL DEFAULT 'customer' CHECK(audience IN ('customer','club'));
++ALTER TABLE outbox ADD COLUMN recipient TEXT NOT NULL DEFAULT '';
++CREATE TRIGGER club_business_notification AFTER INSERT ON outbox
++WHEN NEW.audience='customer' AND NEW.kind IN ('created','paid','payment') AND (SELECT kind FROM orders WHERE id=NEW.order_id)='tournament' AND EXISTS(SELECT 1 FROM module_imports WHERE id='v5.2')
++BEGIN
++ INSERT OR IGNORE INTO outbox(id,order_id,kind,audience,available_at)
++ VALUES('club:'||NEW.id,NEW.order_id,NEW.kind,'club',NEW.available_at);
++END;
++CREATE TRIGGER club_survey_notification AFTER INSERT ON surveys
++WHEN (SELECT kind FROM orders WHERE id=NEW.order_id)='tournament' AND EXISTS(SELECT 1 FROM module_imports WHERE id='v5.2')
++BEGIN
++ INSERT OR IGNORE INTO outbox(id,order_id,kind,audience,available_at)
++ VALUES('club:survey:'||NEW.order_id,NEW.order_id,'survey','club',NEW.created_at);
++END;
+diff --git a/public/commerce-ux.css b/public/commerce-ux.css
+index a972c28..2b5b83a 100644
+--- a/public/commerce-ux.css
++++ b/public/commerce-ux.css
+@@ -36,3 +36,8 @@
+ .shop-storefront:has(.commerce-dialog[open]){overflow:hidden}
+ .commerce-workspace [aria-busy=true]{opacity:.7}
+ .commerce-dialog .commerce-product-summary{align-items:center;gap:18px}.commerce-dialog .commerce-product-summary h2{font:800 26px/1.15 Arial,sans-serif;text-transform:none;letter-spacing:-.025em;margin:0 40px 0 0}.commerce-dialog .commerce-option{border:1px solid #ddcfc3;border-radius:10px;padding:16px;background:white}.commerce-dialog .commerce-option:has(input:checked){border-color:var(--wine);background:#f9efe9}.commerce-dialog .commerce-option>label:not(.commerce-check){margin-top:16px}.commerce-dialog .commerce-product-price{padding:18px 20px;background:#f7f0e5;border-radius:9px;font-size:26px;font-weight:800}.commerce-dialog #product-form>button[type=submit]{width:100%;min-height:50px}
++/* V5.2.13: compact, isolated storefront introduction, independent of old hero styles. */
++.shop-welcome{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);max-width:1180px;margin:32px auto 0;background:#fffaf3;border:1px solid #e5d8ca;border-radius:16px;overflow:hidden}
++.shop-welcome-copy{padding:clamp(26px,3vw,44px);min-width:0}.shop-welcome-copy .eyebrow{font-size:11px;margin:0 0 16px}.shop-welcome h1{font:800 clamp(30px,3.1vw,44px)/1.12 Arial,sans-serif;letter-spacing:-.045em;text-transform:none;color:var(--wine-dark);margin:0 0 18px}.shop-welcome h1 span{color:var(--wine)}.shop-welcome-copy>p:not(.eyebrow){font-size:16px;line-height:1.65;color:#716055;max-width:440px;margin:0 0 24px}.shop-welcome-cta{display:inline-flex;align-items:center;gap:24px;min-height:48px;background:var(--wine);color:white;border-radius:7px;padding:14px 20px;font-size:14px;font-weight:750}.shop-welcome-cta:hover{background:var(--wine-dark)}.shop-welcome-cta:focus-visible{outline:3px solid #bd8c00;outline-offset:4px}.shop-welcome-promises{display:flex;flex-wrap:wrap;list-style:none;gap:8px 16px;padding:0;margin:24px 0 0;font-size:11px;color:#756052;line-height:1.6}.shop-welcome-promises li:before{content:'✓';color:var(--wine);margin-right:5px;font-weight:800}.shop-welcome-visual{position:relative;display:grid;place-items:center;background:linear-gradient(145deg,#eee2d4,#f8f2ea);min-width:0;min-height:290px;padding:24px 28px 50px}.shop-welcome-visual>img{width:100%;height:260px;max-height:260px;object-fit:contain;opacity:0;transition:opacity .2s}.shop-welcome-visual>img.is-ready{opacity:1}.shop-welcome-label{position:absolute;bottom:20px;left:24px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#806858}
++@media(max-width:1240px){.shop-welcome{margin:24px 24px 0}}
++@media(max-width:700px){.shop-welcome{grid-template-columns:1fr;margin:16px 16px 0;border-radius:12px}.shop-welcome-copy{padding:26px 24px}.shop-welcome h1{font-size:31px}.shop-welcome-visual{min-height:0;height:210px;padding:15px 28px 35px}.shop-welcome-visual>img{height:160px;max-height:160px}.shop-welcome-label{bottom:12px}.shop-welcome-promises{font-size:11px;margin-top:18px}}
+diff --git a/public/contacts-tournaments.css b/public/contacts-tournaments.css
+index 445db88..288f40f 100644
+--- a/public/contacts-tournaments.css
++++ b/public/contacts-tournaments.css
+@@ -7,9 +7,9 @@
+ .contact-routing article>div{display:grid;gap:5px;min-width:0}.contact-routing small{font-size:9px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:#746866}.contact-routing a{font-size:14px;font-weight:900;color:var(--wine);overflow-wrap:anywhere;text-decoration:none}
+ .contact-section-head,.tournaments-intro{display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,.72fr);gap:40px;align-items:end;margin-top:12px}.contact-section-head h2,.tournaments-intro h2{margin:6px 0 0;font-size:clamp(38px,5vw,58px);line-height:.95}.contact-section-head>p,.tournaments-intro>p{margin:0;line-height:1.65;color:#6f6461}
+ .contacts-content .filter-bar{margin:0}.contact-grid{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px!important}.contact-card{display:flex!important;flex-direction:column!important;align-items:stretch!important;min-height:100%;padding:22px!important;border:1px solid var(--fce-card-border,#e2d8cf)!important;border-radius:20px!important;background:#fff!important;box-shadow:0 16px 36px rgba(41,25,20,.07)!important;overflow:hidden}.contact-card-head{display:grid;grid-template-columns:88px minmax(0,1fr);gap:16px;align-items:center}.contact-avatar{width:88px;height:88px;border-radius:50%;overflow:hidden;background:linear-gradient(145deg,var(--wine),#38101a);box-shadow:0 0 0 5px #f4eee8;display:grid;place-items:center}.contact-photo{width:100%;height:100%;object-fit:cover}.contact-initials{display:grid!important;place-items:center;width:100%!important;height:100%!important;border-radius:0!important;background:transparent!important;color:#fff!important;font-size:25px!important;font-weight:950!important}.contact-identity{display:grid;gap:3px;min-width:0}.contact-category{margin:0!important;color:var(--wine)!important;font-size:9px!important;font-weight:900;letter-spacing:.12em;text-transform:uppercase}.contact-card h2{margin:2px 0!important;font-size:27px!important;line-height:1}.contact-role{font-size:13px;color:#473b39}.contact-responsibilities{margin:20px 0 0;padding-top:18px;border-top:1px solid #eee6e1;line-height:1.55;color:#655a57;flex:1}.contact-actions{display:grid;gap:8px;margin-top:18px}.contact-action{display:grid!important;grid-template-columns:28px minmax(0,1fr)!important;gap:1px 8px!important;align-items:center;margin:0!important;padding:10px 12px!important;border:1px solid #eadfd8;border-radius:12px;background:#faf7f4;color:inherit;text-decoration:none!important}.contact-action>span{grid-row:1/3;display:grid;place-items:center;width:28px;height:28px;border-radius:9px;background:var(--wine);color:#fff}.contact-action b{font-size:11px;color:var(--wine)}.contact-action small{margin:0!important;font-size:10px!important;font-weight:600!important;text-transform:none!important;color:#766a66!important;overflow-wrap:anywhere}.contact-availability{display:grid;gap:3px;margin:14px 0 0;padding-top:13px;border-top:1px dashed #dfd5ce;font-size:11px;color:#655a57}.contact-availability span{font-size:9px;font-weight:900;text-transform:uppercase;color:var(--wine);letter-spacing:.1em}
+-.tournaments-content{gap:30px}.tournament-grid{display:grid!important;gap:20px!important;align-items:stretch}.tournament-grid[data-count="1"]{grid-template-columns:minmax(0,780px);justify-content:center}.tournament-grid[data-count="2"]{grid-template-columns:repeat(2,minmax(0,1fr))}.tournament-grid[data-count="3"]{grid-template-columns:repeat(3,minmax(0,1fr))}.tournament-card{display:flex!important;flex-direction:column!important;min-width:0;padding:0!important;gap:0!important;border:1px solid var(--fce-card-border,#e2d8cf)!important;border-radius:22px!important;background:#fff!important;box-shadow:0 18px 42px rgba(41,25,20,.085)!important;overflow:hidden}.tournament-card:nth-child(2n){border-left:1px solid var(--fce-card-border,#e2d8cf)!important}.tournament-visual{position:relative;aspect-ratio:16/10;overflow:hidden;background:linear-gradient(135deg,#67101d,#1a1516)}.tournament-cover{width:100%;height:100%;object-fit:cover;display:block}.tournament-cover--poster{object-fit:contain;padding:14px;background:#2a1117}.tournament-cover-placeholder{width:100%;height:100%;display:grid;place-items:center;align-content:center;gap:10px;background:radial-gradient(circle at 80% 20%,rgba(255,205,52,.26),transparent 32%),linear-gradient(135deg,#741324,#2a1117);color:#fff}.tournament-cover-placeholder img{width:84px;height:84px;object-fit:contain}.tournament-cover-placeholder span{font-size:11px;font-weight:900;letter-spacing:.16em;text-transform:uppercase}.tournament-status{position:absolute;left:14px;top:14px;padding:8px 10px;border-radius:999px;background:#fff;color:var(--wine);font-size:9px;font-weight:950;text-transform:uppercase;letter-spacing:.08em;box-shadow:0 6px 18px rgba(0,0,0,.12)}.tournament-status--open{background:var(--gold);color:#251713}.tournament-status--finished{background:#211a1b;color:#fff}.tournament-poster-peek{position:absolute;right:14px;bottom:14px;display:flex;align-items:center;gap:9px;padding:7px 10px 7px 7px;border-radius:12px;background:rgba(255,255,255,.94);color:var(--wine);font-size:10px;font-weight:900;text-decoration:none;box-shadow:0 10px 24px rgba(0,0,0,.18)}.tournament-poster-peek img{width:38px;height:50px;object-fit:cover;border-radius:5px}.tournament-card-body{display:flex;flex:1;flex-direction:column;padding:22px}.tournament-kicker{display:flex;flex-wrap:wrap;gap:6px}.tournament-kicker span{padding:6px 8px;border-radius:999px;background:#f3ede8;color:var(--wine);font-size:8px;font-weight:950;letter-spacing:.08em;text-transform:uppercase}.tournament-card h2{margin:15px 0 8px!important;font-size:clamp(30px,3vw,42px)!important;line-height:.95}.tournament-summary{margin:0 0 18px!important;line-height:1.55!important;color:#655a57;flex:1}.tournament-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0;padding:0}.tournament-facts>div{display:grid;align-content:start;gap:4px;min-height:80px;padding:11px;border-radius:13px;background:#f8f4f0}.tournament-facts dt{font-size:8px;font-weight:950;letter-spacing:.12em;text-transform:uppercase;color:#81736f}.tournament-facts dd{margin:0;font-size:12px;font-weight:900;line-height:1.25;color:#2a2220}.tournament-facts dd small{display:block;margin-top:3px;font-size:10px;font-weight:700;color:#786b67}.tournament-facts .tournament-price{background:var(--gold)}.tournament-facts .tournament-price dt,.tournament-facts .tournament-price dd{color:#451019}.tournament-organizer{margin:14px 0 0!important;font-size:11px!important;color:#756965}.tournament-actions{display:flex!important;flex-wrap:wrap;gap:7px!important;margin-top:18px!important}.tournament-action{display:inline-flex;align-items:center;justify-content:center;margin:0!important;padding:10px 12px!important;border:1px solid var(--wine)!important;border-radius:999px!important;color:var(--wine)!important;background:#fff!important;font-size:10px!important;font-weight:900!important;text-decoration:none!important}.tournament-action--primary{background:var(--wine)!important;color:#fff!important}.tournament-card .empty-state{grid-column:1/-1}
++.tournaments-content{gap:30px}.tournament-grid{display:grid!important;gap:20px!important;align-items:stretch}.tournament-grid[data-count="1"]{grid-template-columns:minmax(0,780px);justify-content:center}.tournament-grid[data-count="2"]{grid-template-columns:repeat(2,minmax(0,1fr))}.tournament-grid[data-count="3"]{grid-template-columns:repeat(3,minmax(0,1fr))}.tournament-card{display:flex!important;flex-direction:column!important;min-width:0;padding:0!important;gap:0!important;border:1px solid var(--fce-card-border,#e2d8cf)!important;border-radius:22px!important;background:#fff!important;box-shadow:0 18px 42px rgba(41,25,20,.085)!important;overflow:hidden}.tournament-card:nth-child(2n){border-left:1px solid var(--fce-card-border,#e2d8cf)!important}.tournament-visual{position:relative;aspect-ratio:16/10;overflow:hidden;background:linear-gradient(135deg,#67101d,#1a1516)}.tournament-cover{width:100%;height:100%;object-fit:cover;display:block}.tournament-cover--poster{object-fit:contain;padding:14px;background:#2a1117}.tournament-cover-placeholder{width:100%;height:100%;display:grid;place-items:center;align-content:center;gap:10px;background:radial-gradient(circle at 80% 20%,rgba(255,205,52,.26),transparent 32%),linear-gradient(135deg,#741324,#2a1117);color:#fff}.tournament-cover-placeholder img{width:84px;height:84px;object-fit:contain}.tournament-cover-placeholder span{font-size:11px;font-weight:900;letter-spacing:.16em;text-transform:uppercase}.tournament-status{position:absolute;left:14px;top:14px;padding:8px 10px;border-radius:999px;background:#fff;color:var(--wine);font-size:9px;font-weight:950;text-transform:uppercase;letter-spacing:.08em;box-shadow:0 6px 18px rgba(0,0,0,.12)}.tournament-status--open{background:var(--gold);color:#251713}.tournament-status--finished{background:#211a1b;color:#fff}.tournament-poster-peek{position:absolute;right:14px;bottom:14px;display:flex;align-items:center;gap:9px;padding:7px 10px 7px 7px;border-radius:12px;background:rgba(255,255,255,.94);color:var(--wine);font-size:10px;font-weight:900;text-decoration:none;box-shadow:0 10px 24px rgba(0,0,0,.18)}.tournament-poster-peek img{width:38px;height:50px;object-fit:cover;border-radius:5px}.tournament-card-body{display:flex;flex:1;flex-direction:column;padding:22px}.tournament-kicker{display:flex;flex-wrap:wrap;gap:6px}.tournament-kicker span{padding:6px 8px;border-radius:999px;background:#f3ede8;color:var(--wine);font-size:8px;font-weight:950;letter-spacing:.08em;text-transform:uppercase}.tournament-card h2{margin:15px 0 8px!important;font-size:clamp(30px,3vw,42px)!important;line-height:.95}.tournament-summary{margin:0 0 18px!important;line-height:1.55!important;color:#655a57;flex:1}.tournament-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0;padding:0}.tournament-facts>div{display:grid;align-content:start;gap:4px;min-height:80px;padding:11px;border-radius:13px;background:#f8f4f0}.tournament-facts dt{font-size:8px;font-weight:950;letter-spacing:.12em;text-transform:uppercase;color:#81736f}.tournament-facts dd{margin:0;font-size:12px;font-weight:900;line-height:1.25;color:#2a2220}.tournament-facts dd small{display:block;margin-top:3px;font-size:10px;font-weight:700;color:#786b67}.tournament-facts .tournament-price{background:var(--gold)}.tournament-facts .tournament-price dt,.tournament-facts .tournament-price dd{color:#451019}.tournament-organizer{margin:14px 0 0!important;font-size:11px!important;color:#756965}.tournament-actions{display:flex;flex-wrap:wrap;gap:7px;margin-top:18px}.tournament-action{display:inline-flex;align-items:center;justify-content:center;margin:0;padding:10px 12px;border:1px solid var(--wine);border-radius:999px;color:var(--wine);background:#fff;font-size:10px;font-weight:900;text-decoration:none}.tournament-action--primary{background:var(--wine);color:#fff}.tournament-card .empty-state{grid-column:1/-1}
+ @media(max-width:980px){.tournament-grid[data-count="3"]{grid-template-columns:repeat(2,minmax(0,1fr))}.contact-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+-@media(max-width:680px){.contact-routing,.contact-section-head,.tournaments-intro,.contact-grid,.tournament-grid[data-count="1"],.tournament-grid[data-count="2"],.tournament-grid[data-count="3"]{grid-template-columns:1fr!important}.contact-section-head,.tournaments-intro{gap:14px}.contact-card{padding:18px!important}.contact-card-head{grid-template-columns:72px minmax(0,1fr)}.contact-avatar{width:72px;height:72px}.contact-card h2{font-size:24px!important}.tournament-card{border-radius:17px!important}.tournament-card-body{padding:18px}.tournament-facts{grid-template-columns:1fr 1fr}.tournament-facts .tournament-price{grid-column:1/-1}.tournament-poster-peek span{display:none}.tournament-actions{display:grid!important;grid-template-columns:1fr 1fr}.tournament-action{width:100%}}
++@media(max-width:680px){.contact-routing,.contact-section-head,.tournaments-intro,.contact-grid,.tournament-grid[data-count="1"],.tournament-grid[data-count="2"],.tournament-grid[data-count="3"]{grid-template-columns:1fr!important}.contact-section-head,.tournaments-intro{gap:14px}.contact-card{padding:18px!important}.contact-card-head{grid-template-columns:72px minmax(0,1fr)}.contact-avatar{width:72px;height:72px}.contact-card h2{font-size:24px!important}.tournament-card{border-radius:17px!important}.tournament-card-body{padding:18px}.tournament-facts{grid-template-columns:1fr 1fr}.tournament-facts .tournament-price{grid-column:1/-1}.tournament-poster-peek span{display:none}.tournament-actions{display:grid;grid-template-columns:1fr 1fr}.tournament-action{width:100%}}
+ 
+ 
+ /* =========================================================
+diff --git a/public/shop-common.js b/public/shop-common.js
+index 3db1bfa..91053d3 100644
+--- a/public/shop-common.js
++++ b/public/shop-common.js
+@@ -102,7 +102,7 @@ export function itemTable(items, { admin = false } = {}) {
+ 
+ /** Admin-only rendering: friendly states, never raw provider responses or message bodies. */
+ export function mailStatusList(mails = []) {
+-  const kinds = { created:'Confirmation', paid:'Paiement confirmé', tracking:'Lien de suivi', payment:'Mise à jour du paiement', fulfillment:'Préparation et remise' };
++  const kinds = { created:'Confirmation', paid:'Paiement confirmé', tracking:'Lien de suivi', payment:'Mise à jour du paiement', fulfillment:'Préparation et remise',survey:'Avis de satisfaction' };
+   const states = { pending:['En attente','is-pending'], sending:['En cours','is-pending'], sent:['Accepté par le serveur','is-paid'], failed:['Échec à traiter','is-failed'] };
+   const advice = {
+     MAIL_SMTP_AUTH:'OVH refuse les identifiants. Vérifiez SMTP_USER et le secret SMTP_PASSWORD.',
+@@ -116,6 +116,11 @@ export function mailStatusList(mails = []) {
+   return mails.map(m => {
+     const [state, tone] = states[m.status] || ['État inconnu','is-neutral'];
+     const code = /^MAIL_[A-Z0-9_]+$/.test(m.last_error || '') ? m.last_error : '';
+-    return `<article class="commerce-mail-status"><div><strong>${esc(kinds[m.kind] || 'Notification de suivi')}</strong><span class="commerce-badge ${tone}">${state}</span></div><small>${Number(m.attempts)||0} tentative(s)${m.sent_at?' · '+date(m.sent_at):''}</small>${m.status==='sent'?'<p>Le transport a accepté le message. Cela ne confirme pas sa réception en boîte principale.</p>':code?`<p>${esc(advice[code] || 'L’envoi a échoué. Vérifiez le transport mail et relancez les envois depuis cette fiche.')}</p><small class="commerce-mail-code">${esc(code)}</small>`:'<p>Le message sera traité par la file d’envoi automatique.</p>'}</article>`;
++    return `<article class="commerce-mail-status"><div><strong>${m.audience==='club'?'Club · ':'Client · '}${esc(kinds[m.kind] || 'Notification de suivi')}</strong><span class="commerce-badge ${tone}">${state}</span></div><small>${m.recipient?`Destinataire : ${esc(m.recipient)} · `:""}${Number(m.attempts)||0} tentative(s)${m.sent_at?' · '+date(m.sent_at):''}</small>${m.status==='sent'?'<p>Le transport a accepté le message. Cela ne confirme pas sa réception en boîte principale.</p>':code?`<p>${esc(advice[code] || 'L’envoi a échoué. Vérifiez le transport mail et relancez les envois depuis cette fiche.')}</p><small class="commerce-mail-code">${esc(code)}</small>`:'<p>Le message sera traité par la file d’envoi automatique.</p>'}</article>`;
+   }).join('') || '<p class="commerce-help">Aucun mail n’est encore placé dans la file d’envoi pour cette commande.</p>';
+ }
++
++export function mailQueueSummary(queue={}) {
++  const rows=queue.counts||[],count=(audience,status)=>rows.filter(r=>r.audience===audience&&r.status===status).reduce((n,r)=>n+Number(r.count),0);
++  return `<div class="commerce-mail-context"><strong>File d’envoi automatique</strong>${['customer','club'].map(a=>`<p>${a==='club'?'Notifications du club':'Messages clients'} : ${count(a,'pending')} en attente · ${count(a,'sending')} en cours · ${count(a,'failed')} en échec · ${count(a,'sent')} acceptés.</p>`).join('')}<p>Le test de connexion mail est indépendant de cette file et n’envoie pas les commandes.</p></div>`;
++}
+diff --git a/public/tournament-checkout.css b/public/tournament-checkout.css
+index 6018524..675efcf 100644
+--- a/public/tournament-checkout.css
++++ b/public/tournament-checkout.css
+@@ -41,3 +41,13 @@
+ /* Suivi sous le bandeau partagé .page-hero.wine du site. */
+ .tournament-followup{display:flex;justify-content:flex-end}.tournament-followup .tournament-tracking-link{display:flex;align-items:center;gap:14px;padding:14px 20px}
+ @media(max-width:680px){.tournament-followup{justify-content:stretch}.tournament-followup .tournament-tracking-link{width:100%;flex-wrap:wrap;gap:6px 12px}}
++
++/* V5.2.13: visible registration actions and comfortable touch targets. */
++.tournament-card .tournament-actions{gap:12px;align-items:stretch}
++.tournament-card .tournament-action{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:13px 18px;font:700 15px/1.35 Arial,sans-serif;border-radius:8px;text-align:center}
++.tournament-card .tournament-action--primary{grid-column:1/-1;flex:1 0 100%;min-height:58px;padding:17px 24px;background:var(--wine);color:#fff;font-size:18px;letter-spacing:0;box-shadow:0 4px 12px #58181c18}
++.tournament-card .tournament-action--primary:hover{background:var(--wine-dark)}
++.tournament-card .tournament-action:focus-visible{outline:3px solid #bd8c00;outline-offset:3px}
++.tournament-dialog button[type=submit]{min-height:58px;font-size:18px;padding:18px 24px}
++.commerce-layout .tournament-actions button{min-height:52px;padding:15px 20px;font-size:16px}
++@media(max-width:600px){.tournament-card .tournament-action--primary{width:100%;min-height:60px;font-size:18px}.tournament-card .tournament-action{flex:1 1 auto}.commerce-layout .tournament-actions{display:grid;grid-template-columns:1fr}.tournament-dialog button[type=submit]{min-height:58px}}
+diff --git a/src/components/ShopAdminLayout.astro b/src/components/ShopAdminLayout.astro
+index 22ae6a0..4376d89 100644
+--- a/src/components/ShopAdminLayout.astro
++++ b/src/components/ShopAdminLayout.astro
+@@ -4,4 +4,4 @@ const links=[['orders','Commandes','/admin-boutique/'],['categories','Catégorie
+ const titles={orders:['Commandes','Retrouvez une commande, suivez son paiement et préparez sa remise.'],categories:['Catégories','Organisez les articles pour aider chacun à trouver son équipement.'],products:['Articles et photos','Une fiche par article, avec ses visuels, ses tailles et ses personnalisations.'],suppliers:['Fournisseurs','Retrouvez les partenaires et leurs coordonnées de commande.'],cover:['Présentation de la boutique','Choisissez la couverture et gérez la visibilité de la boutique.'],settings:['Paramètres','Vérifiez les paiements, les e-mails et les informations du club.'],admins:['Accès administrateurs','Gérez les personnes autorisées à administrer la boutique.'],surveys:['Satisfaction','Écoutez les retours pour améliorer le parcours de commande.']};
+ const [title,description]=titles[page]||titles.orders;
+ ---
+-<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><title>{title} · Gestion boutique — FC Escalquens</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/brand-charter.css"><link rel="stylesheet" href="/shop-commerce.css?v=5"><link rel="stylesheet" href="/commerce-ux.css?v=5212"></head><body class="commerce-admin-body"><a class="commerce-skip" href="#admin-shop-content">Aller au contenu</a><main class="commerce-admin commerce-workspace" data-page={page}><header class="commerce-admin-head"><a class="commerce-admin-brand" href="/admin-boutique/"><img src="/logo-fce.webp" alt="FC Escalquens"><div><p class="eyebrow">Espace du club</p><strong>Gestion boutique</strong></div></a><div class="commerce-head-links"><a href="/boutique/">Voir la boutique ↗</a><a href="/cdn-cgi/access/logout">Déconnexion</a></div></header><div id="shop-environment"></div><div class="commerce-workspace-grid"><nav class="commerce-tabs" aria-label="Gestion boutique">{links.map(([id,label,href])=><a href={href} aria-current={id===page?'page':undefined}>{label}</a>)}</nav><div class="commerce-workspace-main"><div class="commerce-page-intro"><p class="eyebrow">Boutique</p><h1>{title}</h1><p>{description}</p></div><p id="admin-shop-message" role="status" aria-live="polite" tabindex="-1">Chargement de la gestion boutique…</p><noscript>Activez JavaScript pour gérer la boutique.</noscript><section id="admin-shop-content" class="commerce-admin-content" aria-label={title}></section></div></div></main><script src="../scripts/admin-shop.js"></script></body></html>
++<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><title>{title} · Gestion boutique — FC Escalquens</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/brand-charter.css"><link rel="stylesheet" href="/shop-commerce.css?v=5"><link rel="stylesheet" href="/commerce-ux.css?v=5213"></head><body class="commerce-admin-body"><a class="commerce-skip" href="#admin-shop-content">Aller au contenu</a><main class="commerce-admin commerce-workspace" data-page={page}><header class="commerce-admin-head"><a class="commerce-admin-brand" href="/admin-boutique/"><img src="/logo-fce.webp" alt="FC Escalquens"><div><p class="eyebrow">Espace du club</p><strong>Gestion boutique</strong></div></a><div class="commerce-head-links"><a href="/boutique/">Voir la boutique ↗</a><a href="/cdn-cgi/access/logout">Déconnexion</a></div></header><div id="shop-environment"></div><div class="commerce-workspace-grid"><nav class="commerce-tabs" aria-label="Gestion boutique">{links.map(([id,label,href])=><a href={href} aria-current={id===page?'page':undefined}>{label}</a>)}</nav><div class="commerce-workspace-main"><div class="commerce-page-intro"><p class="eyebrow">Boutique</p><h1>{title}</h1><p>{description}</p></div><p id="admin-shop-message" role="status" aria-live="polite" tabindex="-1">Chargement de la gestion boutique…</p><noscript>Activez JavaScript pour gérer la boutique.</noscript><section id="admin-shop-content" class="commerce-admin-content" aria-label={title}></section></div></div></main><script src="../scripts/admin-shop.js"></script></body></html>
+diff --git a/src/components/TournamentLayout.astro b/src/components/TournamentLayout.astro
+index e7d9823..732ad19 100644
+--- a/src/components/TournamentLayout.astro
++++ b/src/components/TournamentLayout.astro
+@@ -3,4 +3,4 @@ import Header from './Header.astro';
+ import Footer from './Footer.astro';
+ const {title='Mon inscription',admin=false}=Astro.props;
+ ---
+-<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><title>{title} — FC Escalquens</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/brand-charter.css"><link rel="stylesheet" href="/shop-commerce.css?v=51"><link rel="stylesheet" href="/tournament-checkout.css?v=526"><link rel="stylesheet" href="/commerce-ux.css?v=5212"></head><body class={admin?'commerce-admin-body':undefined}>{admin&&<a class="commerce-skip" href="#tournament-admin">Aller au contenu</a>}{!admin&&<Header/>}<main class={admin?'commerce-admin commerce-workspace':'commerce-layout'}><header class="commerce-admin-head"><div class="commerce-admin-brand">{admin&&<img src="/logo-fce.webp" alt="FC Escalquens"/>}<div><p class="eyebrow">FC Escalquens · Tournois</p>{admin?<strong>Gestion des tournois</strong>:<h1>{title}</h1>}</div></div><p><a href="/tournois/">Les tournois</a>{admin&&<> · <a href="/cdn-cgi/access/logout">Déconnexion</a></>}</p></header><slot/></main>{!admin&&<Footer/>}</body></html>
++<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer"><title>{title} — FC Escalquens</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/brand-charter.css"><link rel="stylesheet" href="/shop-commerce.css?v=51"><link rel="stylesheet" href="/tournament-checkout.css?v=5213"><link rel="stylesheet" href="/commerce-ux.css?v=5213"></head><body class={admin?'commerce-admin-body':undefined}>{admin&&<a class="commerce-skip" href="#tournament-admin">Aller au contenu</a>}{!admin&&<Header/>}<main class={admin?'commerce-admin commerce-workspace':'commerce-layout'}><header class="commerce-admin-head"><div class="commerce-admin-brand">{admin&&<img src="/logo-fce.webp" alt="FC Escalquens"/>}<div><p class="eyebrow">FC Escalquens · Tournois</p>{admin?<strong>Gestion des tournois</strong>:<h1>{title}</h1>}</div></div><p><a href="/tournois/">Les tournois</a>{admin&&<> · <a href="/cdn-cgi/access/logout">Déconnexion</a></>}</p></header><slot/></main>{!admin&&<Footer/>}</body></html>
+diff --git a/src/pages/boutique/index.astro b/src/pages/boutique/index.astro
+index ce14dee..311ce74 100644
+--- a/src/pages/boutique/index.astro
++++ b/src/pages/boutique/index.astro
+@@ -12,7 +12,7 @@ import Footer from '../../components/Footer.astro';
+     <link rel="stylesheet" href="/enhancements.css?v=6">
+     <link rel="stylesheet" href="/brand-charter.css">
+     <link rel="stylesheet" href="/shop.css?v=5">
+-    <link rel="stylesheet" href="/shop-commerce.css?v=5"><link rel="stylesheet" href="/commerce-ux.css?v=5212">
++    <link rel="stylesheet" href="/shop-commerce.css?v=5"><link rel="stylesheet" href="/commerce-ux.css?v=5213">
+   </head>
+   <body class="shop-storefront">
+     <Header/>
+@@ -29,17 +29,9 @@ import Footer from '../../components/Footer.astro';
+           </div>
+         </div>
+       </section>
+-      <section class="shop-hero">
+-        <div class="shop-hero-copy">
+-          <p class="eyebrow">La boutique du FC Escalquens</p>
+-          <h1>L’esprit du club.<br><em>À porter partout.</em></h1>
+-          <p>Du terrain au quotidien, trouvez votre équipement aux couleurs du FC Escalquens.</p>
+-          <div class="shop-hero-actions"><a href="#selection">Trouver mon équipement <span>↓</span></a><a href="/boutique/suivi/">Suivre ma commande →</a></div><ul class="shop-promises"><li>Remise gratuite au club ou par le coach</li><li>Paiement sécurisé HelloAsso</li><li>Sans compte à créer</li></ul>
+-        </div>
+-        <div class="shop-hero-visual">
+-          <img id="shop-hero-image" data-fallback-src="/hero-foot.webp" alt="Joueuses du FC Escalquens sur le terrain">
+-          <span class="shop-hero-caption"><img src="/logo-fce.webp" alt=""><span>La sélection du club<strong>Une équipe. Une famille.</strong></span></span>
+-        </div>
++      <section class="shop-welcome" aria-labelledby="shop-welcome-title">
++        <div class="shop-welcome-copy"><p class="eyebrow">La boutique du FC Escalquens</p><h1 id="shop-welcome-title">Votre équipement.<br><span>Aux couleurs du FCE.</span></h1><p>Tenues et accessoires pour jouer, s’entraîner et soutenir le club.</p><a class="shop-welcome-cta" href="#selection">Découvrir la collection <span aria-hidden="true">↓</span></a><ul class="shop-welcome-promises"><li>Remise au club ou par le coach</li><li>Paiement HelloAsso</li><li>Sans compte à créer</li></ul></div>
++        <div class="shop-welcome-visual"><img id="shop-hero-image" data-fallback-src="/hero-foot.webp" alt="Les couleurs du FC Escalquens"><span class="shop-welcome-label">La collection du club</span></div>
+       </section>
+ 
+       <section class="shop-feature" aria-labelledby="featured-title">
+diff --git a/src/pages/confidentialite/index.astro b/src/pages/confidentialite/index.astro
+index 2fc32f2..d20ddbf 100644
+--- a/src/pages/confidentialite/index.astro
++++ b/src/pages/confidentialite/index.astro
+@@ -9,10 +9,10 @@ import LegalPage from '../../components/LegalPage.astro';
+   <p>Les champs obligatoires sont signalés dans le formulaire. Sans les informations nécessaires à la commande et à sa remise, le club ne peut pas exécuter votre achat. Aucun compte client, profil publicitaire ou abonnement à une newsletter n’est créé.</p>
+   <h2>Quelles données ?</h2><p>Nom, prénom, adresse e-mail, téléphone, nom du licencié et équipe si nécessaires à la remise, articles, tailles, options et personnalisations, montant, référence et état du paiement, modalités et état de remise. Le lien de suivi contient un jeton secret ; seul son hash est stocké en base. Le club ne reçoit ni ne conserve votre numéro de carte bancaire ou son cryptogramme. HelloAsso traite les informations nécessaires au paiement selon sa propre politique.</p>
+   <h2>Inscriptions aux tournois</h2><p>Le club traite les coordonnées du responsable adulte (nom, prénom, e-mail et téléphone), le club, le nom de l’équipe, sa catégorie, les réponses aux questions organisationnelles du formulaire, les conditions acceptées, le montant et l’état du paiement pour gérer votre inscription et son suivi (mesures précontractuelles et exécution du contrat). Ne renseignez aucun nom de joueur ni information médicale dans les questions complémentaires ; elles sont destinées à l’organisation du tournoi. Aucune donnée de carte bancaire n’est recueillie par le club. Les inscriptions et réponses des tournois sont conservées dans une base distincte de celle du site et des commandes boutique. Les responsables habilités des tournois disposent d’un espace distinct de la boutique ; les exports d’inscriptions restent réservés à l’organisation.</p><p>Une inscription en attente de paiement, sans tentative à vérifier, est supprimée 90 jours après sa date limite de paiement. Une inscription payée ou nécessitant une vérification reste conservée selon les besoins de gestion et les obligations applicables décrites ci-dessous. Le club clôt les inscriptions après le tournoi ; les inscriptions closes sont supprimées au plus tard 10 ans après leur clôture. Le lien personnel est conservé sous forme de hash et peut être renvoyé à l’adresse d’inscription, sans compte client.</p>
+-  <h2>Qui peut y accéder ?</h2><p>Les responsables habilités du club accèdent aux commandes dans un espace protégé par Cloudflare Access. Le coach reçoit uniquement les informations utiles à la remise. Intersport/Kappa ou le fournisseur concerné reçoit un bon individuel contenant la référence, les articles, tailles, quantités et personnalisations utiles, sans vos coordonnées de contact. Cloudflare héberge le site et les bases D1 séparées du catalogue et des commandes ; le prestataire d’envoi configuré par le club (OVHcloud pour les envois SMTP OVH) traite l’adresse et le contenu des mails nécessaires au suivi. Aucune donnée n’est vendue.</p>
++  <h2>Qui peut y accéder ?</h2><p>Les responsables habilités du club accèdent aux commandes dans un espace protégé par Cloudflare Access. Le coach reçoit uniquement les informations utiles à la remise. Intersport/Kappa ou le fournisseur concerné reçoit un bon individuel contenant la référence de commande, le nom du client, les articles, tailles, quantités et personnalisations utiles à la préparation, sans votre adresse e-mail ni votre téléphone. Cloudflare héberge le site et les bases D1 séparées du catalogue et des commandes ; le prestataire d’envoi configuré par le club (OVHcloud pour les envois SMTP OVH) traite l’adresse et le contenu des mails nécessaires au suivi. Aucune donnée n’est vendue.</p>
+   <p>Les prestataires peuvent être amenés à traiter des données en dehors de l’Union européenne. Le club doit encadrer ces traitements par les garanties prévues par le RGPD, notamment les accords de sous-traitance et, lorsque nécessaire, les clauses contractuelles types. Vous pouvez demander des informations sur les prestataires effectivement utilisés et les garanties applicables au contact ci-dessus.</p>
+   <h2>Combien de temps ?</h2><ul><li>Le panier est conservé dans le stockage de session de votre navigateur jusqu’à la fermeture de l’onglet ou sa suppression. Les coordonnées du formulaire ne sont pas enregistrées dans ce panier.</li><li>Les commandes de boutique sans paiement ni tentative restant à vérifier sont supprimées après 30 jours. Une tentative de paiement incertaine est conservée le temps de sa vérification.</li><li>Les données nécessaires à la gestion restent disponibles pendant le traitement de la commande, puis sont conservées, avec accès réservé aux responsables, pour les obligations comptables et la défense des droits. Les commandes closes sont supprimées au plus tard 10 ans après leur clôture, sous réserve d’une obligation de conservation spécifique ou d’un litige.</li><li>Le lien de suivi reste valable pendant le traitement de la commande, puis 90 jours après sa clôture. Il peut être révoqué en cas de perte ou de partage involontaire. Un nouveau lien peut être demandé par e-mail.</li><li>Les réponses à l’enquête sont supprimées après 12 mois. Elles ne sont pas publiées et ne conditionnent pas la commande.</li><li>Les traces techniques d’envoi de mails sont supprimées 90 jours après l’envoi ; les compteurs de limitation des tentatives expirent au plus tard après une heure. Les contenus des liens ne sont pas conservés dans ces traces.</li></ul>
+   <h2>Vos droits</h2><p>Vous pouvez demander l’accès, la rectification, l’effacement, la limitation ou, selon le traitement, la portabilité de vos données, ainsi que vous opposer aux traitements fondés sur l’intérêt légitime. Certains justificatifs ne peuvent pas être supprimés avant le terme d’une obligation légale. Le club vérifie votre identité de manière proportionnée en cas de doute. Si vous estimez que vos droits ne sont pas respectés, vous pouvez adresser une réclamation à la <a href="https://www.cnil.fr/fr/plaintes" target="_blank" rel="noopener">CNIL</a>.</p>
+-  <h2>Mails et lien personnel</h2><p>Les mails de confirmation, de paiement et de disponibilité sont nécessaires au suivi de votre achat. Le bouton « Suivre ma commande » ouvre uniquement cette commande, sans compte ni mot de passe. Ne transférez pas ce lien : toute personne qui le possède peut accéder aux informations de suivi. En cas de doute, contactez le club pour le faire révoquer.</p>
++  <h2>Mails et lien personnel</h2><p>Les mails de confirmation, de paiement et de disponibilité sont nécessaires au suivi de votre achat. Les responsables du club reçoivent des notifications de nouvelle commande, d’inscription, de mise à jour du paiement et de nouvel avis de satisfaction dans leur boîte de contact. Ces notifications ne contiennent pas votre lien personnel de suivi. Le bouton « Suivre ma commande » ouvre uniquement cette commande, sans compte ni mot de passe. Ne transférez pas ce lien : toute personne qui le possède peut accéder aux informations de suivi. En cas de doute, contactez le club pour le faire révoquer.</p>
+   <h2>Données publiées et services externes</h2><p>Le site publie uniquement les informations nécessaires à la vie du club. Les coordonnées des bénévoles ne sont affichées que lorsqu’elles ont été autorisées dans l’administration. Les liens vers la FFF, myFFF, Google Maps, Instagram, Tournify ou HelloAsso ouvrent des services soumis à leurs propres politiques de confidentialité.</p>
+ </LegalPage>
+diff --git a/src/pages/tournois/index.astro b/src/pages/tournois/index.astro
+index b6b3daf..bc95b7c 100644
+--- a/src/pages/tournois/index.astro
++++ b/src/pages/tournois/index.astro
+@@ -11,7 +11,7 @@ import Footer from '../../components/Footer.astro';
+     <link rel="stylesheet" href="/styles.css">
+     <link rel="stylesheet" href="/enhancements.css?v=6">
+     <link rel="stylesheet" href="/brand-charter.css">
+-    <link rel="stylesheet" href="/contacts-tournaments.css?v=3"><link rel="stylesheet" href="/shop-commerce.css?v=51"><link rel="stylesheet" href="/tournament-checkout.css?v=526">
++    <link rel="stylesheet" href="/contacts-tournaments.css?v=5213"><link rel="stylesheet" href="/shop-commerce.css?v=51"><link rel="stylesheet" href="/tournament-checkout.css?v=5213">
+   </head>
+   <body>
+     <Header/>
+diff --git a/src/scripts/admin-shop.js b/src/scripts/admin-shop.js
+index 08daef2..a83459a 100644
+--- a/src/scripts/admin-shop.js
++++ b/src/scripts/admin-shop.js
+@@ -8,6 +8,7 @@ import {
+   showError,
+   itemTable,
+   mailStatusList,
++  mailQueueSummary,
+   paymentLabels,
+   fulfillmentLabels,
+   readStorage,
+@@ -16,7 +17,7 @@ const root = document.querySelector("#admin-shop-content"),
+   message = document.querySelector("#admin-shop-message");
+ let listVersion=0;
+ let tab = document.querySelector(".commerce-admin").dataset.page || "orders",
+-  selected = null,
++  selected = /^[a-f0-9-]{36}$/.test(new URLSearchParams(location.search).get("commande")||"")?new URLSearchParams(location.search).get("commande"):null,
+   config = null,
+   page = 0,
+   filters = { q: "", payment: "", fulfillment: "" };
+@@ -92,7 +93,7 @@ async function orderDetail(id, focus = false) {
+     o = data.order;
+   selected = id;
+   document.querySelector("#order-detail").innerHTML =
+-    `<section class="commerce-card commerce-admin-detail" id="commande" tabindex="-1"><div class="commerce-detail-heading"><div><p class="eyebrow">${esc(o.reference)}</p><h2>${esc(o.first_name)} ${esc(o.last_name)}</h2></div><button id="close-order-detail" type="button" class="commerce-secondary">Fermer la fiche ×</button></div><p>${esc(o.email)} · ${esc(o.phone)}<br>${esc(o.licensed_name)} · ${esc(o.team)}<br>Remise ${o.delivery_method === "coach" ? "par le coach" : "sur rendez-vous au club"}</p><div class="commerce-badges"><span class="commerce-badge">${esc(paymentLabels[o.payment_status] || o.payment_status)}</span><span class="commerce-badge">${esc(fulfillmentLabels[o.fulfillment])}</span><span class="commerce-badge">${money(o.total_cents)}</span></div><div class="commerce-actions">${o.payment_status === "paid" && o.fulfillment !== "cancelled" ? `<button type="button" id="purchase-order">Éditer le bon fournisseur individuel ↗</button>` : ""}<button type="button" class="commerce-secondary" data-order-action="reconcile">Vérifier le paiement HelloAsso</button><button type="button" class="commerce-secondary" data-order-action="resend">Renvoyer le suivi / relancer les mails en échec</button></div><p class="commerce-help">Un bon par commande client. Son édition ne marque pas la commande comme envoyée au fournisseur. Les remboursements s’effectuent dans HelloAsso ; ils sont ensuite synchronisés ici.</p><form id="fulfillment-form">${itemTable(data.items, { admin: true })}<div class="commerce-form-grid" style="margin-top:24px"><label>État de préparation<select name="fulfillment">${stateOptions(fulfillmentLabels, o.fulfillment)}</select></label><label>Message destiné au client<textarea name="public_note" maxlength="1000" rows="3">${esc(o.public_note)}</textarea></label><label class="wide">Notes internes — jamais affichées au client<textarea name="internal_note" maxlength="2000" rows="3">${esc(o.internal_note)}</textarea></label></div><p class="commerce-help">Les quantités reçues et remises doivent correspondre à l’état choisi. L’annulation ne déclenche pas de remboursement automatique. Une mise à jour envoie un mail au client.</p><button type="submit">Enregistrer et informer le client →</button></form><div class="commerce-split"><div><h3>Historique</h3><ul class="commerce-timeline">${data.events.map((e) => `<li>${esc(e.message)}<small>${date(e.created_at)} · ${esc(e.actor)}</small></li>`).join("")}</ul></div><div><h3>Envois de mails</h3>${config?.environment!=='production'?`<p class="commerce-mail-context"><strong>Environnement de test</strong><br>Tous les mails sont envoyés à ${esc(config?.configuration?.mail_test_to||'l’adresse MAIL_TEST_TO à configurer')}, même si la commande contient une autre adresse.</p>`:''}${mailStatusList(data.mails)}</div></div><details><summary>Tentatives de paiement et récupération après incident</summary>${data.attempts.map((a) => `<div class="commerce-card"><p>Tentative ${esc(a.id)}<br>État : ${esc(a.state)} · Intention HelloAsso : ${a.intent_id || "non reçue"}<br>${esc(a.last_error)} · ${date(a.created_at)}</p>${!a.intent_id && ["uncertain", "creating"].includes(a.state) ? `<form data-resolve="${esc(a.id)}"><p>Recherchez la demande dans HelloAsso avec la référence de commande. Renseignez son identifiant : l’API vérifiera son rattachement avant toute synchronisation.</p><label>Identifiant de l’intention HelloAsso<input name="intent_id" type="number" min="1" required></label><button type="submit">Rattacher et vérifier</button></form>` : ""}</div>`).join("")}</details><details><summary>Sécurité du lien de suivi</summary><p>Révoquer le lien rend l’ancien inutilisable et envoie un nouveau lien à l’adresse du client.</p><button class="commerce-secondary" type="button" data-order-action="rotate-link">Révoquer et renvoyer le lien</button></details><details><summary>CGV acceptées — ${esc(o.terms_version)}</summary><pre class="commerce-terms">${esc(o.terms_snapshot)}</pre></details></section>`;
++    `<section class="commerce-card commerce-admin-detail" id="commande" tabindex="-1"><div class="commerce-detail-heading"><div><p class="eyebrow">${esc(o.reference)}</p><h2>${esc(o.first_name)} ${esc(o.last_name)}</h2></div><button id="close-order-detail" type="button" class="commerce-secondary">Fermer la fiche ×</button></div><p>${esc(o.email)} · ${esc(o.phone)}<br>${esc(o.licensed_name)} · ${esc(o.team)}<br>Remise ${o.delivery_method === "coach" ? "par le coach" : "sur rendez-vous au club"}</p><div class="commerce-badges"><span class="commerce-badge">${esc(paymentLabels[o.payment_status] || o.payment_status)}</span><span class="commerce-badge">${esc(fulfillmentLabels[o.fulfillment])}</span><span class="commerce-badge">${money(o.total_cents)}</span></div><div class="commerce-actions">${o.payment_status === "paid" && o.fulfillment !== "cancelled" ? `<button type="button" id="purchase-order">Télécharger le bon fournisseur PDF ↓</button>` : ""}<button type="button" class="commerce-secondary" data-order-action="reconcile">Vérifier le paiement HelloAsso</button><button type="button" class="commerce-secondary" data-order-action="resend">Renvoyer le suivi / relancer les mails en échec</button></div><p class="commerce-help">Un bon par commande client. Son édition ne marque pas la commande comme envoyée au fournisseur. Les remboursements s’effectuent dans HelloAsso ; ils sont ensuite synchronisés ici.</p><form id="fulfillment-form">${itemTable(data.items, { admin: true })}<div class="commerce-form-grid" style="margin-top:24px"><label>État de préparation<select name="fulfillment">${stateOptions(fulfillmentLabels, o.fulfillment)}</select></label><label>Message destiné au client<textarea name="public_note" maxlength="1000" rows="3">${esc(o.public_note)}</textarea></label><label class="wide">Notes internes — jamais affichées au client<textarea name="internal_note" maxlength="2000" rows="3">${esc(o.internal_note)}</textarea></label></div><p class="commerce-help">Les quantités reçues et remises doivent correspondre à l’état choisi. L’annulation ne déclenche pas de remboursement automatique. Une mise à jour envoie un mail au client.</p><button type="submit">Enregistrer et informer le client →</button></form><div class="commerce-split"><div><h3>Historique</h3><ul class="commerce-timeline">${data.events.map((e) => `<li>${esc(e.message)}<small>${date(e.created_at)} · ${esc(e.actor)}</small></li>`).join("")}</ul></div><div><h3>Envois de mails</h3>${config?.environment!=='production'?`<p class="commerce-mail-context"><strong>Environnement de test</strong><br>Tous les messages clients et club sont redirigés vers ${esc(config?.configuration?.mail_test_to||'MAIL_TEST_TO à configurer')}. Chaque envoi affiche son destinataire effectif.</p>`:''}${mailStatusList(data.mails)}</div></div><details><summary>Tentatives de paiement et récupération après incident</summary>${data.attempts.map((a) => `<div class="commerce-card"><p>Tentative ${esc(a.id)}<br>État : ${esc(a.state)} · Intention HelloAsso : ${a.intent_id || "non reçue"}<br>${esc(a.last_error)} · ${date(a.created_at)}</p>${!a.intent_id && ["uncertain", "creating"].includes(a.state) ? `<form data-resolve="${esc(a.id)}"><p>Recherchez la demande dans HelloAsso avec la référence de commande. Renseignez son identifiant : l’API vérifiera son rattachement avant toute synchronisation.</p><label>Identifiant de l’intention HelloAsso<input name="intent_id" type="number" min="1" required></label><button type="submit">Rattacher et vérifier</button></form>` : ""}</div>`).join("")}</details><details><summary>Sécurité du lien de suivi</summary><p>Révoquer le lien rend l’ancien inutilisable et envoie un nouveau lien à l’adresse du client.</p><button class="commerce-secondary" type="button" data-order-action="rotate-link">Révoquer et renvoyer le lien</button></details><details><summary>CGV acceptées — ${esc(o.terms_version)}</summary><pre class="commerce-terms">${esc(o.terms_snapshot)}</pre></details></section>`;
+   document.querySelector('#close-order-detail').onclick=()=>{selected=null;document.querySelector('#order-detail').innerHTML='';document.querySelector(`[data-order="${id}"]`)?.focus();};
+   if(focus){const detail=document.querySelector('#commande');detail.focus();detail.scrollIntoView({behavior:'smooth',block:'start'});}
+   document.querySelector("#fulfillment-form").onsubmit = (event) => {
+@@ -154,15 +155,19 @@ async function orderDetail(id, focus = false) {
+           } catch {}
+           throw new Error(data?.error || "Le bon ne peut pas être édité.");
+         }
+-        const blob = new Blob([await result.text()], { type: "text/html" });
++        const data=await result.json();
++        const [{purchaseOrderPdf},logoResponse]=await Promise.all([import('../shop/purchase-order-pdf'),fetch('/logo-fce.png',{redirect:'error'})]);
++        if(!logoResponse.ok)throw new Error('Le logo du club ne peut pas être chargé. Réessayez le téléchargement.');
++        const bytes=await purchaseOrderPdf(data.order,data.items,data.club,new Uint8Array(await logoResponse.arrayBuffer()));
++        const blob=new Blob([bytes],{type:'application/pdf'});
+         const url = URL.createObjectURL(blob);
+         const a = document.createElement("a");
+         a.href = url;
+-        a.download = `bon-${o.reference}.html`;
++        a.download = `bon-${o.reference}.pdf`;
+         a.click();
+         setTimeout(() => URL.revokeObjectURL(url), 60000);
+         notice(
+-          "Bon individuel téléchargé. Ouvrez-le puis imprimez-le en PDF si nécessaire.",
++          "Bon fournisseur PDF téléchargé.",
+         );
+       }),
+     );
+@@ -188,7 +193,7 @@ async function settingsView() {
+   await loadConfig();
+   const s = config.settings,
+     c = config.configuration;
+-  root.innerHTML = `<section class="commerce-card"><h2>Paiement et envoi des confirmations</h2><div class="commerce-message"><strong>${config.availability?.ready?"Paiement ouvert":"Paiement indisponible"}</strong>${config.availability?.ready?' — La boutique peut recevoir des commandes.':' — Vous pouvez enregistrer vos paramètres dès maintenant. Le paiement restera fermé jusqu’à la configuration complète.'}${config.availability?.missing?.length?`<p>À compléter pour ouvrir le paiement :</p><ul>${config.availability.missing.map(item=>`<li>${esc(item.label)}</li>`).join('')}</ul>`:''}</div><p>Environnement imposé par le déploiement : <strong>${config.environment === "sandbox" ? "HelloAsso Sandbox" : "HelloAsso Production"}</strong>. Le navigateur ne peut pas le modifier.</p><div class="commerce-stats"><div>API HelloAsso<strong>${c.credentials ? "Configurée" : "À configurer"}</strong></div><div>Clé de suivi<strong>${c.tracking ? "Configurée" : "À configurer"}</strong></div><div>Transport mail<strong>${esc(c.mail_provider || "Absent")}</strong></div><div>Envoi mail<strong>${c.mail_ready ? "Paramètres présents" : "À configurer"}</strong></div></div><p>Origine : ${esc(config.origin || "non définie")}<br>Expéditeur : ${esc(c.mail_from || "non défini")}<br>Destinataire de test : ${esc(c.mail_test_to || "non défini")}<br>Signature webhook partenaire : ${c.webhook_signature ? "activée" : "non configurée — vérification systématique par l’API OAuth"}</p><div class="commerce-mail-context"><strong>Vérifier les e-mails</strong><p>${config.environment!=="production"?`En staging, tous les envois vont à <strong>${esc(c.mail_test_to||"MAIL_TEST_TO à configurer")}</strong>. L’adresse saisie par le client n’est pas utilisée.`:"Les mails de commande vont à l’adresse du client. Le bouton de test utilise uniquement MAIL_TEST_TO."}</p><p>« Paramètres présents » ne prouve pas l’envoi. Utilisez le test ci-dessous, puis consultez les états d’e-mail dans la fiche de commande. Un refus 401 de Roundcube concerne la connexion au webmail et nécessite une vérification séparée.</p></div><p class="commerce-help">Les clés API et la clé de suivi sont des secrets Worker. Elles ne sont jamais stockées dans les paramètres D1 ni renvoyées au navigateur. Configuration dans la documentation du dépôt : docs/BOUTIQUE.md.</p><p><button id="test-helloasso-connection" type="button">Tester la connexion HelloAsso</button> <button id="test-mail" type="button">Tester l’envoi d’un e-mail</button></p><form id="settings-form" class="commerce-form-grid">${field("organization_slug", "Identifiant de l’association HelloAsso (slug)", s.organization_slug)}${field("contact_email", "E-mail du service boutique", s.contact_email, "email", true)}${field("seller_name", "Nom du vendeur", s.seller_name, "text", true)}${field("seller_id", "RNA / SIRET et mentions fiscales applicables", s.seller_id)}${field("seller_address", "Adresse du vendeur", s.seller_address)}${field("seller_phone", "Téléphone de contact", s.seller_phone)}${field("collection_address", "Adresse du retrait sur rendez-vous", s.collection_address)}${field("delivery_days", "Délai maximal de remise après paiement (jours)", s.delivery_days, "number", true)}${field("collection_instructions", "Comment organiser le retrait au club ?", s.collection_instructions)}<p class="commerce-help wide">Précisez qui contacter et les horaires ou modalités pour convenir d’un rendez-vous. Ces consignes sont affichées aux acheteurs.</p><label class="commerce-check wide"><input type="checkbox" name="legal_ready" ${s.legal_ready ? "checked" : ""}><span>Les coordonnées, conditions de vente, délais, garanties et informations RGPD ont été vérifiés par le club.</span></label><label class="commerce-check wide"><input type="checkbox" name="checkout_enabled" ${s.checkout_enabled ? "checked" : ""}><span>Ouvrir la prise de commandes et le paiement ${config.environment === "production" ? "réel" : "de test"}. Les variantes doivent avoir été vérifiées et l’affichage boutique activé dans Catalogue et visuels.</span></label><div class="wide"><button type="submit">Enregistrer les paramètres</button></div></form></section>`;
++  root.innerHTML = `<section class="commerce-card"><h2>Paiement et envoi des confirmations</h2><div class="commerce-message"><strong>${config.availability?.ready?"Paiement ouvert":"Paiement indisponible"}</strong>${config.availability?.ready?' — La boutique peut recevoir des commandes.':' — Vous pouvez enregistrer vos paramètres dès maintenant. Le paiement restera fermé jusqu’à la configuration complète.'}${config.availability?.missing?.length?`<p>À compléter pour ouvrir le paiement :</p><ul>${config.availability.missing.map(item=>`<li>${esc(item.label)}</li>`).join('')}</ul>`:''}</div><p>Environnement imposé par le déploiement : <strong>${config.environment === "sandbox" ? "HelloAsso Sandbox" : "HelloAsso Production"}</strong>. Le navigateur ne peut pas le modifier.</p><div class="commerce-stats"><div>API HelloAsso<strong>${c.credentials ? "Configurée" : "À configurer"}</strong></div><div>Clé de suivi<strong>${c.tracking ? "Configurée" : "À configurer"}</strong></div><div>Transport mail<strong>${esc(c.mail_provider || "Absent")}</strong></div><div>Envoi mail<strong>${c.mail_ready ? "Paramètres présents" : "À configurer"}</strong></div></div><p>Origine : ${esc(config.origin || "non définie")}<br>Expéditeur : ${esc(c.mail_from || "non défini")}<br>Destinataire de test : ${esc(c.mail_test_to || "non défini")}<br>Signature webhook partenaire : ${c.webhook_signature ? "activée" : "non configurée — vérification systématique par l’API OAuth"}</p><div class="commerce-mail-context"><strong>Vérifier les e-mails</strong><p>${config.environment!=="production"?`En staging, tous les messages clients et club vont à <strong>${esc(c.mail_test_to||"MAIL_TEST_TO à configurer")}</strong>. En production, les clients reçoivent leur suivi et le club reçoit ses propres notifications à ${esc(s.contact_email)}.`:"Les mails de commande vont à l’adresse du client. Le bouton de test utilise uniquement MAIL_TEST_TO."}</p><p>« Paramètres présents » ne prouve pas l’envoi. Utilisez le test ci-dessous, puis consultez les états d’e-mail dans la fiche de commande. Un refus 401 de Roundcube concerne la connexion au webmail et nécessite une vérification séparée.</p></div><p class="commerce-help">Les clés API et la clé de suivi sont des secrets Worker. Elles ne sont jamais stockées dans les paramètres D1 ni renvoyées au navigateur. Configuration dans la documentation du dépôt : docs/BOUTIQUE.md.</p>${mailQueueSummary(config.mail_queue)}<p><button id="test-helloasso-connection" type="button">Tester la connexion HelloAsso</button> <button id="test-mail" type="button">Tester l’envoi d’un e-mail</button></p><form id="settings-form" class="commerce-form-grid">${field("organization_slug", "Identifiant de l’association HelloAsso (slug)", s.organization_slug)}${field("contact_email", "E-mail du service boutique", s.contact_email, "email", true)}${field("seller_name", "Nom du vendeur", s.seller_name, "text", true)}${field("seller_id", "RNA / SIRET et mentions fiscales applicables", s.seller_id)}${field("seller_address", "Adresse du vendeur", s.seller_address)}${field("seller_phone", "Téléphone de contact", s.seller_phone)}${field("collection_address", "Adresse du retrait sur rendez-vous", s.collection_address)}${field("delivery_days", "Délai maximal de remise après paiement (jours)", s.delivery_days, "number", true)}${field("collection_instructions", "Comment organiser le retrait au club ?", s.collection_instructions)}<p class="commerce-help wide">Précisez qui contacter et les horaires ou modalités pour convenir d’un rendez-vous. Ces consignes sont affichées aux acheteurs.</p><label class="commerce-check wide"><input type="checkbox" name="legal_ready" ${s.legal_ready ? "checked" : ""}><span>Les coordonnées, conditions de vente, délais, garanties et informations RGPD ont été vérifiés par le club.</span></label><label class="commerce-check wide"><input type="checkbox" name="checkout_enabled" ${s.checkout_enabled ? "checked" : ""}><span>Ouvrir la prise de commandes et le paiement ${config.environment === "production" ? "réel" : "de test"}. Les variantes doivent avoir été vérifiées et l’affichage boutique activé dans Catalogue et visuels.</span></label><div class="wide"><button type="submit">Enregistrer les paramètres</button></div></form></section>`;
+   document.querySelector('#test-mail').onclick=e=>action(e.target,async()=>{const result=await call('mail/test',{method:'POST'});notice(result.message);});
+   document.querySelector('#test-helloasso-connection').onclick=e=>action(e.target,async()=>{const result=await call('helloasso/test',{method:'POST'});notice(`${result.environment} · ${result.organization_slug} · ${result.can_receive_payments?'Encaissement autorisé':'Association à vérifier'}`);});
+   document.querySelector("#settings-form").onsubmit = (event) => {
+diff --git a/src/scripts/admin-tournaments.js b/src/scripts/admin-tournaments.js
+index 161ce9c..4de81cb 100644
+--- a/src/scripts/admin-tournaments.js
++++ b/src/scripts/admin-tournaments.js
+@@ -137,7 +137,7 @@ async function show(id, focus = false) {
+     )
+     .join(
+       "",
+-    )}</select></label><label>Message visible par le contact<textarea name="public_note" maxlength="1500">${esc(o.public_note)}</textarea></label><label>Note interne au club<textarea name="internal_note" maxlength="3000">${esc(o.internal_note)}</textarea></label><div><button type="submit">Enregistrer et informer le contact</button></div></form><h3>Suivi des e-mails</h3>${tournamentEnvironment!=="production"?'<p class="commerce-mail-context">En staging, tous les mails vont à l’adresse MAIL_TEST_TO configurée sur le Worker, même si le contact a une autre adresse.</p>':""}${mailStatusList(data.mails)}<details><summary>Historique et paiements</summary>${data.events.map((e) => `<p>${date(e.created_at)} · ${esc(e.message)}</p>`).join("")}<h3>Tentatives de paiement</h3>${data.attempts.map((a) => `<p>${esc(a.intent_id || "Sans réponse")} · ${esc(a.state)} · ${esc(a.last_error)}<br><small>Tentative : ${esc(a.id)}</small></p>`).join("")}</details>${
++    )}</select></label><label>Message visible par le contact<textarea name="public_note" maxlength="1500">${esc(o.public_note)}</textarea></label><label>Note interne au club<textarea name="internal_note" maxlength="3000">${esc(o.internal_note)}</textarea></label><div><button type="submit">Enregistrer et informer le contact</button></div></form><h3>Suivi des e-mails</h3>${tournamentEnvironment!=="production"?'<p class="commerce-mail-context">En staging, tous les mails clients et club sont redirigés vers MAIL_TEST_TO. Le destinataire effectif est indiqué pour chaque envoi.</p>':""}${mailStatusList(data.mails)}<details><summary>Historique et paiements</summary>${data.events.map((e) => `<p>${date(e.created_at)} · ${esc(e.message)}</p>`).join("")}<h3>Tentatives de paiement</h3>${data.attempts.map((a) => `<p>${esc(a.intent_id || "Sans réponse")} · ${esc(a.state)} · ${esc(a.last_error)}<br><small>Tentative : ${esc(a.id)}</small></p>`).join("")}</details>${
+     data.attempts.some(
+       (a) => !a.intent_id && ["creating", "uncertain"].includes(a.state),
+     )
+@@ -236,7 +236,7 @@ call("status")
+       }[root.dataset.page] || registrations
+     )();
+   })
+-  .then(() => (message.textContent = ""))
++  .then(async()=>{message.textContent='';const id=new URLSearchParams(location.search).get('inscription');if(root.dataset.page==='registrations'&&/^[a-f0-9-]{36}$/.test(id||''))await show(id,true);})
+   .catch((error) => {
+     message.textContent = error.message;
+     message.focus();
+diff --git a/src/shop/mail.ts b/src/shop/mail.ts
+index 0542f53..9946bff 100644
+--- a/src/shop/mail.ts
++++ b/src/shop/mail.ts
+@@ -31,12 +31,29 @@ export async function queueMail(
+     .bind(id, orderId, kind, now())
+     .run();
+ }
++/** Sandbox always uses the fixed tester, including club notifications. */
++export function mailRecipient(env: ShopEnv, settings: Settings, job: Row, order: Row) {
++  const target=email(job.audience==='club'?settings.contact_email:order.email);
++  if(env.APP_ENV==='production')return target;
++  return email(env.MAIL_TEST_TO);
++}
++async function deliverClubMail(env: ShopEnv, settings: Settings, job: Row, order: Row) {
++  const tournament=order.kind==='tournament';
++  const title=job.kind==='survey'?'Nouvel avis boutique':job.kind==='created'?(tournament?'Nouvelle inscription au tournoi':'Nouvelle commande boutique'):job.kind==='paid'?'Nouveau paiement confirmé':'Mise à jour du paiement';
++  const link=`${origin(env)}/${tournament?'admin-tournois/?inscription=':'admin-boutique/?commande='}${order.id}`;
++  let context='';
++  if(tournament){const r=await env.ORDERS.prepare('SELECT tournament_name,club_name,team_name FROM tournament_registrations WHERE order_id=?').bind(order.id).first<Row>();context=`Tournoi : ${r?.tournament_name||''}\nClub : ${r?.club_name||''}\nÉquipe : ${r?.team_name||''}\n`;}
++  if(job.kind==='survey'){const survey=await env.ORDERS.prepare('SELECT ease,catalogue,overall,comment FROM surveys WHERE order_id=?').bind(order.id).first<Row>();context=`Facilité de commande : ${survey?.ease}/5\nCatalogue : ${survey?.catalogue}/5\nEnsemble : ${survey?.overall}/5\nCommentaire : ${survey?.comment||'Aucun commentaire'}\n`;}
++  const content=`${title}\n\nRéférence : ${order.reference}\nClient / contact : ${order.first_name} ${order.last_name}\n${context}Montant : ${euros(order.total_cents)}\nÉtat du paiement : ${order.payment_status}\n\nOuvrir la fiche dans l’administration sécurisée : ${link}\nConnexion Cloudflare Access requise. Ce mail ne contient aucun lien personnel du client.`;
++  return sendMessage(env,{id:job.id,from:email(env.MAIL_FROM),to:mailRecipient(env,settings,job,order),replyTo:email(settings.contact_email),subject:`${env.APP_ENV==='production'?'':'[TEST] '}[CLUB] ${title} — ${order.reference}`,text:content,html:`<h1>${escapeHtml(title)}</h1><pre style="white-space:pre-wrap;font:inherit">${escapeHtml(content)}</pre>`});
++}
+ export async function deliverMail(
+   env: ShopEnv,
+   settings: Settings,
+   job: Row,
+   order: Row,
+ ) {
++  if(job.audience==='club')return deliverClubMail(env,settings,job,order);
+   const token = await trackingToken(
+     env.TRACKING_SECRET || "",
+     order.id,
+@@ -85,7 +102,7 @@ export async function deliverMail(
+   }
+   // In staging no customer address is used: all messages go to the configured tester.
+   const to =
+-    env.APP_ENV === "production" ? order.email : email(env.MAIL_TEST_TO);
++    mailRecipient(env,settings,job,order);
+   const from = email(env.MAIL_FROM);
+   const subject = `${env.APP_ENV === "production" ? "" : "[TEST] "}${title} — ${order.reference}`;
+   return sendMessage(env, { from, to, replyTo: settings.contact_email, subject, text: content, html: `<div style="font-family:Arial,sans-serif;max-width:650px;margin:auto;color:#291d1d"><h1 style="color:#9f1a1a">${escapeHtml(order.kind === "tournament" ? "Suivi de votre inscription" : title)}</h1><p>${order.kind === "tournament" ? "Inscription" : "Commande"} <strong>${escapeHtml(order.reference)}</strong></p><p>${escapeHtml(state)}</p><p><a style="display:inline-block;background:#9f1a1a;color:white;padding:16px" href="${escapeHtml(link)}">Ouvrir mon suivi</a></p><pre style="white-space:pre-wrap;font:inherit">${escapeHtml(content)}</pre></div>`, id: job.id });
+@@ -121,27 +138,29 @@ export async function testMail(env: ShopEnv, settings: Settings) {
+   });
+ }
+ 
+-export async function drainMail(env: ShopEnv, settings: Settings) {
++export async function drainMail(env: ShopEnv, settings: Settings, limit = 2) {
+   if (!env.ORDERS) return;
+   const jobs = (
+     await env.ORDERS.prepare(
+-      "SELECT * FROM outbox WHERE status IN ('pending','sending') AND available_at<=? AND locked_until<? AND attempts<8 AND EXISTS(SELECT 1 FROM orders o WHERE o.id=outbox.order_id AND o.kind=?) ORDER BY available_at LIMIT 10",
++      "SELECT * FROM outbox WHERE status IN ('pending','sending') AND available_at<=? AND locked_until<? AND attempts<8 AND EXISTS(SELECT 1 FROM orders o WHERE o.id=outbox.order_id AND o.kind=?) ORDER BY available_at,id LIMIT ?",
+     )
+-      .bind(now(), now(),env.ORDER_KIND||"shop")
++      .bind(now(), now(),env.ORDER_KIND||"shop",limit)
+       .all<Row>()
+   ).results;
+-  for (const job of jobs) {
++  const processJob=async (job: Row) => {
+     const claimed = await env.ORDERS.prepare(
+       "UPDATE outbox SET status='sending',locked_until=?,attempts=attempts+1 WHERE id=? AND locked_until<? AND status IN ('pending','sending') RETURNING id",
+     )
+       .bind(now() + 90, job.id, now())
+       .first();
+-    if (!claimed) continue;
++    if (!claimed) return;
+     try {
+       const order = await env.ORDERS.prepare("SELECT * FROM orders WHERE id=?")
+         .bind(job.order_id)
+         .first<Row>();
+       if (!order) throw new Error("ORDER_MISSING");
++      const recipient=mailRecipient(env,settings,job,order);
++      await env.ORDERS.prepare('UPDATE outbox SET recipient=? WHERE id=?').bind(recipient,job.id).run();
+       const messageId = await deliverMail(env, settings, job, order);
+       await env.ORDERS.prepare(
+         "UPDATE outbox SET status='sent',sent_at=?,provider_id=?,last_error='',locked_until=0 WHERE id=?",
+@@ -164,5 +183,11 @@ export async function drainMail(env: ShopEnv, settings: Settings) {
+         )
+         .run();
+     }
+-  }
++  };
++  for(let i=0;i<jobs.length;i+=2)await Promise.all(jobs.slice(i,i+2).map(processJob));
++}
++
++export async function mailQueueStatus(env: ShopEnv) {
++  const rows=(await env.ORDERS.prepare("SELECT audience,status,COUNT(*) count FROM outbox WHERE EXISTS(SELECT 1 FROM orders o WHERE o.id=outbox.order_id AND o.kind=?) GROUP BY audience,status").bind(env.ORDER_KIND||'shop').all<Row>()).results;
++  return {counts:rows};
+ }
+diff --git a/src/shop/purchase-order-pdf.ts b/src/shop/purchase-order-pdf.ts
+new file mode 100644
+index 0000000..de6f308
+--- /dev/null
++++ b/src/shop/purchase-order-pdf.ts
+@@ -0,0 +1,65 @@
++import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
++import { catalogueText } from './catalogue-pdf';
++import type { Row } from './domain';
++import type { Settings } from './terms';
++
++/** One private supplier document per customer order. No retail price or customer contact details. */
++export async function purchaseOrderPdf(order: Row, items: Row[], settings: Pick<Settings,'seller_name'|'seller_address'|'contact_email'|'seller_phone'>, logo: Uint8Array, stamp = new Date()) {
++  const pdf=await PDFDocument.create(), font=await pdf.embedFont(StandardFonts.Helvetica), bold=await pdf.embedFont(StandardFonts.HelveticaBold), image=await pdf.embedPng(logo);
++  pdf.setTitle(`Bon fournisseur - ${order.reference}`);pdf.setAuthor('FC Escalquens');
++  const wine=rgb(.35,.09,.11),gold=rgb(.95,.77,0),ink=rgb(.18,.15,.15),muted=rgb(.43,.39,.36),line=rgb(.88,.85,.82),paper=rgb(.98,.97,.95);
++  const width=595.28,height=841.89,margin=38,usable=width-margin*2;
++  function wrap(value:unknown,w:number,size=10,f:PDFFont=font){
++    const result:string[]=[];
++    for(const paragraph of catalogueText(value).split('\n')){
++      let current='';
++      for(const word of paragraph.split(/\s+/).filter(Boolean)){
++        if(f.widthOfTextAtSize(current+(current?' ':'')+word,size)<=w){current+=(current?' ':'')+word;continue;}
++        if(current)result.push(current);current='';
++        for(const ch of word){if(f.widthOfTextAtSize(current+ch,size)>w){result.push(current);current='';}current+=ch;}
++      }
++      if(current)result.push(current);
++    }
++    return result.length?result:['-'];
++  }
++  const draw=(page:PDFPage,value:unknown,x:number,y:number,size=10,f=font,color=ink)=>page.drawText(catalogueText(value),{x,y,size,font:f,color});
++  let page!:PDFPage,y=0,freshTop=0;
++  const pages:PDFPage[]=[];
++  const columns=[margin,margin+174,margin+239,margin+278];
++  function tableHeader(){page.drawRectangle({x:margin,y:y-25,width:usable,height:25,color:paper});['Article','Taille / modèle','Qté','Personnalisation'].forEach((s,i)=>draw(page,s,columns[i]+8,y-16,8,bold,muted));y-=25;}
++  function nextPage(){
++    page=pdf.addPage([width,height]);pages.push(page);
++    page.drawRectangle({x:0,y:height-100,width,height:100,color:wine});page.drawRectangle({x:0,y:height-104,width,height:4,color:gold});
++    const scale=Math.min(58/image.width,66/image.height);page.drawImage(image,{x:margin,y:height-81,width:image.width*scale,height:image.height*scale});
++    draw(page,'FC ESCALQUENS',114,height-37,12,bold,rgb(1,1,1));draw(page,'BON DE COMMANDE FOURNISSEUR',114,height-61,17,bold,rgb(1,1,1));
++    draw(page,order.reference,margin,height-137,15,bold,wine);draw(page,`Émis le ${stamp.toLocaleDateString('fr-FR',{timeZone:'Europe/Paris'})}`,margin,height-155,9,font,muted);
++    const name=wrap(`Client : ${order.first_name} ${order.last_name}`,usable-24,12,bold);
++    let cy=height-188;for(const text of name){draw(page,text,margin+12,cy,12,bold);cy-=16;}
++    for(const text of wrap([order.licensed_name?`Licencié : ${order.licensed_name}`:'',order.team?`Équipe : ${order.team}`:''].filter(Boolean).join(' - '),usable-24,9)){draw(page,text,margin+12,cy,9,font,muted);cy-=13;}
++    page.drawLine({start:{x:margin,y:cy-5},end:{x:width-margin,y:cy-5},color:line,thickness:1});y=cy-27;
++    const club=[settings.seller_name,settings.contact_email,settings.seller_phone].filter(Boolean).join(' - ');
++    for(const text of wrap(club,usable,9)){draw(page,text,margin,y,9,font,muted);y-=13;}
++    y-=18;tableHeader();freshTop=y;
++  }
++  nextPage();
++  let supplier='';
++  for(const item of items){
++    const group=String(item.supplier||'Fournisseur à préciser');
++    const options=typeof item.options_json==='string'?JSON.parse(item.options_json):item.options||[];
++    const cells=[wrap(item.name,158),wrap(item.size||'Unique',49,9),[String(item.quantity)],wrap(options.length?options.map((o:Row)=>`${o.label}${o.text?' : '+o.text:''}`).join('\n'):'Aucune',usable-294,9)];
++    const count=Math.max(...cells.map(c=>c.length));let offset=0;
++    const fullHeight=count*14+18;
++    if(y<140||(fullHeight>y-100&&fullHeight<=freshTop-100)){nextPage();supplier='';}
++    if(group!==supplier){y-=20;for(const label of wrap(group,usable-16,11,bold)){draw(page,label,margin+8,y,11,bold,wine);y-=14;}y-=2;supplier=group;}
++
++    while(offset<count){
++      if(y<105){nextPage();y-=20;for(const label of wrap(`${supplier} - suite`,usable-16,11,bold)){draw(page,label,margin+8,y,11,bold,wine);y-=14;}y-=2;}
++      const take=Math.min(count-offset,Math.max(1,Math.floor((y-82)/14))),rowHeight=take*14+18;
++      if(offset>0)draw(page,'Suite de l’article',columns[0]+8,y-10,7,font,muted);
++      for(let col=0;col<cells.length;col++)for(let n=0;n<take;n++){const text=cells[col][offset+n];if(text)draw(page,text,columns[col]+8,y-18-n*14,col===0?10:9,col===2?bold:font);}
++      y-=rowHeight;page.drawLine({start:{x:margin,y},end:{x:width-margin,y},thickness:.6,color:line});offset+=take;
++    }
++  }
++  pages.forEach((p,i)=>{p.drawLine({start:{x:margin,y:49},end:{x:width-margin,y:49},color:line,thickness:.5});draw(p,'Une commande client - document de préparation fournisseur',margin,34,8,font,muted);draw(p,`${i+1} / ${pages.length}`,width-margin-35,34,8,font,muted);});
++  return pdf.save();
++}
+diff --git a/src/shop/service.ts b/src/shop/service.ts
+index e751fd2..9543673 100644
+--- a/src/shop/service.ts
++++ b/src/shop/service.ts
+@@ -27,7 +27,7 @@ import {
+   secureHeaders,
+ } from "./security";
+ import { api, safeRedirect, verifiedPayments, connectionStatus } from "./helloasso";
+-import { drainMail, queueMail, testMail } from "./mail";
++import { drainMail, queueMail, testMail, mailQueueStatus } from "./mail";
+ import { mailReady, mailTransportReady } from "./mail-config";
+ import { smtpConfigured } from "./smtp";
+ import { priceLabelStatement } from "./catalogue-pricing";
+@@ -223,7 +223,7 @@ export async function detail(env: ShopEnv, order: Row, admin = false) {
+       "SELECT ease,catalogue,overall,comment,created_at FROM surveys WHERE order_id=?",
+     ).bind(order.id),
+     env.ORDERS.prepare(
+-      "SELECT id,kind,status,attempts,last_error,sent_at FROM outbox WHERE order_id=? ORDER BY available_at DESC",
++      "SELECT id,kind,audience,recipient,status,attempts,last_error,sent_at FROM outbox WHERE order_id=? ORDER BY available_at DESC",
+     ).bind(order.id),
+     env.ORDERS.prepare(
+       "SELECT id,intent_id,provider_order_id,state,created_at,last_error FROM checkout_attempts WHERE order_id=? ORDER BY created_at DESC",
+@@ -902,31 +902,11 @@ async function updateFulfillment(
+   return response({ ok: true });
+ }
+ function purchaseOrder(order: Row, items: Row[], s: Settings) {
+-  return new Response(
+-    `<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Bon ${escapeHtml(order.reference)}</title><style>body{font:14px Arial;max-width:1000px;margin:40px auto;padding:20px;color:#291d1d}h1{color:#9f1a1a}table{border-collapse:collapse;width:100%}th,td{border:1px solid #aaa;padding:12px;text-align:left}small{color:#555}@media print{body{margin:0}}</style><h1>Bon de commande fournisseur</h1><p><strong>${escapeHtml(s.seller_name)}</strong><br>${escapeHtml(s.seller_address)}<br>${escapeHtml(s.contact_email)} — ${escapeHtml(s.seller_phone)}</p><h2>${escapeHtml(order.reference)}</h2><p>Une commande client • Émis le ${new Date().toLocaleDateString("fr-FR")} • Fournisseur(s) : ${escapeHtml([...new Set(items.map((i) => i.supplier))].join(", "))}</p><table><thead><tr><th>Référence fournisseur</th><th>Article / couleur</th><th>Taille</th><th>Qté</th><th>Personnalisation / options</th></tr></thead><tbody>${items
+-      .map(
+-        (i) =>
+-          `<tr><td>${escapeHtml(i.sku)}</td><td>${escapeHtml(i.name)}<br>${escapeHtml(i.color)}</td><td>${escapeHtml(i.size || "Unique")}</td><td>${i.quantity}</td><td>${
+-            JSON.parse(i.options_json)
+-              .map(
+-                (o: Row) =>
+-                  `${escapeHtml(o.label)}${o.text ? ` : <strong>${escapeHtml(o.text)}</strong>` : ""}`,
+-              )
+-              .join("<br>") || "Aucune"
+-          }</td></tr>`,
+-      )
+-      .join(
+-        "",
+-      )}</tbody></table><p>Prix d’achat fournisseur et délai à confirmer par le fournisseur. Les prix de vente client ne constituent pas un tarif fournisseur.</p><p><small>Document réservé à la préparation de cette commande. Aucune adresse e-mail ni téléphone du client n’est transmis. Utilisez la fonction Imprimer du navigateur pour enregistrer un PDF. L’édition de ce document ne marque pas la commande comme transmise.</small></p></html>`,
+-    {
+-      headers: {
+-        ...secureHeaders(),
+-        "content-type": "text/html;charset=UTF-8",
+-        "content-security-policy":
+-          "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'",
+-      },
+-    },
+-  );
++  return response({
++    order:Object.fromEntries(['reference','first_name','last_name','licensed_name','team'].map(key=>[key,order[key]])),
++    items:items.map(item=>Object.fromEntries(['name','supplier','size','quantity','options_json'].map(key=>[key,item[key]]))),
++    club:Object.fromEntries(['seller_name','seller_address','contact_email','seller_phone'].map(key=>[key,s[key as keyof Settings]])),
++  });
+ }
+ async function saveSettings(
+   request: Request,
+@@ -1051,7 +1031,7 @@ export async function maintenance(env: ShopEnv) {
+   )
+     .bind(now() - 120,env.ORDER_KIND||"shop")
+     .run();
+-  await drainMail(env, s);
++  await drainMail(env, s, 10);
+   await env.ORDERS.batch([
+     env.ORDERS.prepare("DELETE FROM rate_limits WHERE expires<?").bind(now()),
+     env.ORDERS.prepare("DELETE FROM surveys WHERE created_at<?").bind(
+@@ -1184,6 +1164,7 @@ export async function shopRoute(
+             environment: environment(env),
+             origin: env.SHOP_ORIGIN || "",
+             availability: await adminShopAvailability(env,s),
++            mail_queue: await mailQueueStatus(env),
+             configuration: {
+               credentials:
+                 !!env.HELLOASSO_CLIENT_ID && !!env.HELLOASSO_CLIENT_SECRET,
+@@ -1284,14 +1265,15 @@ export async function shopRoute(
+               .bind(order.id)
+               .all<Row>()
+           ).results;
++          const document=purchaseOrder(order,items,s);
+           await event(
+             env,
+             order.id,
+             "export",
+             actor,
+-            "Bon de commande fournisseur individuel édité.",
++            "Données du bon fournisseur individuel préparées.",
+           ).run();
+-          return purchaseOrder(order, items, s);
++          return document;
+         }
+         if (match[2] === "reconcile" && request.method === "POST") {
+           await reconcile(env, s, order.id);
+@@ -1521,6 +1503,7 @@ export async function shopRoute(
+             409,
+             "Merci, votre avis a déjà été enregistré.",
+           );
++        ctx.waitUntil(drainMail(env,s));
+         return response({ ok: true });
+       }
+     }
+diff --git a/tests/purchase-order.test.ts b/tests/purchase-order.test.ts
+new file mode 100644
+index 0000000..c4bc091
+--- /dev/null
++++ b/tests/purchase-order.test.ts
+@@ -0,0 +1,24 @@
++import {test} from 'node:test';
++import assert from 'node:assert/strict';
++import {readFileSync} from 'node:fs';
++import {PDFDocument,PDFArray,PDFRawStream,PDFName,PDFDict,decodePDFRawStream} from 'pdf-lib';
++import {purchaseOrderPdf} from '../src/shop/purchase-order-pdf';
++import {defaultSettings} from '../src/shop/terms';
++const logo=new Uint8Array(readFileSync(new URL('../public/logo-fce.png',import.meta.url)));
++function content(pdf:PDFDocument){return pdf.getPages().map(page=>{
++ const streams=page.node.Contents(),refs=streams instanceof PDFArray?streams.asArray():[streams];
++ const data=refs.map(ref=>{const stream=pdf.context.lookup(ref);return stream instanceof PDFRawStream?Buffer.from(decodePDFRawStream(stream).decode()).toString('latin1'):'';}).join('');
++ return [...data.matchAll(/<([0-9a-f]+)>/gi)].map(m=>Buffer.from(m[1],'hex').toString('latin1')).join('');
++}).join('');}
++test('bon fournisseur : PDF avec logo et client, sans référence produit, prix de vente ou contact client',async()=>{
++ const bytes=await purchaseOrderPdf({reference:'FCE-TEST',first_name:'Anaël',last_name:'Durand',licensed_name:'Léa',team:'U13',email:'prive@example.org',phone:'0612345678'},[{supplier:'Intersport / Kappa',name:'Maillot',size:'M',quantity:2,sku:'REF-SUPPRIMEE',unit_cents:123456789,options_json:JSON.stringify([{label:'Initiales',text:'AD'}])}],defaultSettings,logo);
++ assert.equal(Buffer.from(bytes).subarray(0,5).toString(),'%PDF-');const pdf=await PDFDocument.load(bytes),text=content(pdf);
++ assert.match(text,/Client : Anaël Durand/);assert.match(text,/Maillot/);assert.match(text,/Initiales : AD/);assert.doesNotMatch(text,/REF-SUPPRIMEE|123456789|prive@example.org|0612345678|Prix d'achat fournisseur/);
++ const images=pdf.getPage(0).node.Resources()!.lookup(PDFName.of('XObject'),PDFDict);assert.ok(images.keys().length>0);
++});
++test('bon fournisseur : toutes les lignes et personnalisations longues sont conservées sur plusieurs pages',async()=>{
++ const items=Array.from({length:35},(_,i)=>({supplier:'Intersport',name:`Article-${i}`,size:'12 ans',quantity:1,options_json:JSON.stringify([{label:'Texte',text:'X'.repeat(700)+`FIN-${i}`}])}));
++ const pdf=await PDFDocument.load(await purchaseOrderPdf({reference:'FCE-LONG',first_name:'Camille',last_name:'Durand'},items,defaultSettings,logo));
++ assert.ok(pdf.getPageCount()>1);const text=content(pdf);for(let i=0;i<35;i++){assert.ok(text.includes(`Article-${i}`));assert.ok(text.includes(`FIN-${i}`));}
++ for(const page of pdf.getPages())assert.ok(page.node.Resources()!.lookup(PDFName.of('XObject'),PDFDict).keys().length>0);
++});
+diff --git a/tests/shop.test.ts b/tests/shop.test.ts
+index 1509a42..2b5fefc 100644
+--- a/tests/shop.test.ts
++++ b/tests/shop.test.ts
+@@ -24,7 +24,7 @@ import {tournamentEnv,tournamentRoute} from "../src/tournaments/service";
+ import {accessToken,tokenKey} from "../src/shop/helloasso-auth";
+ import { staff } from "../src/shop/security";
+ import { defaultSettings } from "../src/shop/terms";
+-import { drainMail } from "../src/shop/mail";
++import { drainMail, deliverMail, mailRecipient } from "../src/shop/mail";
+ const product = { id: 1, name: "Castolo", active: 1, image_key: "test.webp" };
+ const variant = {
+   id: "v",
+@@ -195,6 +195,7 @@ before(async () => {
+   await TOURNEYS.exec(readFileSync(new URL("../migrations-tournaments/0001_tournaments.sql",import.meta.url),"utf8"));
+   await TOURNEYS.exec(readFileSync(new URL("../migrations-tournaments/0002_registration_sections.sql",import.meta.url),"utf8"));
+   await TOURNEYS.exec(readFileSync(new URL("../migrations-tournaments/0003_cheque_payments.sql",import.meta.url),"utf8"));
++  await TOURNEYS.exec(readFileSync(new URL("../migrations-tournaments/0004_mail_audiences.sql",import.meta.url),"utf8"));
+   await TOURNEYS.exec("INSERT INTO module_imports(id,imported_at) VALUES('v5.2',0)");
+   await TOURNEYS.exec(`INSERT INTO tournaments(id,slug,name,starts_on,categories,status) VALUES(1,'tournoi-u11','Tournoi U11','2027-06-10','["U11"]','open');`);
+   await DB.exec(
+@@ -216,14 +217,7 @@ before(async () => {
+   )
+     .filter((f) => f.endsWith(".sql"))
+     .sort()) {
+-    for (const stmt of readFileSync(
+-      new URL(`../migrations-orders/${file}`, import.meta.url),
+-      "utf8",
+-    )
+-      .split(";")
+-      .map((s) => s.trim())
+-      .filter(Boolean))
+-      await ORDERS.prepare(stmt).run();
++    await ORDERS.exec(readFileSync(new URL(`../migrations-orders/${file}`,import.meta.url),'utf8'));
+   }
+   await DB.prepare(
+     "INSERT INTO shop_variants(id,product_id,label,size,color,sku,supplier,price_cents) VALUES(?,1,'Adulte M','M','Bordeaux','KAPPA-1','Intersport',2300)",
+@@ -260,7 +254,7 @@ before(async () => {
+     EMAIL: {
+       async send(message) {
+         assert.equal(message.to, "tester@example.org");
+-        assert.match(message.text,/\/(boutique|tournois)\/suivi\/#/);
++        if(message.subject.includes("[CLUB]")){assert.match(message.text,/admin-(boutique|tournois)/);assert.doesNotMatch(message.text,/suivi\/#/);}else assert.match(message.text,/\/(boutique|tournois)\/suivi\/#/);
+         if (mailFails) throw new Error("error leaking token http://secret");
+         sent++;
+         return { messageId: `m-${sent}` };
+@@ -509,7 +503,7 @@ test("webhook répétable, vérification API et paiement/confirmation uniques",
+   assert.equal(
+     (
+       await env.ORDERS.prepare(
+-        "SELECT COUNT(*) AS n FROM outbox WHERE kind='paid'",
++        "SELECT COUNT(*) AS n FROM outbox WHERE kind='paid' AND audience='customer'",
+       ).first<any>()
+     ).n,
+     1,
+@@ -526,11 +520,10 @@ test("bon individuel sans coordonnées client et protégé", async () => {
+     ctx,
+   );
+   assert.equal(result?.status, 200);
+-  const html = await result!.text();
+-  assert.match(html, /KAPPA-1/);
+-  assert.match(html, /AD/);
+-  assert.ok(!html.includes("client@example.org"));
+-  assert.ok(!html.includes("0612345678"));
++  const document=await result!.json() as any;
++  assert.equal(document.order.first_name,'Anaël');assert.equal(document.order.last_name,'Test');
++  assert.equal(document.order.email,undefined);assert.equal(document.order.phone,undefined);assert.equal(document.items[0].sku,undefined);assert.equal(document.items[0].unit_cents,undefined);assert.equal(document.order.token_hash,undefined);
++  assert.ok(document.items[0].options_json.includes('AD'));assert.doesNotMatch(JSON.stringify(document),/client@example.org|0612345678|KAPPA-1/);
+ });
+ test("mise à jour atomique, contrôle des quantités et conflit de version", async () => {
+   const initial = await route(
+@@ -1295,7 +1288,7 @@ test('tournois : paiement ultérieur HelloAsso, retour sans secret et validation
+  const payload=checkoutBodies.at(-1);assert.equal(payload.totalAmount,4900);assert.match(payload.returnUrl,/\/paiements\/retour\//);assert.ok(!JSON.stringify(payload).includes(registration.tracking_token));
+  const view=await tournamentApi(path,undefined,{token:registration.tracking_token});assert.equal(view.body.order.payment_status,'pending');assert.equal(view.body.registration.registration_status,'pending');
+  paymentAuthorized=true;const confirmed=await tournamentApi(`${path}/refresh`,{}, {token:registration.tracking_token});assert.equal(confirmed.body.order.payment_status,'paid');assert.equal(confirmed.body.registration.registration_status,'pending');
+- await Promise.allSettled(tasks);await drainMail(env,await settings(env));const jobs=await TOURNEYS.prepare('SELECT status FROM outbox WHERE order_id=?').bind(registration.order_id).all<any>();assert.ok(jobs.results.every((j:any)=>j.status==='sent'));
++ await Promise.allSettled(tasks);await drainMail(env,await settings(env),10);const jobs=await TOURNEYS.prepare('SELECT status FROM outbox WHERE order_id=?').bind(registration.order_id).all<any>();assert.ok(jobs.results.every((j:any)=>j.status==='sent'));
+ });
+ test('tournois : habilitations Cloudflare indépendantes et contrôle des modifications concurrentes',async()=>{
+  const production={...env,APP_ENV:'production',SHOP_ORIGIN:'https://example.org',CF_ACCESS_ISSUER:'https://test.cloudflareaccess.com',CF_ACCESS_SHOP_AUD:'aud',CF_ACCESS_TOURNAMENT_AUD:'tournament-aud'};
+@@ -1534,3 +1527,52 @@ test('mail de test OVH : diagnostic privé des paramètres manquants sans expose
+  const response=await shopRoute(request('/admin-boutique/api/settings',undefined,{admin:true}),valid,ctx);const body=await response!.text();
+  assert.equal(JSON.parse(body).configuration.mail_ready,true);assert.doesNotMatch(body,/private-fixture-password/);
+ });
++
++test('notifications club : déclenchement transactionnel, idempotence et séparation des bases',async()=>{
++ for(const [db,kind,sourceId] of [[ORDERS,'shop',created.order_id],[TOURNEYS,'tournament',registration.order_id]] as const){
++  const source=await db.prepare('SELECT * FROM orders WHERE id=?').bind(sourceId).first<any>();
++  const order={...source,id:crypto.randomUUID(),reference:'NOTIF-'+crypto.randomUUID(),token_hash:crypto.randomUUID(),request_hash:crypto.randomUUID(),paid_at:now()};
++  const columns=Object.keys(order);await db.prepare(`INSERT INTO orders(${columns.join(',')}) VALUES(${columns.map(()=>'?').join(',')})`).bind(...columns.map(k=>order[k])).run();
++  const id='notify:'+order.id;
++  await db.batch([db.prepare("INSERT OR IGNORE INTO outbox(id,order_id,kind,available_at) VALUES(?,?,'created',?)").bind(id,order.id,now()),db.prepare("INSERT OR IGNORE INTO outbox(id,order_id,kind,available_at) VALUES(?,?,'created',?)").bind(id,order.id,now())]);
++  const jobs=(await db.prepare('SELECT * FROM outbox WHERE order_id=?').bind(order.id).all<any>()).results;
++  assert.equal(jobs.length,2);assert.deepEqual(new Set(jobs.map((j:any)=>j.audience)),new Set(['customer','club']));
++  await db.prepare("INSERT INTO outbox(id,order_id,kind,available_at) VALUES(?,?,'paid',?)").bind('paid:'+order.id,order.id,now()).run();
++  assert.equal((await db.prepare("SELECT COUNT(*) n FROM outbox WHERE order_id=? AND audience='club' AND kind='paid'").bind(order.id).first<any>()).n,1);
++  if(kind==='shop'){
++    await db.prepare('INSERT INTO surveys(order_id,ease,catalogue,overall,comment,created_at) VALUES(?,5,4,5,?,?)').bind(order.id,'Très simple <script>alert(1)</script>',now()).run();
++    await db.prepare('INSERT OR IGNORE INTO surveys(order_id,ease,catalogue,overall,comment,created_at) VALUES(?,5,4,5,?,?)').bind(order.id,'Second essai',now()).run();
++    assert.equal((await db.prepare("SELECT COUNT(*) n FROM outbox WHERE order_id=? AND audience='club' AND kind='survey'").bind(order.id).first<any>()).n,1);
++    let notification:any;await deliverMail({...env,EMAIL:{send:async(message:any)=>{notification=message;return {messageId:'survey-notification'};}}},await settings(env),{id:'club:survey:'+order.id,kind:'survey',audience:'club'},order);
++    assert.match(notification.subject,/Nouvel avis boutique/);assert.match(notification.text,/Très simple/);assert.doesNotMatch(notification.html,/<script>/);assert.match(notification.html,/&lt;script&gt;/);
++  }
++  assert.equal((await (kind==='shop'?TOURNEYS:ORDERS).prepare('SELECT COUNT(*) n FROM outbox WHERE order_id=?').bind(order.id).first<any>()).n,0);
++  await db.prepare('DELETE FROM orders WHERE id=?').bind(order.id).run();
++ }
++});
++test('mails clients et club : destinataires distincts en production, aucun lien magique dans la notification club',async()=>{
++ const original=await findOrder(env,created.order_id),s=await settings(env),messages:any[]=[];
++ const probe={...env,APP_ENV:'production',SHOP_ORIGIN:'https://fcescalquens.fr',MAIL_TEST_TO:'tester@example.org',EMAIL:{send:async(message:any)=>{messages.push(message);return {messageId:crypto.randomUUID()};}}};
++ const order={...original,email:'client-seulement@example.org'};
++ await deliverMail(probe,{...s,contact_email:'contact@fcescalquens.fr'},{id:'customer-delivery',kind:'created',audience:'customer'},order);
++ await deliverMail(probe,{...s,contact_email:'contact@fcescalquens.fr'},{id:'club-delivery',kind:'created',audience:'club'},order);
++ assert.equal(messages[0].to,'client-seulement@example.org');assert.equal(messages[1].to,'contact@fcescalquens.fr');assert.match(messages[1].subject,/\[CLUB\].*Nouvelle commande/);assert.doesNotMatch(messages[1].text,/suivi\/#/);assert.match(messages[1].text,/admin-boutique\/\?commande=/);
++ await deliverMail(tournamentEnv(probe),s,{id:'club-registration',kind:'created',audience:'club'},await TOURNEYS.prepare('SELECT * FROM orders WHERE id=?').bind(registration.order_id).first<any>());assert.match(messages[2].subject,/Nouvelle inscription au tournoi/);assert.doesNotMatch(messages[2].text,/suivi\/#/);
++ for(const audience of ['customer','club'])assert.equal(mailRecipient({...probe,APP_ENV:'staging'},{...s,contact_email:'contact@fcescalquens.fr'},{audience},order),'tester@example.org');
++});
++test('mails : l’échec club ne bloque pas le client et les deux reprises sont indépendantes',async()=>{
++ const order=await findOrder(env,created.order_id),s=await settings(env),stamp=now(),customerId='isolation-customer:'+crypto.randomUUID();
++ // Pause unrelated pending messages in this fixture, then restore them after this isolated batch.
++ const pending=(await ORDERS.prepare("SELECT id,available_at FROM outbox WHERE status IN ('pending','sending')").all<any>()).results;
++ await ORDERS.prepare("UPDATE outbox SET available_at=? WHERE status IN ('pending','sending')").bind(stamp+3600).run();
++ try{
++  await ORDERS.prepare("INSERT INTO outbox(id,order_id,kind,available_at) VALUES(?,?,'created',?)").bind(customerId,order.id,stamp).run();
++  const probe={...env,EMAIL:{send:async(message:any)=>{if(message.subject.includes('[CLUB]'))throw new Error('MAIL_SMTP_AUTH');return {messageId:'customer-ok'};}}};
++  await drainMail(probe,s);
++  const jobs=(await ORDERS.prepare('SELECT * FROM outbox WHERE id=? OR id=?').bind(customerId,'club:'+customerId).all<any>()).results;
++  assert.equal(jobs.find((j:any)=>j.audience==='customer').status,'sent');const club=jobs.find((j:any)=>j.audience==='club');assert.equal(club.status,'pending');assert.equal(club.last_error,'MAIL_SMTP_AUTH');assert.equal(club.recipient,env.MAIL_TEST_TO);
++ }finally{
++  await ORDERS.prepare('DELETE FROM outbox WHERE id=? OR id=?').bind(customerId,'club:'+customerId).run();
++  for(const job of pending)await ORDERS.prepare('UPDATE outbox SET available_at=? WHERE id=?').bind(job.available_at,job.id).run();
++ }
++});
+diff --git a/tests/tournament-copy-cli.test.ts b/tests/tournament-copy-cli.test.ts
+index cc8bd0f..9949ea0 100644
+--- a/tests/tournament-copy-cli.test.ts
++++ b/tests/tournament-copy-cli.test.ts
+@@ -15,7 +15,7 @@ function fixture(){
+  for(const file of readdirSync(new URL('../migrations-orders/',import.meta.url)).filter(f=>f.endsWith('.sql')).sort())orders.exec(readFileSync(new URL(`../migrations-orders/${file}`,import.meta.url),'utf8'));
+  orders.close();
+  writeFileSync(join(folder,'node_modules/wrangler/package.json'),JSON.stringify({type:'commonjs'}));
+- const target=new DatabaseSync(join(folder,'TOURNAMENTS.sqlite'));target.exec(readFileSync(new URL('../migrations-tournaments/0001_tournaments.sql',import.meta.url),'utf8'));target.close();
++ const target=new DatabaseSync(join(folder,'TOURNAMENTS.sqlite'));for(const file of readdirSync(new URL('../migrations-tournaments/',import.meta.url)).filter(f=>f.endsWith('.sql')).sort())target.exec(readFileSync(new URL(`../migrations-tournaments/${file}`,import.meta.url),'utf8'));target.close();
+  writeFileSync(join(folder,'node_modules/wrangler/bin/wrangler.js'),String.raw`
+ const {DatabaseSync}=require('node:sqlite');const {readFileSync}=require('node:fs');
+ const args=process.argv.slice(2),db=new DatabaseSync(args[2]+'.sqlite');

@@ -1,3 +1,4 @@
+import {priceMarkup} from "./shop-common.js";
 const shopEsc=value=>String(value??'').replace(/[&<>'"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
 const shopLines=value=>String(value||'').split(/\s*\|\s*|\n+/).map(line=>line.trim()).filter(Boolean);
 const shopRichText=value=>{
@@ -26,7 +27,7 @@ const productMeta=product=>{
 const orderButton=product=>`<div class="product-actions"><button class="product-order" type="button" data-order-product="${product.id}" ${product.sellable?'':'disabled'}>${shopEsc(product.orderLabel||'Commande bientôt disponible')} →</button><button class="product-detail" type="button" data-product-detail="${product.id}">Détails de l’article</button></div>`;
 const productCard=product=>`<article class="shop-product-card" data-shop-product="${product.id}">
   <div class="product-card-visual">${productVisual(product)}</div>
-  <div class="product-card-copy"><small>${shopEsc(product.price_label||'Prix à confirmer')}</small><h3>${shopEsc(product.name)}</h3>${productDescriptions(product)}${productMeta(product)}${orderButton(product)}</div>
+  <div class="product-card-copy">${product.price_markup||`<small>${shopEsc(product.price_label||'Prix à confirmer')}</small>`}<h3>${shopEsc(product.name)}</h3>${productDescriptions(product)}${productMeta(product)}${orderButton(product)}</div>
 </article>`;
 const revealShopHero=media=>{
   const hero=document.querySelector('#shop-hero-image');if(!hero)return;
@@ -58,7 +59,7 @@ async function loadShop(){
   const featuredNode=document.querySelector('#shop-featured'),categoriesNode=document.querySelector('#shop-categories');
   try{
     const [response,commerceResponse]=await Promise.all([fetch('/api/page/shop?v=3'),fetch('/api/shop/catalogue')]);const data=await response.json();const commerce=commerceResponse.ok?await commerceResponse.json():null;
-    for(const p of data.products||[]){const variants=commerce?.variants.filter(v=>v.product_id===p.id)||[],options=commerce?.options.filter(o=>o.product_id===p.id)||[];p.options=options.map(o=>o.label).join('\n');p.sellable=variants.length>0;p.orderLabel=!variants.length?'Tailles et tarifs bientôt disponibles':variants.length>1?(options.length?'Choisir ma taille et personnaliser':'Choisir ma taille'):options.length?'Personnaliser mon article':'Ajouter au panier';if(variants.length){const prices=variants.map(v=>v.price_cents),min=Math.min(...prices),max=Math.max(...prices);const money=n=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(n/100);p.price_label=min!==max?'De '+money(min)+' à '+money(max):money(min);p.price_details='';p.sizes=variants.map(v=>v.label).join('\n');p.options=options.map(o=>o.label+(o.price_cents?' · +'+money(o.price_cents):'')).join('\n');}}
+    for(const p of data.products||[]){const variants=commerce?.variants.filter(v=>v.product_id===p.id)||[],options=commerce?.options.filter(o=>o.product_id===p.id)||[];p.options=options.map(o=>o.label).join('\n');p.sellable=variants.length>0;p.orderLabel=!variants.length?'Tailles et tarifs bientôt disponibles':variants.length>1?(options.length?'Choisir ma taille et personnaliser':'Choisir ma taille'):options.length?'Personnaliser mon article':'Ajouter au panier';p.price_markup=priceMarkup(variants);if(variants.length){const prices=variants.map(v=>v.price_cents),min=Math.min(...prices),max=Math.max(...prices);const money=n=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(n/100);p.price_label=min!==max?'De '+money(min)+' à '+money(max):money(min);p.price_details='';p.sizes=variants.map(v=>v.label).join('\n');p.options=options.map(o=>o.label+(o.price_cents?' · +'+money(o.price_cents):'')).join('\n');}}
     if(!response.ok)throw new Error(data.error||'Boutique indisponible');
     const products=data.products||[],categories=data.categories||[],featured=products.find(product=>Number(product.featured)===1)||products[0];
     window.shopSettings=data.settings||{};
@@ -66,7 +67,7 @@ async function loadShop(){
     if(Number(window.shopSettings.shop_enabled??1)===0)return;
     revealShopHero((data.site_media||[]).find(item=>item.slot==='shop_hero'));
     if(featured){
-      featuredNode.innerHTML=`<div class="featured-visual">${productVisual(featured,true)}<span>À la une</span></div><div class="featured-copy"><small>${shopEsc(featured.price_label||'Prix à confirmer')}</small><h3>${shopEsc(featured.name)}</h3>${productDescriptions(featured)}${productMeta(featured)}${orderButton(featured)}</div>`;
+      featuredNode.innerHTML=`<div class="featured-visual">${productVisual(featured,true)}<span>À la une</span></div><div class="featured-copy">${featured.price_markup||`<small>${shopEsc(featured.price_label||'Prix à confirmer')}</small>`}<h3>${shopEsc(featured.name)}</h3>${productDescriptions(featured)}${productMeta(featured)}${orderButton(featured)}</div>`;
     }else featuredNode.innerHTML='<p class="shop-empty">La sélection de la boutique arrive bientôt.</p>';
     categoriesNode.innerHTML=categories.map((category,categoryIndex)=>{
       const visible=products.filter(product=>String(product.shop_category_id)===String(category.id)).sort((a,b)=>Number(b.highlighted)-Number(a.highlighted));

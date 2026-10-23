@@ -1,5 +1,5 @@
 import { renderVariants } from "./admin-shop-variants.js";
-import { esc, showError, readStorage } from "../../public/shop-common.js";
+import { esc, showError, readStorage, mediaPreview, bindMediaPreviews } from "../../public/shop-common.js";
 const schemas = {
   shop_categories: [
     ["name", "Nom", "text", true],
@@ -133,7 +133,7 @@ export async function renderContent(root, call, notice, collection = "shop_produ
         if (type === "category")
           return `<label>${label}<select name="${name}" required><option value="">Choisir…</option>${categories.map((c) => `<option value="${c.id}" ${String(value) === String(c.id) ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></label>`;
         if (["image", "pdf"].includes(type))
-          return `<label class="wide">${label}<input name="${name}" value="${esc(value)}" maxlength="500" placeholder="Clé du fichier, ou chargez un nouveau fichier"><input type="file" data-content-upload="${name}" accept="${type === "pdf" ? "application/pdf" : "image/jpeg,image/png,image/webp,image/avif,image/gif"}"><small class="commerce-help">${type === "pdf" ? "PDF" : "Image JPG, PNG, WebP, AVIF ou GIF"} · 15 Mo maximum</small><span data-upload-status="${name}" role="status"></span></label>`;
+          return `<label class="wide">${label}${type==="image"?mediaPreview(value,name):""}<input name="${name}" value="${esc(value)}" maxlength="500" placeholder="Clé du fichier, ou chargez un nouveau fichier"><input type="file" data-content-upload="${name}" accept="${type === "pdf" ? "application/pdf" : "image/jpeg,image/png,image/webp,image/avif,image/gif"}"><small class="commerce-help">${type === "pdf" ? "PDF" : "Image JPG, PNG, WebP, AVIF ou GIF"} · 15 Mo maximum</small><span data-upload-status="${name}" role="status"></span></label>`;
         return `<label>${label}<input name="${name}" type="${type}" value="${esc(value)}" ${required ? "required" : ""} ${type === "number" ? 'min="0" step="1"' : 'maxlength="1000"'}></label>`;
       };
     const groups=[
@@ -145,6 +145,7 @@ export async function renderContent(root, call, notice, collection = "shop_produ
     const fields=collection==='shop_products'?groups.map(([title,names])=>`<fieldset class="commerce-editor-group wide"><legend>${title}</legend>${schemas[collection].filter(([name])=>names.includes(name)).map(renderField).join('')}</fieldset>`).join(''):schemas[collection].map(renderField).join('');
     editor.innerHTML = `<form id="content-form" class="commerce-form-grid commerce-card"><h3 class="wide">${row.id ? "Modifier" : "Ajouter"} — ${labels[collection]}</h3>${fields}${collection === "shop_products" ? `<label class="wide">Prix affiché — calculé depuis les tarifs de commande<input id="indicative-price" readonly value="${esc(row.price_label||'Tarif à configurer ci-dessous')}"></label>` : ""}${collection === "shop_products" ? '<p class="commerce-help wide">Une photo est nécessaire pour publier l’article. Les tailles, prix et options se règlent juste en dessous de cette fiche. Le texte court apparaît sur la carte ; la description complète est réservée aux détails. Mise en forme des descriptions : **gras**, *italique*, [bordeaux]texte[/bordeaux], [or]texte[/or].</p>' : ""}<div class="commerce-actions wide"><button type="submit">Enregistrer</button><button type="button" class="commerce-secondary" id="content-cancel">Annuler</button></div></form>${collection === "shop_products" ? '<div id="product-pricing"></div>' : ""}`;
     const form = editor.querySelector("form");
+    bindMediaPreviews(form);
     if(collection==='shop_products') {
       const target=editor.querySelector('#product-pricing');
       if(row.id)renderVariants(target,call,notice,row.id,price=>{const input=editor.querySelector("#indicative-price");if(input)input.value=price||"Tarif à configurer ci-dessous";}).catch(error=>showError(errorNode,error));
@@ -192,6 +193,7 @@ export async function renderContent(root, call, notice, collection = "shop_produ
             if (!response.ok)
               throw new Error(result.error || "Chargement impossible.");
             form.elements[field].value = result.key;
+            form.elements[field].dispatchEvent(new Event("change"));
             status.textContent =
               "Fichier chargé. Enregistrez la fiche pour le publier.";
           } catch (error) {

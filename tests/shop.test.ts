@@ -230,6 +230,7 @@ before(async () => {
     .bind(ids.option)
     .run();
   await DB.exec(readFileSync(new URL('../migrations/0030_shop_suppliers.sql',import.meta.url),'utf8'));
+  await DB.exec(readFileSync(new URL('../migrations/0033_shop_reference_coach_prices.sql',import.meta.url),'utf8'));
   await DB.exec("CREATE TABLE venues(id INTEGER PRIMARY KEY,name TEXT,address TEXT,maps_url TEXT,active INTEGER,display_order INTEGER); INSERT INTO venues VALUES(1,'Stade du club','1 rue du Stade','https://maps.example/stade',1,0);");
   await DB.exec("CREATE TABLE tournaments(id INTEGER PRIMARY KEY,name TEXT,starts_on TEXT,categories TEXT,status TEXT);INSERT INTO tournaments VALUES(1,'Tournoi U11','2027-06-10','[\"U11\"]','open');");
   await DB.exec(readFileSync(new URL('../migrations/0031_tournament_checkout.sql',import.meta.url),'utf8'));
@@ -1575,4 +1576,64 @@ test('mails : l’échec club ne bloque pas le client et les deux reprises sont 
   await ORDERS.prepare('DELETE FROM outbox WHERE id=? OR id=?').bind(customerId,'club:'+customerId).run();
   for(const job of pending)await ORDERS.prepare('UPDATE outbox SET available_at=? WHERE id=?').bind(job.available_at,job.id).run();
  }
+});
+
+test('tarifs coach : code hashé, cookie privé, prix caché, révocation et total serveur', async()=>{
+ await ORDERS.prepare('DELETE FROM rate_limits').run();
+ await ORDERS.prepare('UPDATE settings SET data=? WHERE id=1').bind(JSON.stringify(settingsValue)).run();
+ await DB.prepare('UPDATE shop_settings SET shop_enabled=1').run();
+ await DB.prepare('UPDATE shop_products SET active=1,image_key=\'test.webp\' WHERE id=1').run();
+ await DB.prepare('UPDATE shop_categories SET active=1 WHERE id=1').run();
+ await DB.prepare('UPDATE shop_variants SET active=1,price_cents=2300,catalogue_price_cents=3500,coach_price_cents=1700 WHERE id=?').bind(ids.variant).run();
+ await DB.prepare('UPDATE shop_options SET active=1,price_cents=150 WHERE id=?').bind(ids.option).run();
+ paymentAuthorized=false;providerDown=false;refund=0;
+ const raw=async(path:string,data?:any,cookie='',admin=false,origin='http://localhost:8787')=>{
+   const req=request(path,data,{admin,origin});if(cookie)req.headers.set('cookie',cookie);
+   const result=await shopRoute(req,env,ctx);assert.ok(result);return {status:result.status,headers:result.headers,body:await result.json() as any};
+ };
+ assert.ok([401,403,503].includes((await raw('/admin-boutique/api/coach-code',{action:'generate'})).status));
+ const generated=await raw('/admin-boutique/api/coach-code',{action:'generate'},'',true);assert.equal(generated.status,200,JSON.stringify(generated.body));
+ const conf=await ORDERS.prepare('SELECT * FROM coach_access').first<any>();assert.equal(conf.code_hash.length,64);assert.ok(!JSON.stringify(conf).includes(generated.body.code));
+ const publicCat=await raw('/api/shop/catalogue');let variant=publicCat.body.variants.find((v:any)=>v.id===ids.variant);assert.equal(variant.price_cents,2300);assert.equal(variant.catalogue_price_cents,3500);assert.equal(variant.coach_price_cents,undefined);assert.equal(publicCat.body.pricing_mode,'fce');assert.match(publicCat.headers.get('cache-control')!,/no-store/);
+ assert.equal((await raw('/api/shop/coach/session',{code:generated.body.code},'',false,'https://attacker.example')).status,403);
+ assert.equal((await raw('/api/shop/coach/session',{code:'wrong'})).body.code,'COACH_CODE');
+ const login=await raw('/api/shop/coach/session',{code:generated.body.code});assert.equal(login.status,200);
+ const cookie=login.headers.get('set-cookie')!;assert.match(cookie,/HttpOnly/);assert.match(cookie,/SameSite=Strict/);assert.match(cookie,/Max-Age=28800/);assert.ok(!cookie.includes(generated.body.code));assert.deepEqual(login.body,{ok:true});
+ const session=cookie.split(';')[0],cat=await raw('/api/shop/catalogue',undefined,session);variant=cat.body.variants.find((v:any)=>v.id===ids.variant);assert.equal(cat.body.pricing_mode,'coach');assert.equal(variant.price_cents,1700);assert.equal(variant.price_kind,'coach');
+ assert.ok([401,403,503].includes((await raw('/admin-boutique/api/catalogue',undefined,session)).status));
+ const tampered=session.slice(0,-1)+(session.endsWith('a')?'b':'a');assert.equal((await raw('/api/shop/catalogue',undefined,tampered)).body.pricing_mode,'fce');
+ const expired=session.replace(/=\d+\./,'=1000000000.');assert.equal((await raw('/api/shop/catalogue',undefined,expired)).body.pricing_mode,'fce');
+ assert.equal((await raw('/api/shop/checkout',{...payload(),pricing_mode:'coach',expected_total:3700})).body.code,'COACH_SESSION');
+ assert.equal((await raw('/api/shop/checkout',{...payload(),pricing_mode:'coach',expected_total:1},session)).body.code,'PRICE_CHANGED');
+ const coachOrderPayload={...payload(),pricing_mode:'coach',expected_total:3700};
+ const order=await raw('/api/shop/checkout',coachOrderPayload,session);assert.equal(order.status,200,JSON.stringify(order.body));
+ const saved=await ORDERS.prepare('SELECT total_cents FROM orders WHERE id=?').bind(order.body.order_id).first<any>();assert.equal(saved.total_cents,3700);assert.equal(checkoutBodies.at(-1).totalAmount,3700);
+ await DB.prepare('UPDATE shop_variants SET coach_price_cents=NULL WHERE id=?').bind(ids.variant).run();
+ const fallback=(await raw('/api/shop/catalogue',undefined,session)).body.variants.find((v:any)=>v.id===ids.variant);assert.equal(fallback.price_cents,2300);assert.equal(fallback.price_kind,'fce');
+ const settingsResult=await raw('/admin-boutique/api/settings',undefined,'',true);assert.ok(!JSON.stringify(settingsResult.body).includes(conf.code_hash));assert.ok(!JSON.stringify(settingsResult.body).includes(generated.body.code));
+ const renewed=await raw('/admin-boutique/api/coach-code',{action:'generate'},'',true);assert.equal(renewed.status,200);assert.equal((await raw('/api/shop/catalogue',undefined,session)).body.pricing_mode,'fce');
+ assert.equal((await raw('/api/shop/coach/session',{code:generated.body.code})).body.code,'COACH_CODE');
+ // Existing intent remains idempotent after expiry/rotation; its amount cannot be changed.
+ assert.equal((await raw('/api/shop/checkout',coachOrderPayload)).body.order_id,order.body.order_id);
+ const secureReq=new Request('https://boutique.example/api/shop/coach/session',{method:'POST',headers:{origin:'https://boutique.example','content-type':'application/json'},body:JSON.stringify({code:renewed.body.code})});
+ const secure=await shopRoute(secureReq,{...env,APP_ENV:'staging',SHOP_ORIGIN:'https://boutique.example'},ctx);assert.equal(secure!.status,200);assert.match(secure!.headers.get('set-cookie')!,/^__Host-fce-coach=/);assert.match(secure!.headers.get('set-cookie')!,/; Secure/);assert.doesNotMatch(secure!.headers.get('set-cookie')!,/Domain=/i);
+ await raw('/admin-boutique/api/coach-code',{action:'disable'},'',true);
+ assert.equal((await raw('/api/shop/catalogue')).body.coach_access_enabled,false);
+ await ORDERS.prepare('DELETE FROM rate_limits').run();
+ for(let i=0;i<5;i++)assert.equal((await raw('/api/shop/coach/session',{code:'invalid'})).status,403);
+ assert.equal((await raw('/api/shop/coach/session',{code:'invalid'})).status,429);
+ await ORDERS.prepare('DELETE FROM rate_limits').run();
+});
+
+test('prix facultatifs : validation, effacement et compatibilité des anciennes écritures',async()=>{
+ const supplier=await DB.prepare('SELECT id FROM shop_suppliers WHERE active=1 LIMIT 1').first<any>();
+ const base={product_id:1,label:'Test tarifs',size:'S',supplier_id:supplier.id,price_cents:2000,active:true};
+ const put=async(data:any)=>route(request('/admin-boutique/api/variants',data,{admin:true,method:'PUT'}));
+ const added=await put({...base,catalogue_price_cents:3000,coach_price_cents:1600});assert.equal(added.status,200,JSON.stringify(added.body));
+ const id=added.body.id;
+ assert.equal((await put({...base,id})).status,200);
+ let row=await DB.prepare('SELECT * FROM shop_variants WHERE id=?').bind(id).first<any>();assert.equal(row.catalogue_price_cents,3000);assert.equal(row.coach_price_cents,1600);
+ for(const key of ['catalogue_price_cents','coach_price_cents'])for(const value of [-1,0,1.5,1000001,'bad'])assert.equal((await put({...base,id,[key]:value})).status,400);
+ assert.equal((await put({...base,id,catalogue_price_cents:null,coach_price_cents:''})).status,200);
+ row=await DB.prepare('SELECT * FROM shop_variants WHERE id=?').bind(id).first<any>();assert.equal(row.catalogue_price_cents,null);assert.equal(row.coach_price_cents,null);
 });

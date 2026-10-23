@@ -2,6 +2,7 @@ import {
   api,
   esc,
   money,
+  priceMarkup,
   readStorage,
   saveStorage,
   showError,
@@ -48,6 +49,7 @@ for (const dialog of [productDialog, cartDialog, document.querySelector("#detail
 async function loadCatalogue() {
   catalogue = await api("/api/shop/catalogue");
   persist();
+  coachAccess();
   return catalogue;
 }
 function variantFor(line) {
@@ -96,7 +98,7 @@ function openProduct(id, editIndex = null) {
       })
       .join(
         "",
-      )}<p class="commerce-product-price" id="product-price" aria-live="polite"></p>${options.some(o=>o.requires_text) ? '<p class="commerce-help">Les articles personnalisés ne bénéficient pas du droit de rétractation. Les garanties légales restent applicables.</p>' : ""}<p id="product-error" class="commerce-message" role="alert" hidden></p><button type="submit">${existing ? "Enregistrer les modifications" : "Ajouter au panier"} →</button></form>`;
+      )}<div id="product-price-comparison"></div><p class="commerce-product-price" id="product-price" aria-live="polite"></p>${options.some(o=>o.requires_text) ? '<p class="commerce-help">Les articles personnalisés ne bénéficient pas du droit de rétractation. Les garanties légales restent applicables.</p>' : ""}<p id="product-error" class="commerce-message" role="alert" hidden></p><button type="submit">${existing ? "Enregistrer les modifications" : "Ajouter au panier"} →</button></form>`;
   const form = document.querySelector("#product-form");
   const update = () => {
     for (const o of options.filter((o) => o.requires_text)) {
@@ -113,6 +115,7 @@ function openProduct(id, editIndex = null) {
         .filter((o) => form.elements[`option:${o.id}`].checked)
         .reduce((n, o) => n + o.price_cents, 0);
     const selected = !!form.elements.variant.value;
+    document.querySelector("#product-price-comparison").innerHTML=priceMarkup(variants.filter(v=>v.id===form.elements.variant.value));
     form.querySelector("button[type=submit]").disabled = !selected;
     document.querySelector("#product-price").textContent = selected
       ? money(price * Number(form.elements.quantity.value || 1))
@@ -204,7 +207,7 @@ function renderCart() {
     .map((line, index) => {
       const v = variantFor(line),
         p = catalogue.products.find((p) => p.id === v?.product_id);
-      return `<div class="commerce-cart-line">${p?.image_key?`<img class="commerce-cart-image" src="/media/${encodeURIComponent(p.image_key).replace(/%2F/g,"/")}" alt="">`:'<span class="commerce-cart-placeholder" aria-hidden="true">—</span>'}<div><strong>${esc(p?.name || "Article indisponible")}</strong><small>${esc(v?.label || "Modèle indisponible")}${v?.color?` · ${esc(v.color)}`:""} · Quantité : ${line.quantity}</small>${line.options.map((o) => `<small>${esc(catalogue.options.find((x) => x.id === o.id)?.label || "Option indisponible")}${o.text ? ` : <b>${esc(o.text)}</b>` : ""}</small>`).join("")}${!validLine(line) ? '<p class="commerce-error commerce-message">Cette sélection doit être retirée ou modifiée.</p>' : ""}</div><div class="commerce-cart-price"><strong>${money(unit(line) * line.quantity)}</strong><div class="commerce-actions">${v ? `<button type="button" class="commerce-secondary" data-edit="${index}">Modifier</button>` : ""}<button type="button" class="commerce-secondary" data-remove="${index}">Retirer</button></div></div></div>`;
+      return `<div class="commerce-cart-line">${p?.image_key?`<img class="commerce-cart-image" src="/media/${encodeURIComponent(p.image_key).replace(/%2F/g,"/")}" alt="">`:'<span class="commerce-cart-placeholder" aria-hidden="true">—</span>'}<div><strong>${esc(p?.name || "Article indisponible")}</strong><small>${esc(v?.label || "Modèle indisponible")}${v?.color?` · ${esc(v.color)}`:""} · Quantité : ${line.quantity}${catalogue.pricing_mode==='coach'?` · ${v?.price_kind==='coach'?'Tarif coach':'Tarif FCE'}`:''}</small>${line.options.map((o) => `<small>${esc(catalogue.options.find((x) => x.id === o.id)?.label || "Option indisponible")}${o.text ? ` : <b>${esc(o.text)}</b>` : ""}</small>`).join("")}${!validLine(line) ? '<p class="commerce-error commerce-message">Cette sélection doit être retirée ou modifiée.</p>' : ""}</div><div class="commerce-cart-price"><strong>${money(unit(line) * line.quantity)}</strong><div class="commerce-actions">${v ? `<button type="button" class="commerce-secondary" data-edit="${index}">Modifier</button>` : ""}<button type="button" class="commerce-secondary" data-remove="${index}">Retirer</button></div></div></div>`;
     })
     .join(
       "",
@@ -266,6 +269,7 @@ function renderCart() {
       terms_version: catalogue.terms_version,
       items: cart,
       expected_total: total(),
+      pricing_mode: catalogue.pricing_mode || "fce",
     };
     const bytes = await crypto.subtle.digest(
         "SHA-256",
@@ -317,6 +321,10 @@ function renderCart() {
           sessionStorage.removeItem("fce-checkout-draft");
         } catch {}
       }
+      if(error.code==='COACH_SESSION'){
+        const recovery=document.querySelector('#checkout-recovery');recovery.innerHTML='<button type="button" class="commerce-secondary" id="restore-coach">Renseigner mon code coach</button>';
+        recovery.querySelector('button').onclick=async()=>{cartDialog.close();try{await loadCatalogue();const host=document.querySelector('#coach-access');if(host&&!host.hidden){host.querySelector('details')?.setAttribute('open','');host.scrollIntoView({behavior:'smooth',block:'center'});host.querySelector('input')?.focus();}else toast('Le club a désactivé l’accès coach. Votre panier reste disponible au tarif FCE.');}catch(error){toast(error.message);}};
+      }
       button.disabled = false;
       button.textContent = "Réessayer avec le même panier";
     }
@@ -346,7 +354,7 @@ document.addEventListener("click", async event => {
     if(!p)throw new Error("Cet article n’est plus disponible.");
     const variants=catalogue.variants.filter(v=>v.product_id===p.id),options=catalogue.options.filter(o=>o.product_id===p.id);
     const plain=value=>String(value||'').replace(/\[\/?(?:bordeaux|or)\]/gi,'').replace(/\*\*/g,'');
-    content.innerHTML=`<p class="eyebrow">La fiche de votre équipement</p><h2 id="detail-title">${esc(p.name)}</h2><img class="detail-image" src="/media/${encodeURIComponent(p.image_key).replace(/%2F/g,'/')}" alt="${esc(p.name)}"><p class="detail-description">${esc(plain(p.description||p.short_description||'Le club vous renseignera sur la composition et l’entretien de cet article.'))}</p><h3>Tailles et tarifs</h3><ul>${variants.map(v=>`<li>${esc(v.label)} ${esc(v.color)} <strong>${money(v.price_cents)}</strong></li>`).join('')||'<li>Tarifs de commande à venir.</li>'}</ul>${options.length?`<h3>Personnalisations disponibles</h3><ul>${options.map(o=>`<li>${esc(o.label)} : ${o.price_cents?'+ '+money(o.price_cents):'inclus'}</li>`).join('')}</ul>`:''}${p.delivery_delay?`<p>Délai indicatif : ${esc(p.delivery_delay)}</p>`:''}<button type="button" id="detail-order" ${variants.length?'':'disabled'}>${variants.length?(variants.length===1&&!options.length?"Ajouter au panier":"Choisir ma taille et mes options"):"Tailles et tarifs bientôt disponibles"} →</button>`;
+    content.innerHTML=`<p class="eyebrow">La fiche de votre équipement</p><h2 id="detail-title">${esc(p.name)}</h2><img class="detail-image" src="/media/${encodeURIComponent(p.image_key).replace(/%2F/g,'/')}" alt="${esc(p.name)}"><p class="detail-description">${esc(plain(p.description||p.short_description||'Le club vous renseignera sur la composition et l’entretien de cet article.'))}</p><h3>Tailles et tarifs</h3><ul>${variants.map(v=>`<li>${esc(v.label)} ${esc(v.color)} ${priceMarkup([v])}</li>`).join('')||'<li>Tarifs de commande à venir.</li>'}</ul>${options.length?`<h3>Personnalisations disponibles</h3><ul>${options.map(o=>`<li>${esc(o.label)} : ${o.price_cents?'+ '+money(o.price_cents):'inclus'}</li>`).join('')}</ul>`:''}${p.delivery_delay?`<p>Délai indicatif : ${esc(p.delivery_delay)}</p>`:''}<button type="button" id="detail-order" ${variants.length?'':'disabled'}>${variants.length?(variants.length===1&&!options.length?"Ajouter au panier":"Choisir ma taille et mes options"):"Tailles et tarifs bientôt disponibles"} →</button>`;
     document.querySelector("#detail-order").onclick=()=>{dialog.close();if(variants.length===1 && !options.length){const same=cart.find(i=>i.variant_id===variants[0].id&&!i.options.length);if(same && same.quantity>=30){toast('Maximum 30 exemplaires par article.');return;}if(same)same.quantity++;else cart.push({variant_id:variants[0].id,quantity:1,options:[]});persist();cartDialog.showModal();renderCart();}else openProduct(p.id);};
   }catch(error){content.textContent=error.message;}
 });
@@ -355,3 +363,18 @@ const shopHeader=document.querySelector('.site-header');
 if(shopHeader&&typeof ResizeObserver!=='undefined')new ResizeObserver(()=>document.documentElement.style.setProperty('--shop-header-height',`${shopHeader.getBoundingClientRect().height}px`)).observe(shopHeader);
 
 document.addEventListener('shop-loaded',event=>{const data=event.detail;if(data&&Array.isArray(data.products)&&Array.isArray(data.variants)&&Array.isArray(data.options)){catalogue=data;persist();}});
+
+function coachAccess() {
+  let host=document.querySelector('#coach-access');
+  if(!host){host=document.createElement('section');host.id='coach-access';host.className='shop-coach-access';const target=document.querySelector('#shop-browse');if(!target)return;target.before(host);}
+  if(!catalogue?.coach_access_enabled&&catalogue?.pricing_mode!=='coach'){host.hidden=true;return;}
+  host.hidden=false;
+  if(catalogue.pricing_mode==='coach'){
+    host.innerHTML='<p>Tarifs coach activés <button type="button" class="commerce-secondary" id="coach-logout">Quitter les tarifs coach</button></p>';
+    host.querySelector('button').onclick=async e=>{e.target.disabled=true;try{await api('/api/shop/coach/session',{method:'DELETE'});location.reload();}catch(error){e.target.disabled=false;toast(error.message);}};
+  } else {
+    host.innerHTML='<details><summary>Vous êtes coach ?</summary><form id="coach-code-form"><label>Code transmis par le club<input name="code" type="password" autocomplete="off" maxlength="80" required></label><button type="submit">Accéder aux tarifs coach</button><p class="commerce-help">Accès valable 8 heures sur cet appareil. Les articles sans tarif coach restent au tarif FCE.</p><p role="alert" hidden></p></form></details>';
+    const form=host.querySelector('form');form.onsubmit=async e=>{e.preventDefault();if(!form.reportValidity())return;const button=form.querySelector('button');button.disabled=true;try{await api('/api/shop/coach/session',{method:'POST',data:{code:form.elements.code.value.trim()}});form.reset();location.reload();}catch(error){showError(form.querySelector('[role=alert]'),error);button.disabled=false;}};
+  }
+}
+document.addEventListener('shop-loaded',coachAccess);

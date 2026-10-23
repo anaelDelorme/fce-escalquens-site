@@ -1,5 +1,7 @@
 # Guide technique boutique
 
+**V5.2.14 :** [prix catalogue / FCE / coach, aperçus et installation staging](CORRECTIF-V5.2.14.md).
+
 Pour raccorder la boutique en staging : [HelloAsso Sandbox — pas à pas](HELLOASSO-SANDBOX-PAS-A-PAS.md). Le correctif V5.2.7 supprime les contraintes entre dates du tournoi et le contrôle résiduel des anciens champs médiateur.
 
 **V5.2 :** suivre [TOURNOIS-V5.2.md](TOURNOIS-V5.2.md) pour les tableaux boutique, l’éditeur de formulaire et la migration obligatoire des tournois vers leur D1 dédiée.

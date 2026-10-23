@@ -1,5 +1,5 @@
 import {salesMarkup,bindSales} from "./tournament-sales-fields";
-import { api, esc, money } from "../../public/shop-common.js";
+import { api, esc, money, mediaPreview, bindMediaPreviews } from "../../public/shop-common.js";
 export async function eventEditor(root, call, action) {
   const [{ events, venues = [] },{sales=[]}] = await Promise.all([call("events"),call("sales")]);
   const field = (name, label, value = "", type = "text", required = false) =>
@@ -27,19 +27,23 @@ export async function eventEditor(root, call, action) {
       )
       .join(
         "",
-      )}</select></label><label class="wide">Présentation<textarea name="summary" maxlength="12000" rows="8">${esc(t.summary || "")}</textarea></label>${field("tournify_url", "Lien Tournify (facultatif)", t.tournify_url, "url")}${["image_key", "poster_key", "rules_key"].map((key, i) => `<label>${["Photo du tournoi", "Affiche", "Règlement PDF"][i]}<input name="${key}" value="${esc(t[key] || "")}" maxlength="500"><input type="file" data-upload="${key}" accept="${key === "rules_key" ? "application/pdf" : "image/jpeg,image/png,image/webp"}"><small>Importer un fichier ou conserver sa clé média existante.</small></label>`).join("")}${salesMarkup(sale)}<div class="wide"><button type="submit">Enregistrer le tournoi</button></div></form>`;
+      )}</select></label><label class="wide">Présentation<textarea name="summary" maxlength="12000" rows="8">${esc(t.summary || "")}</textarea></label>${field("tournify_url", "Lien Tournify (facultatif)", t.tournify_url, "url")}${["image_key", "poster_key", "rules_key"].map((key, i) => `<label>${["Photo du tournoi", "Affiche", "Règlement PDF"][i]}${key!=="rules_key"?mediaPreview(t[key],key):""}<input name="${key}" value="${esc(t[key] || "")}" maxlength="500"><input type="file" data-upload="${key}" accept="${key === "rules_key" ? "application/pdf" : "image/jpeg,image/png,image/webp"}"><small>Importer un fichier ou conserver sa clé média existante.</small></label>`).join("")}${salesMarkup(sale)}<div class="wide"><button type="submit">Enregistrer le tournoi</button></div></form>`;
     const form = target.querySelector("form");
+    bindMediaPreviews(form);
     target.querySelector('#cancel-event-edit').onclick=()=>{target.innerHTML='';root.querySelector(t.id?`[data-event="${t.id}"]`:'#new-tournament')?.focus();};
     form.elements.status.value=t.status||"draft";
     const readSales=bindSales(form,sale);
     const updateVenue=()=>{const venue=venues.find(v=>v.id===Number(form.elements.venue_id.value));form.querySelector('[data-venue-address]').textContent=venue?.address||(!form.elements.venue_id.value&&t.venue?`Ancien lieu : ${t.venue}. Sélectionnez un lieu du club pour le rattacher à son adresse.`:'Adresse non renseignée.');};
     form.elements.venue_id.onchange=updateVenue;updateVenue();
+    let uploading=0;
     form.querySelectorAll("[data-upload]").forEach(
       (input) =>
         (input.onchange = () => {
           const file = input.files?.[0];
           if (!file) return;
+          uploading++;form.querySelector("[type=submit]").disabled=true;
           action(input, async () => {
+            try {
             const data = new FormData();
             data.append("file", file);
             const response = await fetch("/admin-tournois/api/upload", {
@@ -58,12 +62,14 @@ export async function eventEditor(root, call, action) {
             if (!response.ok)
               throw new Error(result.error || "Envoi impossible.");
             form.elements[input.dataset.upload].value = result.key;
+            form.elements[input.dataset.upload].dispatchEvent(new Event("change"));
+            } finally {uploading--;form.querySelector("[type=submit]").disabled=uploading>0;}
           });
         }),
     );
     form.onsubmit = (event) => {
       event.preventDefault();
-      if(!form.reportValidity())return;
+      if(uploading||!form.reportValidity())return;
       action(form.querySelector("[type=submit]"), async () => {
         const data = Object.fromEntries(new FormData(form));
         data.venue_id = data.venue_id ? Number(data.venue_id) : null;

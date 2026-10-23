@@ -124,3 +124,31 @@ export function mailQueueSummary(queue={}) {
   const rows=queue.counts||[],count=(audience,status)=>rows.filter(r=>r.audience===audience&&r.status===status).reduce((n,r)=>n+Number(r.count),0);
   return `<div class="commerce-mail-context"><strong>File d’envoi automatique</strong>${['customer','club'].map(a=>`<p>${a==='club'?'Notifications du club':'Messages clients'} : ${count(a,'pending')} en attente · ${count(a,'sending')} en cours · ${count(a,'failed')} en échec · ${count(a,'sent')} acceptés.</p>`).join('')}<p>Le test de connexion mail est indépendant de cette file et n’envoie pas les commandes.</p></div>`;
 }
+
+// Comparisons always refer to the same size/model; no crossed minimum prices.
+export function priceMarkup(variants) {
+  if (!variants.length) return '';
+  const range = values => {
+    const min=Math.min(...values),max=Math.max(...values);
+    return min===max?money(min):`De ${money(min)} à ${money(max)}`;
+  };
+  const kinds=new Set(variants.map(v=>v.price_kind||'fce'));
+  const label=kinds.size>1?'Votre tarif':kinds.has('coach')?'Tarif coach':'Tarif FCE';
+  const references=variants.filter(v=>Number(v.catalogue_price_cents)>0);
+  // A range only compares a complete set; otherwise show it for the selected model.
+  const comparison=references.length===variants.length
+    ? `<span class="shop-price-reference">Prix catalogue : ${esc(range(references.map(v=>v.catalogue_price_cents)))}</span>`:'';
+  return `<div class="shop-prices"><span class="shop-price-applied"><span>${label}</span> <strong>${esc(range(variants.map(v=>v.price_cents)))}</strong></span>${comparison}</div>`;
+}
+
+export function mediaPreview(key, field) {
+  return `<div class="commerce-media-preview"><img data-media-preview="${esc(field)}" ${key?`src="/media/${encodeURIComponent(key).replace(/%2F/g,'/')}"`:'hidden'} alt="Aperçu du visuel"><small data-media-empty="${esc(field)}" ${key?'hidden':''}>Aucun visuel pour le moment.</small></div>`;
+}
+export function bindMediaPreviews(form) {
+  form.querySelectorAll('[data-media-preview]').forEach(image=>{
+    const field=form.elements[image.dataset.mediaPreview],empty=form.querySelector(`[data-media-empty="${image.dataset.mediaPreview}"]`);
+    const update=()=>{const key=field.value.trim();image.hidden=!key;empty.hidden=!!key;empty.textContent='Aucun visuel pour le moment.';if(key)image.src='/media/'+encodeURIComponent(key).replace(/%2F/g,'/');else image.removeAttribute('src');};
+    image.onerror=()=>{image.hidden=true;empty.hidden=false;empty.textContent='Aperçu indisponible. Vérifiez le fichier ou sa clé média.';};
+    field.addEventListener('input',update);field.addEventListener('change',update);
+  });
+}

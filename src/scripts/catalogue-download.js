@@ -17,7 +17,7 @@ button?.addEventListener('click',async()=>{
   button.disabled=true;const initial=button.textContent;button.textContent='Préparation du catalogue…';status.textContent='Lecture des articles disponibles…';
   try{
     const {cataloguePdf}=await import('../shop/catalogue-pdf');
-    const cat=await api('/api/shop/catalogue');if(!cat.products.length)throw new Error('Aucun article n’est visible pour le moment.');const logo=await imagePng('/logo-fce.webp'),products=new Map();let failures=0,completed=0;
+    const cat=await api('/api/shop/catalogue');cat.variants=cat.variants.map(v=>({...v,price_cents:v.fce_price_cents??v.price_cents,price_kind:'fce'}));if(!cat.products.length)throw new Error('Aucun article n’est visible pour le moment.');const logo=await imagePng('/logo-fce.webp'),products=new Map();let failures=0,completed=0;
     // Bounded parallelism avoids decoding all full-resolution photos at once on mobile.
     const queue=[...cat.products];await Promise.all(Array.from({length:Math.min(3,queue.length)},async()=>{while(queue.length){const p=queue.shift();try{products.set(String(p.id),await imagePng('/media/'+encodeURIComponent(p.image_key).replace(/%2F/g,'/')));}catch{failures++;}status.textContent=`Préparation des visuels : ${++completed} / ${cat.products.length}`;}}));
     const bytes=await cataloguePdf(cat,new Date(),{logo,products});const url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));const link=document.createElement('a');link.href=url;link.download='catalogue-fce.pdf';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
