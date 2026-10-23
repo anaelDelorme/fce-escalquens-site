@@ -1,6 +1,6 @@
 # Guide technique boutique
 
-**V5.2.15 :** [comparaison des prix, tri des tailles, tarifs groupés et code coach court](CORRECTIF-V5.2.15.md).
+**V5.2.16 :** [présentation des prix et formulaire coach](CORRECTIF-V5.2.16.md). Pour les tarifs groupés et le tri des tailles : [V5.2.15](CORRECTIF-V5.2.15.md).
 
 Pour raccorder la boutique en staging : [HelloAsso Sandbox — pas à pas](HELLOASSO-SANDBOX-PAS-A-PAS.md). Le correctif V5.2.7 supprime les contraintes entre dates du tournoi et le contrôle résiduel des anciens champs médiateur.
 

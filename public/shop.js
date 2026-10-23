@@ -27,7 +27,7 @@ const productMeta=product=>{
 const orderButton=product=>`<div class="product-actions"><button class="product-order" type="button" data-order-product="${product.id}" ${product.sellable?'':'disabled'}>${shopEsc(product.orderLabel||'Commande bientôt disponible')} →</button><button class="product-detail" type="button" data-product-detail="${product.id}">Détails de l’article</button></div>`;
 const productCard=product=>`<article class="shop-product-card" data-shop-product="${product.id}">
   <div class="product-card-visual">${productVisual(product)}</div>
-  <div class="product-card-copy">${product.price_markup||`<small>${shopEsc(product.price_label||'Prix à confirmer')}</small>`}<h3>${shopEsc(product.name)}</h3>${productDescriptions(product)}${productMeta(product)}${orderButton(product)}</div>
+  <div class="product-card-copy"><h3>${shopEsc(product.name)}</h3>${product.price_markup||`<div class="shop-prices"><span class="shop-price-applied"><span>Tarif FCE</span><strong>${shopEsc(product.price_label||'Prix à confirmer')}</strong></span></div>`}${productDescriptions(product)}${productMeta(product)}${orderButton(product)}</div>
 </article>`;
 const revealShopHero=media=>{
   const hero=document.querySelector('#shop-hero-image');if(!hero)return;
@@ -67,7 +67,7 @@ async function loadShop(){
     if(Number(window.shopSettings.shop_enabled??1)===0)return;
     revealShopHero((data.site_media||[]).find(item=>item.slot==='shop_hero'));
     if(featured){
-      featuredNode.innerHTML=`<div class="featured-visual">${productVisual(featured,true)}<span>À la une</span></div><div class="featured-copy">${featured.price_markup||`<small>${shopEsc(featured.price_label||'Prix à confirmer')}</small>`}<h3>${shopEsc(featured.name)}</h3>${productDescriptions(featured)}${productMeta(featured)}${orderButton(featured)}</div>`;
+      featuredNode.innerHTML=`<div class="featured-visual">${productVisual(featured,true)}<span>À la une</span></div><div class="featured-copy"><h3>${shopEsc(featured.name)}</h3>${featured.price_markup||`<div class="shop-prices"><span class="shop-price-applied"><span>Tarif FCE</span><strong>${shopEsc(featured.price_label||'Prix à confirmer')}</strong></span></div>`}${productDescriptions(featured)}${productMeta(featured)}${orderButton(featured)}</div>`;
     }else featuredNode.innerHTML='<p class="shop-empty">La sélection de la boutique arrive bientôt.</p>';
     categoriesNode.innerHTML=categories.map((category,categoryIndex)=>{
       const visible=products.filter(product=>String(product.shop_category_id)===String(category.id)).sort((a,b)=>Number(b.highlighted)-Number(a.highlighted));

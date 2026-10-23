@@ -54,11 +54,11 @@
 
 
 /* Quiet, explicit comparison: supplier catalogue reference and actual club price. */
-.shop-prices{display:grid;gap:4px;margin:8px 0 12px;font-size:1rem;line-height:1.45}
-.shop-price-applied{color:var(--wine,#671426);display:flex;flex-wrap:wrap;align-items:baseline;gap:8px}
-.shop-price-applied>span{font-size:.85rem;font-weight:600}
-.shop-price-applied>strong{font-size:1.35rem;font-weight:800}
-.shop-price-reference{color:#655d60;font-size:.83rem;font-weight:400}
+.shop-prices{display:grid;gap:6px;margin:14px 0 20px;font:400 14px/1.4 Arial,sans-serif;text-align:left}
+.shop-price-applied{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 12px;color:var(--wine,#671426)}
+.shop-price-applied>strong{order:-1;font-size:27px;line-height:1.2;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap;letter-spacing:-.03em}
+.shop-price-applied>span{font-size:11px;line-height:1.5;font-weight:700;border-bottom:2px solid #d5b74c;padding-bottom:2px}
+.shop-price-reference{color:#71656a;font-size:12px;line-height:1.6}.shop-price-reference strong{font:inherit;font-weight:600;white-space:nowrap}.shop-price-scope{font:inherit;color:#71656a}
 .shop-coach-access{max-width:1200px;margin:16px auto;padding:12px 20px;border-bottom:1px solid #e3d9da}
 .shop-coach-access summary{cursor:pointer;font-weight:600;color:#671426}
 .shop-coach-access form{display:flex;align-items:end;gap:12px;flex-wrap:wrap;padding:16px 0}
@@ -67,16 +67,25 @@
 .commerce-media-preview{display:grid;place-items:center;min-height:100px;padding:12px;margin:8px 0;border:1px solid #e0d5d7;border-radius:12px;background:#faf7f4}
 .commerce-media-preview img{display:block;max-width:100%;width:auto;max-height:240px;object-fit:contain;border-radius:6px}
 .commerce-media-preview [hidden]{display:none}
-@media(max-width:600px){.shop-coach-access form>*{width:100%}.shop-price-applied>strong{font-size:1.2rem}}
+@media(max-width:600px){.shop-coach-access form>*{width:100%}.shop-price-applied>strong{font-size:25px}}
 
-.shop-prices.has-reference{grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch;gap:8px;border-top:1px solid #eadcdf;padding-top:12px;margin-top:12px}
-.shop-prices.has-reference .shop-price-applied{grid-column:2;grid-row:1;display:grid;align-content:start;gap:3px;background:#f8ebd5;border-left:3px solid #b68b27;padding:9px 10px;border-radius:6px}
-.shop-prices.has-reference .shop-price-reference{grid-column:1;grid-row:1;display:grid;align-content:start;gap:3px;padding:9px 0;font-size:.82rem;color:#74666a}
-.shop-price-reference strong{font-size:1.05rem;font-weight:500;color:#74666a}.shop-price-note{grid-column:1/-1;font-size:.73rem;color:#74666a;line-height:1.4}
 .shop-coach-access{scroll-margin-top:160px}.shop-coach-access summary{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}.shop-coach-access summary span{font-size:.85rem;text-decoration:underline;text-underline-offset:3px}
 .commerce-bulk{background:#faf6ee;border:1px solid #e6d8be;border-radius:12px;padding:18px;margin:12px 0 18px}.commerce-bulk h4{margin-top:0}.commerce-bulk>.commerce-actions{margin-bottom:16px}.commerce-size-order{display:flex;gap:6px;margin-top:6px}.commerce-size-order button{min-width:44px;min-height:44px;padding:5px 10px}.commerce-bulk input[type=number]{margin-top:8px}.commerce-bulk [hidden]{display:none}.shop-storefront .commerce-toolbar #open-coach{white-space:nowrap}
-@media(max-width:600px){.shop-prices.has-reference{grid-template-columns:minmax(0,1fr) minmax(0,1.2fr)}.shop-price-applied>strong{font-size:1.1rem}.commerce-bulk{padding:14px}.shop-storefront .commerce-toolbar{gap:8px;flex-wrap:wrap}}
+@media(max-width:600px){.commerce-bulk{padding:14px}.shop-storefront .commerce-toolbar{gap:8px;flex-wrap:wrap}}
 
 .commerce-bulk-dock{position:sticky;bottom:12px;z-index:4;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;background:#fffdf7;border:1px solid #d5bf85;border-radius:10px;padding:10px 14px;box-shadow:0 5px 18px #43202212;margin:10px 0}.commerce-bulk-dock[hidden]{display:none}.commerce-bulk-dock span{font-size:.85rem;font-weight:600}[data-variant-table] input[type=checkbox]{width:24px;height:24px;cursor:pointer}
 
 .commerce-bulk #bulk-prices{grid-template-columns:repeat(3,minmax(0,1fr))}@media(max-width:700px){.commerce-bulk #bulk-prices{grid-template-columns:1fr}}
+
+/* Coach form uses the same controls and focus treatment as the shop checkout. */
+.shop-coach-access form{align-items:flex-end;gap:12px 16px;padding:18px 0 6px}
+.coach-code-entry{width:min(100%,340px)}.coach-code-entry>label{display:block;font-size:13px;font-weight:600;margin-bottom:7px;color:#5e3740}
+.coach-code-field{display:flex;align-items:center;background:#fff;border:1px solid #bba7ae;border-radius:10px;overflow:hidden}
+.shop-coach-access .coach-code-field input{flex:1;min-width:0;width:100%;border:0;border-radius:0;min-height:46px;padding:12px 14px;background:transparent;font:500 16px/1.3 Arial,sans-serif;letter-spacing:.04em;color:#431722}
+.coach-code-field:focus-within{outline:2px solid #a77a16;outline-offset:3px}.shop-coach-access .coach-code-field input:focus{outline:none}
+.shop-coach-access button{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:12px 22px;border:1px solid var(--wine,#671426);border-radius:10px;background:var(--wine,#671426);color:#fff;font:700 14px/1.3 Arial,sans-serif;cursor:pointer;transition:background .15s}
+.shop-coach-access button:hover{background:#46101c}.shop-coach-access button:focus-visible{outline:3px solid #b68b27;outline-offset:3px}.shop-coach-access button:disabled{opacity:.6;cursor:wait}
+.shop-coach-access button.commerce-secondary{background:transparent;color:var(--wine,#671426)}.shop-coach-access button.commerce-secondary:hover{background:#f5e8e4}
+.shop-coach-access #reveal-coach{flex:none;min-height:44px;padding:10px 12px;margin-right:2px;border:0;background:transparent;color:#671426;font-size:12px;font-weight:600;text-decoration:underline;text-underline-offset:3px}.shop-coach-access #reveal-coach:hover{background:#f8f1ed}.shop-coach-access #reveal-coach:focus-visible{outline-offset:-4px}
+.shop-coach-access .commerce-help{font-size:12px;line-height:1.6;color:#71656a;margin-top:2px}
+@media(max-width:600px){.shop-coach-access form>.coach-code-entry{width:100%}.shop-coach-access .coach-code-field #reveal-coach{width:auto}.shop-price-applied>strong{font-size:25px}}

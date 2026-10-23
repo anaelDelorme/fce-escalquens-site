@@ -130,15 +130,18 @@ export function priceMarkup(variants) {
   if (!variants.length) return '';
   const range = values => {
     const min=Math.min(...values),max=Math.max(...values);
-    return min===max?money(min):`De ${money(min)} à ${money(max)}`;
+    const decimals=values.some(n=>n%100!==0)?2:0;
+    const number=n=>new Intl.NumberFormat('fr-FR',{minimumFractionDigits:decimals,maximumFractionDigits:2}).format(n/100);
+    return (min===max?number(min):`${number(min)}–${number(max)}`)+' €';
   };
   const kinds=new Set(variants.map(v=>v.price_kind||'fce'));
   const label=kinds.size>1?'Votre tarif':kinds.has('coach')?'Tarif coach':'Tarif FCE';
   const references=variants.filter(v=>Number(v.catalogue_price_cents)>0);
   const partial=references.length>0&&references.length<variants.length;
+  const scope=partial?sizeSummary(references).replace(/ : /g,' ').replace(/\n/g,' · '):'';
   const comparison=references.length
-    ? `<span class="shop-price-reference"><span>Prix catalogue${partial?' · selon taille':''}</span> <strong>${esc(range(references.map(v=>v.catalogue_price_cents)))}</strong></span>`:'';
-  return `<div class="shop-prices${comparison?' has-reference':''}"><span class="shop-price-applied"><span>${label}</span> <strong>${esc(range(variants.map(v=>v.price_cents)))}</strong></span>${comparison}${partial?`<span class="shop-price-note">Référence catalogue renseignée pour certaines tailles${sizeSummary(references)?' ('+esc(sizeSummary(references).replace(/\n/g,' · '))+')':''}.</span>`:''}</div>`;
+    ? `<span class="shop-price-reference">Prix catalogue <strong>${esc(range(references.map(v=>v.catalogue_price_cents)))}</strong>${partial&&scope?`<span class="shop-price-scope"> · ${esc(scope)}</span>`:''}</span>`:'';
+  return `<div class="shop-prices${comparison?' has-reference':''}"><span class="shop-price-applied"><span>${label}</span> <strong>${esc(range(variants.map(v=>v.price_cents)))}</strong></span>${comparison}</div>`;
 }
 
 export function mediaPreview(key, field) {

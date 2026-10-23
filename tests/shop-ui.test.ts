@@ -158,10 +158,10 @@ test('prix : comparaison discrète, tailles cohérentes et absence de référenc
  assert.doesNotMatch(priceMarkup([{price_cents:2000}]),/Prix catalogue/);
  const exact=priceMarkup([{price_cents:2000,catalogue_price_cents:3000}]);assert.match(exact,/Tarif FCE/);assert.match(exact,/Prix catalogue/);assert.doesNotMatch(exact,/économ|%|promo/i);
  assert.match(priceMarkup([{price_cents:1800,price_kind:'coach'}]),/Tarif coach/);
- const mixed=priceMarkup([{price_cents:2000,catalogue_price_cents:3000},{price_cents:2500,catalogue_price_cents:null}]);assert.match(mixed,/Prix catalogue/);assert.match(mixed,/certaines tailles/);
+ const mixed=priceMarkup([{price_cents:2000,catalogue_price_cents:3000},{price_cents:2500,catalogue_price_cents:null}]);assert.match(mixed,/Prix catalogue/);assert.doesNotMatch(mixed,/Référence catalogue renseignée|certaines tailles/);
  const w=setup({...fixture,variants:fixture.variants.map(v=>({...v,catalogue_price_cents:v.id==='v2'?4000:null}))}),d=w.document;
  d.querySelector<HTMLElement>('[data-order-product="1"]')!.click();await next();
- const select=d.querySelector<HTMLSelectElement>('[name=variant]')!;select.value='v2';select.dispatchEvent(new w.Event('input',{bubbles:true}));assert.match(d.querySelector('#product-price-comparison')!.textContent!,/40,00/);
+ const select=d.querySelector<HTMLSelectElement>('[name=variant]')!;select.value='v2';select.dispatchEvent(new w.Event('input',{bubbles:true}));assert.match(d.querySelector('#product-price-comparison')!.textContent!,/40\s*€/);
  select.value='v1';select.dispatchEvent(new w.Event('input',{bubbles:true}));assert.doesNotMatch(d.querySelector('#product-price-comparison')!.textContent!,/catalogue/);
  await w.happyDOM.abort();w.close();
 });
@@ -241,6 +241,6 @@ test('carte publique : référence catalogue partielle visible avant de choisir 
  const data={products:[{...fixture.products[0],shop_category_id:1}],categories:[{id:1,name:'Tenues'}],settings:{shop_enabled:1}};
  w.fetch=(async(path:any)=>Response.json(String(path).includes('/api/page/')?data:{...fixture,variants})) as any;
  w.eval(readFileSync(new URL('../public/shop-common.js',import.meta.url),'utf8').replace(/export /g,'')+'\n'+readFileSync(new URL('../public/shop.js',import.meta.url),'utf8').replace(/^import[^\n]*\n/,''));await next();await next();
- const card=w.document.querySelector('.shop-product-card')!;assert.match(card.textContent!,/Prix catalogue/);assert.match(card.textContent!,/40,00/);assert.match(card.textContent!,/Tarif FCE/);assert.match(card.textContent!,/Enfant : 6 ans à 14 ans/);assert.match(card.textContent!,/Adulte : XS à 2XL/);assert.doesNotMatch(card.querySelector('.product-meta')!.textContent!,/8 ans/);
+ const card=w.document.querySelector('.shop-product-card')!;assert.match(card.textContent!,/Prix catalogue/);assert.match(card.textContent!,/40\s*€/);assert.match(card.textContent!,/Tarif FCE/);assert.match(card.textContent!,/Enfant : 6 ans à 14 ans/);assert.match(card.textContent!,/Adulte : XS à 2XL/);assert.doesNotMatch(card.querySelector('.product-meta')!.textContent!,/8 ans/);
  await w.happyDOM.abort();w.close();
 });
