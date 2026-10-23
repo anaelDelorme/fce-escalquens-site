@@ -4,7 +4,7 @@ export async function startNewsAdmin(root,transport=fetch){
  let sendImage=null;
  const cropImage=window.installAdminImageCropper?.({upload:input=>sendImage(input),profile:()=>({width:1600,height:900,label:'Annonce accueil · 1600 × 900 · 16:9',mode:'cover'})});
  let rows=[],current=null,dirty=false,uploading=false,saving=false,requestGeneration=0,visibleIds=new Set();
- const auth=()=>{if(!['localhost','127.0.0.1'].includes(location.hostname))return {};let token='';try{token=sessionStorage.getItem('admin-token')||'';}catch{}return token?{'x-admin-token':token}:{};};
+ const auth=()=>{let token='';try{token=sessionStorage.getItem('admin-token')||'';}catch{}return token?{'x-admin-token':token}:{};};
  const report=(value,error=false)=>{message.textContent=value;message.className=error?'news-admin-message-error':'';if(error)message.focus();};
  const api=async(path='',options={})=>{let res;try{res=await transport('/admin/actualites/api/'+path,{credentials:'same-origin',redirect:'error',cache:'no-store',...options,headers:{...auth(),...(options.body&&!(options.body instanceof FormData)?{'content-type':'application/json'}:{}),...options.headers}});}catch{throw new Error('Connexion interrompue. Votre saisie est conservée ; réessayez.');}let data;try{data=await res.json();}catch{throw new Error('Session expirée ou réponse illisible. Rechargez l’administration après avoir conservé votre texte.');}if(!res.ok)throw new Error(data.error||'Opération impossible.');return data;};
  const state=row=>row.status==='draft'?'Brouillon':row.ends_at!=null&&row.ends_at<=Date.now()/1000?'Terminé':row.starts_at!=null&&row.starts_at>Date.now()/1000?'À venir':visibleIds.has(row.id)?'Visible':'En attente (limite de 6 annonces)';
@@ -48,6 +48,8 @@ export async function startNewsAdmin(root,transport=fetch){
   editor.scrollIntoView({behavior:'smooth',block:'start'});form.elements.title.focus();
  }
  root.querySelector('#news-add').onclick=()=>open();
+ window.addEventListener('admin:before-section',event=>{if(root.hidden)return;if(uploading||saving){event.preventDefault();return;}if(dirty&&!confirm('Abandonner les modifications non enregistrées ?')){event.preventDefault();return;}dirty=false;editor.hidden=true;});
+ window.addEventListener('admin:news-refresh',()=>{if(!dirty&&!uploading&&!saving)load();});
  window.addEventListener('beforeunload',event=>{if(dirty||uploading||saving){event.preventDefault();event.returnValue='';}});
  await load();
 }

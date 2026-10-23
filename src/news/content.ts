@@ -20,5 +20,5 @@ export function richText(value:unknown){
 }
 export function card(row:Record<string,any>){
  let link='';try{link=safeLink(row.link_url);}catch{}
- return `<article class="news-card" id="annonce-${Number(row.id)}">${row.image_key?`<img src="/media/${encodeURIComponent(row.image_key).replace(/%2F/g,'/')}" alt="${escapeHtml(row.image_alt)}" loading="lazy" decoding="async" width="960" height="600">`:''}<div class="news-card-copy"><h3>${escapeHtml(row.title)}</h3><div class="news-prose">${richText(row.body)}</div>${link?`<a class="news-link" href="${escapeHtml(link)}">${escapeHtml(row.link_label)} <span aria-hidden="true">→</span></a>`:''}</div></article>`;
+ return `<article class="news-card" id="annonce-${Number(row.id)}" tabindex="-1">${row.image_key?`<img src="/media/${encodeURIComponent(row.image_key).replace(/%2F/g,'/')}" alt="${escapeHtml(row.image_alt)}" loading="lazy" decoding="async" width="960" height="600">`:''}<div class="news-card-copy"><h3>${escapeHtml(row.title)}</h3><div class="news-prose">${richText(row.body)}</div>${link?`<a class="news-link" href="${escapeHtml(link)}">${escapeHtml(row.link_label)} <span aria-hidden="true">→</span></a>`:''}</div></article>`;
 }

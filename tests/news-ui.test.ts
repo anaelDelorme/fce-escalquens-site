@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {Window} from 'happy-dom';
 import {startNewsAdmin} from '../src/scripts/admin-news.js';
-import {card} from '../src/news/content';
+import {card,escapeHtml} from '../src/news/content';
 const next=()=>new Promise(r=>setImmediate(r));
 function setup(){const w=new Window({url:'https://example.org/admin/actualites/',settings:{enableImageFileLoading:false}});w.document.body.innerHTML='<main id="news-admin-root"><button id="news-add"></button><p id="news-admin-message"></p><section id="news-admin-list"></section><section id="news-admin-editor" hidden></section></main>';w.HTMLElement.prototype.scrollIntoView=()=>{};(w as any).installAdminImageCropper=({upload}:any)=>upload;Object.assign(globalThis,{window:w,document:w.document,location:w.location,sessionStorage:w.sessionStorage,FormData:w.FormData,confirm:()=>true});return w;}
 test('annonces DOM : création, aperçu, raccourci tournoi, reprise réseau, publication et retrait',async()=>{
@@ -33,5 +33,37 @@ test('annonces DOM : recadrage annulé conserve la photo et ne déclenche aucun 
  assert.equal(d.querySelector<HTMLButtonElement>('[data-status=published]')!.disabled,true);
  resolveCrop();await next();assert.equal(uploads,0);assert.match(d.querySelector('#news-live-preview img')!.getAttribute('src')!,/existing.webp/);
  assert.equal(d.querySelector<HTMLButtonElement>('[data-status=published]')!.disabled,false);assert.match(d.querySelector('#news-upload-status')!.textContent!,/annulé/);
+ await w.happyDOM.abort();w.close();
+});
+
+test('accueil : titre visible avant le bandeau principal, lien vers l’annonce, plusieurs annonces et retrait',async()=>{
+ const w=new Window({url:'https://example.org/',settings:{enableImageFileLoading:false}});
+ w.document.body.innerHTML='<main><div id="home-news-alert" hidden></div><section class="hero"></section><section id="home-news" hidden><div id="home-news-items"></div></section></main>';
+ let news:any[]=[{id:17,title:'Boutique <FCE>',body:'Ouverture',image_key:'uploads/photo.webp'},{id:18,title:'Tournoi',body:'Inscriptions'}];
+ (w as any).card=card;(w as any).esc=escapeHtml;w.fetch=(async()=>Response.json({news})) as any;
+ w.eval(readFileSync(new URL('../src/scripts/news-public.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/,''));await next();
+ const alert=w.document.querySelector<HTMLElement>('#home-news-alert')!;
+ assert.equal(alert.hidden,false);assert.match(alert.textContent!,/Boutique <FCE>/);assert.equal(alert.querySelector('strong')!.children.length,0);
+ const href=alert.querySelector('a')!.getAttribute('href')!;assert.equal(href,'#annonce-17');assert.ok(w.document.querySelector(href));assert.match(alert.querySelector('.home-news-all')!.textContent!,/1 actualité/);
+ news=[news[1]];w.document.dispatchEvent(new w.Event('visibilitychange'));await next();assert.equal(alert.querySelector('.home-news-all'),null);assert.equal(alert.querySelector('img'),null);
+ news=[];w.document.dispatchEvent(new w.Event('visibilitychange'));await next();assert.equal(alert.hidden,true);assert.equal(w.document.querySelector<HTMLElement>('#home-news')!.hidden,true);
+ await w.happyDOM.abort();w.close();
+});
+
+test('administration : annonces dans le même menu, même bouton Ajouter et abandon protégé avant une autre rubrique',async()=>{
+ const w=setup(),d=w.document;
+ const page=readFileSync(new URL('../src/pages/admin/index.astro',import.meta.url),'utf8');
+ d.body.innerHTML=page.match(/<body>([\s\S]*)<\/body>/)![1].replace(/<script\b[\s\S]*?<\/script>/g,'');
+ w.fetch=(async()=>Response.json([])) as any;
+ w.eval(readFileSync(new URL('../public/admin.js',import.meta.url),'utf8'));
+ await startNewsAdmin(d.querySelector('#news-admin-root'),async()=>Response.json({news:[]}));await next();
+ const initialURL=w.location.pathname;
+ d.querySelector<HTMLElement>('[data-name=news]')!.click();await next();
+ assert.equal(w.location.pathname,initialURL);assert.equal(d.querySelector<HTMLElement>('#news-admin-root')!.hidden,false);assert.match(d.querySelector('#title')!.textContent!,/Annonces/);
+ d.querySelector<HTMLElement>('#new')!.click();assert.ok(d.querySelector('#news-form'));
+ const field=d.querySelector<HTMLInputElement>('[name=title]')!;field.value='Annonce non enregistrée';field.dispatchEvent(new w.Event('input',{bubbles:true}));
+ (globalThis as any).confirm=()=>false;d.querySelector<HTMLElement>('[data-name=venues]')!.click();assert.equal(d.querySelector<HTMLElement>('#news-admin-root')!.hidden,false);assert.equal(field.value,'Annonce non enregistrée');
+ (globalThis as any).confirm=()=>true;d.querySelector<HTMLElement>('[data-name=venues]')!.click();await next();assert.equal(d.querySelector<HTMLElement>('#news-admin-root')!.hidden,true);assert.equal(d.querySelector('#title')!.textContent,'Terrains');
+ assert.doesNotMatch(page,/news\.css|news-admin-main/);assert.match(readFileSync(new URL('../src/pages/admin/actualites/index.astro',import.meta.url),'utf8'),/location.replace\('\/admin\/#news'\)/);
  await w.happyDOM.abort();w.close();
 });

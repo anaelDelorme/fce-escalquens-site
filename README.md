@@ -1,6 +1,6 @@
 # Annonces sur l’accueil
 
-Depuis l’administration du site, la rubrique **Annonces de l’accueil** permet de publier un titre, une image, un texte et un bouton vers un tournoi, la boutique ou des résultats. Installation staging et configuration Access : [docs/CORRECTIF-V5.2.18.md](docs/CORRECTIF-V5.2.18.md).
+Depuis l’administration du site, la rubrique **Annonces de l’accueil** permet de publier un titre, une image, un texte et un bouton vers un tournoi, la boutique ou des résultats. Intégration dans le menu commun et bandeau visible dès l’arrivée sur l’accueil : [docs/CORRECTIF-V5.2.20.md](docs/CORRECTIF-V5.2.20.md).
 
 # Boutique indépendante et paiement HelloAsso
 
