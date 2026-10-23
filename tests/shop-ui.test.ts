@@ -244,3 +244,20 @@ test('carte publique : référence catalogue partielle visible avant de choisir 
  const card=w.document.querySelector('.shop-product-card')!;assert.match(card.textContent!,/Prix catalogue/);assert.match(card.textContent!,/40\s*€/);assert.match(card.textContent!,/Tarif FCE/);assert.match(card.textContent!,/Enfant : 6 ans à 14 ans/);assert.match(card.textContent!,/Adulte : XS à 2XL/);assert.doesNotMatch(card.querySelector('.product-meta')!.textContent!,/8 ans/);
  await w.happyDOM.abort();w.close();
 });
+
+test('dupliquer DOM : bouton par article, reprise réseau sans doublon et ouverture de la copie masquée',async()=>{
+ const w=new Window({url:'https://example.org/admin-boutique/articles/'});w.document.body.innerHTML='<p id="admin-shop-message"></p><div id="root"></div>';w.HTMLElement.prototype.scrollIntoView=()=>{};
+ Object.assign(globalThis,{document:w.document,location:w.location,sessionStorage:w.sessionStorage,FormData:w.FormData});
+ const rows:any[]=[{id:1,name:'Maillot',slug:'maillot',active:1,image_key:'m.webp',shop_category_id:1}],keys:string[]=[],created=new Map<string,number>();let first=true;const notices:string[]=[];
+ const call=async(path:string,options:any={})=>{
+  if(path==='products/1/duplicate'){const key=options.data.idempotency_key;keys.push(key);if(!created.has(key)){const id=rows.length+1;created.set(key,id);rows.push({...rows[0],id,slug:'copie-'+key,name:'Maillot (copie)',active:0,featured:0,highlighted:0});}if(first){first=false;throw new Error('Connexion interrompue. Réessayez.');}return {id:created.get(key)};}
+  if(path==='content/shop_products')return structuredClone(rows);if(path==='content/shop_categories')return [{id:1,name:'Textile',active:1}];if(path==='suppliers')return {suppliers:[]};if(path==='catalogue')return {products:rows,variants:rows.map(r=>({id:'size'+r.id,product_id:r.id,label:'M',size:'M',price_cents:2500,active:1})),options:[]};throw new Error(path);
+ };
+ await renderContent(w.document.querySelector('#root'),call,message=>notices.push(message),'shop_products');
+ const d=w.document,filter=d.querySelector<HTMLSelectElement>('#content-visibility')!;filter.value='1';filter.dispatchEvent(new w.Event('change'));
+ d.querySelector<HTMLElement>('[data-duplicate-product="1"]')!.click();await next();assert.match(d.querySelector('#admin-shop-message')!.textContent!,/Connexion interrompue/);assert.equal(rows.length,2);
+ d.querySelector<HTMLElement>('[data-duplicate-product="1"]')!.click();await next();await next();assert.equal(keys[0],keys[1]);assert.equal(rows.length,2);assert.equal(filter.value,'');
+ const input=d.querySelector<HTMLInputElement>('#content-form [name=name]')!;assert.equal(input.value,'Maillot (copie)');assert.equal((d.querySelector('#content-form [name=active]') as HTMLInputElement).checked,false);assert.equal(d.activeElement,input);assert.equal(rows[0].active,1);assert.match(notices.at(-1)!,/copie est masquée/);assert.ok(d.querySelector('#product-pricing'));
+ d.querySelector<HTMLElement>('[data-duplicate-product="1"]')!.click();await next();await next();assert.notEqual(keys[2],keys[1]);assert.equal(rows.length,3);
+ await w.happyDOM.abort();w.close();
+});

@@ -1,3 +1,4 @@
+import {duplicateProduct} from "./duplicate-product";
 import {sortVariants,changeVariants} from "./variant-order";
 import {coachConfiguration,coachSession,coachLogin,coachLogout,changeCoachCode,refreshCoachCookie} from "./coach-access";
 import {
@@ -1115,6 +1116,8 @@ export async function shopRoute(
     if (!["GET", "HEAD"].includes(request.method)) sameOrigin(request, env);
     if (isAdmin) {
       const actor = await staff(request, env);
+      const duplicate=path.match(/^\/admin-boutique\/api\/products\/(\d+)\/duplicate$/);
+      if(duplicate){if(request.method!=='POST')fail('METHOD',405,'Utilisez le bouton Dupliquer de la fiche article.');return await duplicateProduct(request,env,integer(Number(duplicate[1]),1,Number.MAX_SAFE_INTEGER),actor);}
       if(path==='/admin-boutique/api/coach-code'&&request.method==='POST')return await changeCoachCode(request,env,actor);
       if(path==='/admin-boutique/api/suppliers') {
         if(request.method==='GET')return response({suppliers:(await env.DB.prepare('SELECT * FROM shop_suppliers ORDER BY active DESC,name COLLATE NOCASE').all<Row>()).results});

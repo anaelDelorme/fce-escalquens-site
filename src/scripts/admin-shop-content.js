@@ -46,6 +46,7 @@ export async function renderContent(root, call, notice, collection = "shop_produ
     rows = [],
     categories = [];
   let categoryFilter="", visibilityFilter="", searchFilter="", commerce={variants:[],options:[]};
+  const duplicateKeys=new Map();
   root.innerHTML = `<section class="commerce-card"><h2>${labels[collection]}</h2><p>${collection==='shop_products'?'Une fiche rassemble la photo, les textes, les tailles, les tarifs et les personnalisations. Les textes courts et les détails ont chacun leur emplacement.':collection==='shop_categories'?'Classez votre collection. Masquer une catégorie masque aussi ses articles dans la boutique et le catalogue PDF.':'Gérez la présentation générale de la boutique.'}</p><div class="commerce-filters">${["shop_products","shop_categories"].includes(collection)?'<label>Rechercher<input id="content-search" type="search" placeholder="Nom de l’article ou de la catégorie…"></label>':""}${collection==='shop_products'?'<label>Catégorie<select id="content-category"><option value="">Toutes les catégories</option></select></label>':''}${['shop_categories','shop_products'].includes(collection)?'<label>Visibilité<select id="content-visibility"><option value="">Tous</option><option value="1">Visibles</option><option value="0">Masqués</option></select></label>':''}<button type="button" id="content-add">+ Ajouter ${collection==='shop_products'?'un article':'une catégorie'}</button></div><p id="content-result-count" class="commerce-help" role="status" aria-live="polite"></p><div id="content-list"></div><div id="content-editor"></div></section>`;
   root.querySelector('#content-search')?.addEventListener('input',event=>{searchFilter=event.target.value;renderList();});
   const list = root.querySelector("#content-list"),
@@ -86,8 +87,23 @@ export async function renderContent(root, call, notice, collection = "shop_produ
     root.querySelector('#content-result-count').textContent=`${filtered.length} élément(s) affiché(s) sur ${rows.length}`;
     list.innerHTML=filtered.map(row=>{
       const category=categories.find(c=>c.id===row.shop_category_id), variants=commerce.variants.filter(v=>v.product_id===row.id && v.active);
-      return `<article class="commerce-catalogue-row"><div>${row.image_key?`<img src="/media/${encodeURIComponent(row.image_key).replace(/%2F/g,'/')}" width="88" height="88" alt="">`:''}</div><div><strong>${esc(row.name||labels[collection])}</strong>${category?`<small>${esc(category.name)}</small>`:''}<p class="commerce-row-badges">${["shop_products","shop_categories"].includes(collection)?`<span class="commerce-badge">${visible(row)?'Visible':'Masqué'}</span>`:""}${collection==='shop_products'?`<span class="commerce-badge">${variants.length?variants.length+' taille(s) configurée(s)':'Tarifs à configurer'}</span>`:''}</p>${row.active && collection==='shop_products' && category?.active===0?'<small>La catégorie est masquée.</small>':''}</div><div class="commerce-actions"><button type="button" class="commerce-secondary" data-edit-content="${row.id}">Modifier la fiche</button>${['shop_categories','shop_products'].includes(collection)?`<button type="button" class="commerce-secondary" data-toggle-content="${row.id}">${row.active?'Masquer':'Rendre visible'}</button><button type="button" class="commerce-secondary" data-delete-content="${row.id}">Supprimer</button>`:''}</div></article>`;
+      return `<article class="commerce-catalogue-row"><div>${row.image_key?`<img src="/media/${encodeURIComponent(row.image_key).replace(/%2F/g,'/')}" width="88" height="88" alt="">`:''}</div><div><strong>${esc(row.name||labels[collection])}</strong>${category?`<small>${esc(category.name)}</small>`:''}<p class="commerce-row-badges">${["shop_products","shop_categories"].includes(collection)?`<span class="commerce-badge">${visible(row)?'Visible':'Masqué'}</span>`:""}${collection==='shop_products'?`<span class="commerce-badge">${variants.length?variants.length+' taille(s) configurée(s)':'Tarifs à configurer'}</span>`:''}</p>${row.active && collection==='shop_products' && category?.active===0?'<small>La catégorie est masquée.</small>':''}</div><div class="commerce-actions"><button type="button" class="commerce-secondary" data-edit-content="${row.id}">Modifier la fiche</button>${collection==='shop_products'?`<button type="button" class="commerce-secondary" data-duplicate-product="${row.id}" aria-label="Dupliquer ${esc(row.name)}">Dupliquer</button>`:""}${['shop_categories','shop_products'].includes(collection)?`<button type="button" class="commerce-secondary" data-toggle-content="${row.id}">${row.active?'Masquer':'Rendre visible'}</button><button type="button" class="commerce-secondary" data-delete-content="${row.id}">Supprimer</button>`:''}</div></article>`;
     }).join('')||'<p>Aucun élément pour ces filtres.</p>';
+    list.querySelectorAll('[data-duplicate-product]').forEach(button=>button.onclick=()=>run(button,async()=>{
+      const id=Number(button.dataset.duplicateProduct);
+      if(!duplicateKeys.has(id))duplicateKeys.set(id,crypto.randomUUID());
+      button.setAttribute('aria-busy','true');button.textContent='Duplication…';
+      try{
+        const copied=await call(`products/${id}/duplicate`,{method:'POST',data:{idempotency_key:duplicateKeys.get(id)}});
+        visibilityFilter='';searchFilter='';root.querySelector('#content-visibility').value='';root.querySelector('#content-search').value='';
+        await load();
+        const row=rows.find(r=>r.id===Number(copied.id));
+        if(!row)throw new Error('La copie est enregistrée, mais la liste n’a pas pu l’afficher. Rechargez les articles pour la retrouver.');
+        edit(row);editor.querySelector('[name=name]')?.focus();editor.querySelector('[name=name]')?.select();
+        duplicateKeys.delete(id);
+        notice('Article dupliqué avec ses tailles, tarifs et personnalisations. La copie est masquée : vérifiez-la avant de la publier.');
+      }finally{button.removeAttribute('aria-busy');button.textContent='Dupliquer';}
+    }));
     list.querySelectorAll('[data-toggle-content]').forEach(button=>button.onclick=()=>run(button,async()=>{
       const row=rows.find(r=>r.id===Number(button.dataset.toggleContent));
       if(collection==='shop_products' && !row.active && !row.image_key)throw new Error('Ajoutez une photo avant de rendre cet article visible.');
