@@ -9,5 +9,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["src/shop/**/*.ts", "src/tournaments/**/*.ts"]
+  "include": ["src/shop/**/*.ts", "src/tournaments/**/*.ts", "src/news/**/*.ts"]
 }

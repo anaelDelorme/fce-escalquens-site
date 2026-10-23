@@ -481,7 +481,7 @@ async function importCsv(){
   }catch(error){status.textContent=error.message||'Import impossible.'}finally{button.disabled=false}
 }
 async function remove(id){if(!confirm('Supprimer définitivement ?'))return;await fetch(`/admin-api/${current}/${id}`,{method:'DELETE',headers:jsonHeaders()});load()}
-$('#collections').innerHTML=Object.keys(schemas).map(name=>`<button data-name="${name}" class="${name===current?'active':''}">${collectionLabels[name]}</button>`).join('');
+$('#collections').innerHTML='<a class="admin-news-entry" href="/admin/actualites/">Annonces de l’accueil →</a>'+Object.keys(schemas).map(name=>`<button data-name="${name}" class="${name===current?'active':''}">${collectionLabels[name]}</button>`).join('');
 document.querySelectorAll('[data-name]').forEach(button=>button.onclick=()=>{current=button.dataset.name;document.querySelectorAll('[data-name]').forEach(item=>item.classList.toggle('active',item===button));$('#title').textContent=collectionLabels[current];load()});
 $('#title').textContent=collectionLabels[current];$('#new').onclick=()=>open();$('#save').onclick=save;$('#token-button').onclick=()=>{token=prompt('Jeton DEV_ADMIN_TOKEN (uniquement en local)')||'';sessionStorage.setItem('admin-token',token);load();loadHealth()};
 $('#refresh-health').onclick=loadHealth;

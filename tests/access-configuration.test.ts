@@ -138,3 +138,10 @@ test('configuration V5.1 : audience tournois et association sandbox sans toucher
   const updated=JSON.parse(readFileSync(file,'utf8'));assert.equal(updated.env.staging.vars.CF_ACCESS_SHOP_AUD,'a'.repeat(64));assert.equal(updated.env.staging.vars.CF_ACCESS_TOURNAMENT_AUD,'b'.repeat(64));assert.equal(updated.env.staging.vars.HELLOASSO_ORGANIZATION_SLUG,'fce');assert.equal(updated.env.staging.vars.SHOP_ORIGIN,'https://staging.example.org');assert.deepEqual(updated.d1_databases,config.d1_databases);assert.deepEqual(updated.env.staging.d1_databases,config.env.staging.d1_databases);assert.deepEqual(updated.vars,config.vars);assert.ok(!readFileSync(file,'utf8').includes('CLIENT_SECRET'));
  }finally{rmSync(folder,{recursive:true,force:true});}
 });
+
+test('annonces : configuration de l’audience site seule, toutes les bases et audiences métier conservées',()=>{
+ const folder=mkdtempSync(join(process.cwd(),'.news-access-test-'));try{
+  const file=join(folder,'wrangler.jsonc'),config={vars:{APP_ENV:'production',CF_ACCESS_SITE_AUD:'prod'},d1_databases:[{binding:'DB',database_id:'prod'}],env:{staging:{vars:{APP_ENV:'staging',CF_ACCESS_ISSUER:'https://test.cloudflareaccess.com',CF_ACCESS_SHOP_AUD:'shop',CF_ACCESS_TOURNAMENT_AUD:'tournoi',MAIL_FROM:'contact@example.org'},d1_databases:[{binding:'DB',database_id:'stage'}]}}};writeFileSync(file,JSON.stringify(config));
+  const result=spawnSync(process.execPath,['scripts/configure-news-access.mjs','--config',file,'--env','staging','--aud','a'.repeat(64)],{encoding:'utf8'});assert.equal(result.status,0,result.stderr);const saved=JSON.parse(readFileSync(file,'utf8'));assert.deepEqual(saved.vars,config.vars);assert.deepEqual(saved.d1_databases,config.d1_databases);assert.deepEqual(saved.env.staging.d1_databases,config.env.staging.d1_databases);assert.deepEqual(saved.env.staging.vars,{...config.env.staging.vars,CF_ACCESS_SITE_AUD:'a'.repeat(64)});
+ }finally{rmSync(folder,{recursive:true,force:true});}
+});

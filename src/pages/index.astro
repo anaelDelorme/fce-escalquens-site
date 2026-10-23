@@ -5,6 +5,7 @@ import Footer from '../components/Footer.astro';
 <html lang="fr">
   <head>
     <meta charset="utf-8"><meta name="viewport" content="width=device-width">
+    <link rel="stylesheet" href="/news.css?v=5218">
     <title>FC Escalquens - Le site du club</title>
     <meta name="description" content="Équipes, entraînements, matchs, résultats et actualités du FC Escalquens">
     <link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/enhancements.css?v=7"><link rel="stylesheet" href="/brand-charter.css"><link rel="stylesheet" href="/home-extra.css"><link rel="stylesheet" href="/home-slideshow.css"><link rel="stylesheet" href="/sponsor-extra.css?v=3">
@@ -32,6 +33,7 @@ import Footer from '../components/Footer.astro';
           <p class="sr-only" id="home-slide-status" aria-live="polite" aria-atomic="true"></p>
         </div>
       </section>
+      <section id="home-news" class="home-news" aria-labelledby="home-news-title" hidden><div class="news-heading"><div><p class="eyebrow">En ce moment au club</p><h2 id="home-news-title">À la une.</h2></div></div><div id="home-news-items" class="news-grid"></div></section>
       <section class="match-strip"><div><p class="eyebrow" id="home-match-kicker">Prochainement</p><h2>Matchs & résultats.</h2></div><div id="matches-list"><p>Chargement des rencontres…</p></div><a href="/matchs/" class="circle-arrow" aria-label="Tous les matchs">→</a></section>
       <section class="content teams-home"><div class="section-heading"><div><p class="eyebrow">Du premier ballon aux seniors</p><h2>Toutes nos équipes</h2></div><a href="/equipes/">Tout voir →</a></div><div class="team-rail" id="teams-list"></div></section>
       <section class="story-panel"><div><p class="eyebrow">Un club qui compte</p><h2>Un terrain.<br>Des centaines<br>d’histoires.</h2></div><div class="story-photo"><img data-media-slot="home_story" src="/action-foot.webp" alt="Une joueuse du FC Escalquens dispute le ballon en match"></div><blockquote>« Ici, on apprend à jouer. Mais surtout à se faire confiance, à se relever et à avancer ensemble. »</blockquote></section>
@@ -41,6 +43,7 @@ import Footer from '../components/Footer.astro';
       <section class="content club-sponsors"><div class="section-heading"><div><p class="eyebrow">Ils jouent collectif avec nous</p><h2>Nos partenaires</h2></div><a href="/mecenat/">Rejoindre l’équipe →</a></div><div id="sponsors-list" class="sponsor-logos"><p>Les partenaires seront bientôt présentés ici.</p></div></section>
     </main>
     <Footer/>
+    <script src="../scripts/news-public.js"></script>
     <script is:inline src="/site.js"></script>
     <script is:inline src="/home-slideshow.js"></script>
     <script is:inline src="/sponsors.js"></script>

@@ -1,3 +1,7 @@
+# Annonces sur l’accueil
+
+Depuis l’administration du site, la rubrique **Annonces de l’accueil** permet de publier un titre, une image, un texte et un bouton vers un tournoi, la boutique ou des résultats. Installation staging et configuration Access : [docs/CORRECTIF-V5.2.18.md](docs/CORRECTIF-V5.2.18.md).
+
 # Boutique indépendante et paiement HelloAsso
 
 Installation détaillée sans compte HelloAsso : [docs/INSTALLATION-STAGING.md](docs/INSTALLATION-STAGING.md). La préproduction utilise la branche `staging` et la gestion boutique est sous `/admin-boutique/`.

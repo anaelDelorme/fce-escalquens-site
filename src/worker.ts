@@ -1,3 +1,4 @@
+import {newsRoute} from './news/service';
 import {tournamentEnv,tournamentRoute} from './tournaments/service';
 import { shopRoute, maintenance, type ShopEnv } from './shop/service';
 import { staff as shopStaff, sameOrigin as shopSameOrigin, response as shopResponse } from './shop/security';
@@ -11,6 +12,7 @@ interface Env extends ShopEnv {
   TEST_SITE_PASSWORD?: string;
   TEST_SITE_USER?: string;
   FCE_SYNC_TOKEN?: string;
+  CF_ACCESS_SITE_AUD?: string;
   APP_ENV?: string;
   GITHUB_DISPATCH_TOKEN?: string;
   GITHUB_REPOSITORY?: string;
@@ -977,8 +979,9 @@ async function upload(request: Request, env: Env, trustedShopActor?: string) {
   if (!(file instanceof File)) return json({ error: "Fichier manquant" }, 400);
   if (file.size > 15_000_000) return json({ error: "Fichier trop volumineux (15 Mo maximum)" }, 413);
   const detected = await detectUpload(file);
-  if (!detected || !acceptedUploadTypes.has(detected.contentType)) {
-    return json({ error: "Type de fichier refusé. Utilisez une image JPG, PNG, GIF, WebP, AVIF ou un PDF." }, 415);
+  const newsImage=new URL(request.url).pathname==='/admin/actualites/api/upload';
+  if (!detected || !acceptedUploadTypes.has(detected.contentType) || (newsImage&&!detected.contentType.startsWith('image/'))) {
+    return json({ error: newsImage?'Type de fichier refusé. Utilisez une image JPG, PNG, GIF, WebP ou AVIF.':'Type de fichier refusé. Utilisez une image JPG, PNG, GIF, WebP, AVIF ou un PDF.' }, 415);
   }
   const key = `uploads/${crypto.randomUUID()}.${detected.extension}`;
   await env.MEDIA.put(key, detected.bytes, { httpMetadata: { contentType: detected.contentType } });
@@ -2059,6 +2062,8 @@ export default {
       }
     }
     if(url.pathname==='/admin-tournois/api/upload'){try{const scoped=tournamentEnv(env);const actor=await shopStaff(request,scoped,'tournament');shopSameOrigin(request,env);if(request.method!=='POST')return shopResponse({error:'Méthode non autorisée.'},405);return await upload(request,env,actor);}catch(e){return shopResponse({error:e instanceof ShopError?e.message:'Envoi impossible.',code:e instanceof ShopError?e.code:'UPLOAD'},e instanceof ShopError?e.status:500);}}
+    const news = await newsRoute(request,env,actor=>upload(request,env,actor));
+    if(news)return news;
     const tournament = await tournamentRoute(request,env,ctx);
     if (tournament) return tournament;
     const shop = await shopRoute(request, env, ctx);
