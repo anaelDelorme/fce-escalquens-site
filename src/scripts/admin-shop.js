@@ -1,3 +1,4 @@
+import { mountShopVisibility } from "./admin-shop-visibility.js";
 import { renderContent } from "./admin-shop-content.js";
 import { renderSuppliers } from "./admin-shop-suppliers.js";
 import {
@@ -271,6 +272,6 @@ if (local && !readStorage("fce-shop-local-token")) {
     sessionStorage.setItem("fce-shop-local-token", JSON.stringify(value));
 }
 (async () => {
-  try { await loadConfig(); await render(); }
+  try { await Promise.all([loadConfig(),mountShopVisibility(document.querySelector("#shop-display-control"),call,notice)]); await render(); }
   catch (error) { showError(message, error); }
 })();

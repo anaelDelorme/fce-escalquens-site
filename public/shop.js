@@ -44,6 +44,7 @@ const showShopMaintenance=settings=>{
   const fallback=document.querySelector('#shop-maintenance-fallback');
   if(!page||!section)return;
   const enabled=Number(settings?.shop_enabled??1)!==0;
+  document.body.classList.toggle('shop-is-closed',!enabled);
   page.classList.remove('is-loading');
   if(enabled){page.classList.remove('is-closed');section.hidden=true;return;}
   page.classList.add('is-closed');section.hidden=false;

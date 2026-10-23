@@ -1686,3 +1686,17 @@ test('code coach court : saisie tolérante, anciens codes conservés et ancienne
  const mac=Array.from(new Uint8Array(await crypto.subtle.sign('HMAC',key,new TextEncoder().encode('fce-coach-session:'+value))),v=>v.toString(16).padStart(2,'0')).join('');
  const req=request('/api/shop/catalogue');req.headers.set('cookie',`fce-coach-local=${value}.${mac}`);const upgraded=await shopRoute(req,env,ctx);assert.equal((await upgraded!.json() as any).pricing_mode,'coach');assert.match(upgraded!.headers.get('set-cookie')!,/^fce-coach-local=v2\./);
 });
+
+test('boutique masquée : nouvelle commande refusée sans supprimer le catalogue ni les commandes',async()=>{
+ const before=await DB.prepare('SELECT shop_enabled FROM shop_settings WHERE id=1').first<any>();
+ const products=await DB.prepare('SELECT COUNT(*) AS n FROM shop_products').first<any>();
+ const orders=await ORDERS.prepare('SELECT COUNT(*) AS n FROM orders').first<any>();
+ await ORDERS.prepare('DELETE FROM rate_limits').run();
+ try{
+  await DB.prepare('UPDATE shop_settings SET shop_enabled=0 WHERE id=1').run();
+  const result=await route(request('/api/shop/checkout',payload()));
+  assert.equal(result.status,503);assert.equal(result.body.code,'SHOP_CLOSED');
+  assert.deepEqual(await DB.prepare('SELECT COUNT(*) AS n FROM shop_products').first(),products);
+  assert.deepEqual(await ORDERS.prepare('SELECT COUNT(*) AS n FROM orders').first(),orders);
+ }finally{await DB.prepare('UPDATE shop_settings SET shop_enabled=? WHERE id=1').bind(before.shop_enabled).run();}
+});

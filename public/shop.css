@@ -310,3 +310,5 @@
 .shop-end-card .commerce-support a:hover span{text-decoration:underline;}
 @media(max-width:900px){.shop-hero-copy{padding:32px;}.shop-hero h1{font-size:44px;}.shop-end-card{gap:24px;}}
 @media(max-width:650px){.shop-hero{width:calc(100% - 32px);margin-top:16px;display:flex;flex-direction:column;min-height:0;border-radius:10px;}.shop-hero-copy{padding:28px 24px;}.shop-hero h1{font-size:40px;}.shop-hero-visual{min-height:340px;}.shop-hero-visual>img{padding:14px 30px 100px;}.shop-hero-caption{left:18px;right:18px;bottom:18px;padding:10px;}.shop-hero-caption>img{width:42px;height:42px;}.shop-page .commerce-section{padding:0 20px 36px;}.shop-end-card{grid-template-columns:minmax(0,1fr);padding:24px 20px;gap:20px;}}
+
+.shop-is-closed .commerce-toolbar{display:none}

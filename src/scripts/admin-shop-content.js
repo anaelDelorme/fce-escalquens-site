@@ -20,8 +20,7 @@ const schemas = {
     ["active", "Visible", "checkbox"],
   ],
   shop_settings: [
-    ["shop_enabled", "Afficher la boutique publique", "checkbox"],
-    ["maintenance_image_key", "Visuel de fermeture", "image"],
+    ["maintenance_image_key", "Image de la page d’attente", "image"],
   ],
   site_media: [
     ["object_key", "Couverture de la boutique", "image"],
@@ -31,7 +30,7 @@ const schemas = {
 const labels = {
   shop_categories: "Catégories",
   shop_products: "Articles et photos",
-  shop_settings: "Ouverture et visuel de fermeture",
+  shop_settings: "Image de la page d’attente",
   site_media: "Couverture de la boutique",
 };
 const slug = (value) =>
@@ -246,6 +245,7 @@ export async function renderContent(root, call, notice, collection = "shop_produ
           method: row.id ? "PUT" : "POST",
           data: values,
         });
+        if(collection==='shop_settings')document.dispatchEvent(new CustomEvent('shop-display-updated'));
         notice("Catalogue enregistré.");
         await load();
         if(collection==='shop_products') {const current=rows.find(r=>r.id===(row.id||Number(saved.id)));if(current)edit(current);}
