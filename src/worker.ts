@@ -2062,7 +2062,7 @@ export default {
       }
     }
     if(url.pathname==='/admin-tournois/api/upload'){try{const scoped=tournamentEnv(env);const actor=await shopStaff(request,scoped,'tournament');shopSameOrigin(request,env);if(request.method!=='POST')return shopResponse({error:'Méthode non autorisée.'},405);return await upload(request,env,actor);}catch(e){return shopResponse({error:e instanceof ShopError?e.message:'Envoi impossible.',code:e instanceof ShopError?e.code:'UPLOAD'},e instanceof ShopError?e.status:500);}}
-    const news = await newsRoute(request,env,actor=>upload(request,env,actor));
+    const news = await newsRoute(request,env,actor=>upload(request,env,actor),req=>admin(req,env));
     if(news)return news;
     const tournament = await tournamentRoute(request,env,ctx);
     if (tournament) return tournament;

@@ -1,19 +1,16 @@
 import {test,before,after} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {generateKeyPair,exportJWK,SignJWT} from 'jose';
 import {TestDatabase} from './d1';
 import worker from '../src/worker';
 import {card,richText,safeLink} from '../src/news/content';
 import {now} from '../src/shop/domain';
-let DB:TestDatabase,env:any,privateKey:any,jwk:any;const originalFetch=globalThis.fetch;
+let DB:TestDatabase,env:any;
 before(async()=>{
  DB=new TestDatabase();await DB.exec(readFileSync(new URL('../migrations/0035_news.sql',import.meta.url),'utf8'));await DB.exec("CREATE TABLE admins(email TEXT,active INTEGER);INSERT INTO admins VALUES('site@example.org',1),('disabled@example.org',0);");
- const keys=await generateKeyPair('RS256');privateKey=keys.privateKey;jwk={...await exportJWK(keys.publicKey),kid:'news-test',alg:'RS256',use:'sig'};
- globalThis.fetch=(async(input:any)=>{assert.match(String(input),/news-test\.cloudflareaccess\.com\/cdn-cgi\/access\/certs/);return Response.json({keys:[jwk]});}) as typeof fetch;
  env={DB,APP_ENV:'local',DEV_ADMIN_TOKEN:'local-news',CF_ACCESS_ISSUER:'https://news-test.cloudflareaccess.com',CF_ACCESS_SITE_AUD:'site-audience',MEDIA:{put:async()=>{}},ASSETS:{fetch:async()=>new Response('asset')}};
 });
-after(()=>{DB.close();globalThis.fetch=originalFetch;});
+after(()=>DB.close());
 const payload=(overrides:any={})=>({idempotency_key:crypto.randomUUID(),title:'Tournoi U11',body:'Les inscriptions sont ouvertes.\n\n**Venez jouer !**',status:'draft',display_order:0,starts_at:null,ends_at:null,...overrides});
 async function call(path='/admin/actualites/api/news',data?:any,options:any={}){
  const target=options.env||env,origin=options.origin||'http://localhost:8787';
@@ -45,14 +42,13 @@ test('annonces : liste publique bornée, ordre configurable et fin exclusive',as
  const feed=await call('/api/news');assert.equal(feed.body.news.length,6);assert.deepEqual(feed.body.news.map((r:any)=>r.title),Array.from({length:6},(_,i)=>'Annonce '+i));
  const row=(await call('/admin/actualites/api/news')).body.news.find((r:any)=>r.title==='Annonce 0');await call('/admin/actualites/api/news/'+row.id,{...row,ends_at:now()},{method:'PUT'});assert.equal((await call('/api/news')).body.news[0].title,'Annonce 1');
 });
-test('annonces : autorisation site par JWT, audience propre, adresse active et origine requises',async()=>{
- const target={...env,APP_ENV:'staging'};
+test('annonces : mêmes droits que les rubriques du site, sans configuration Access supplémentaire',async()=>{
+ const target={...env,APP_ENV:'staging',DEV_ADMIN_TOKEN:undefined,CF_ACCESS_ISSUER:undefined,CF_ACCESS_SITE_AUD:undefined};
  assert.equal((await call(undefined,undefined,{env:target,admin:false})).status,401);
- assert.equal((await call(undefined,undefined,{env:target,admin:false,headers:{'cf-access-authenticated-user-email':'site@example.org'}})).status,401);
- const token=async(email:string,aud='site-audience')=>new SignJWT({email}).setProtectedHeader({alg:'RS256',kid:'news-test'}).setIssuer(env.CF_ACCESS_ISSUER).setAudience(aud).setIssuedAt().setExpirationTime('5m').sign(privateKey);
- for(const [email,aud,expected] of [['site@example.org','site-audience',200],['disabled@example.org','site-audience',403],['unknown@example.org','site-audience',403],['site@example.org','shop-audience',403]])assert.equal((await call(undefined,undefined,{env:target,admin:false,headers:{'cf-access-jwt-assertion':await token(email,aud)}})).status,expected);
+ for(const [email,expected] of [['site@example.org',200],['disabled@example.org',401],['unknown@example.org',401]])assert.equal((await call(undefined,undefined,{env:target,admin:false,headers:{'cf-access-authenticated-user-email':email}})).status,expected);
+ assert.equal((await call(undefined,payload(),{env:target,admin:false,headers:{'cf-access-authenticated-user-email':'site@example.org'}})).status,201);
  assert.equal((await call(undefined,payload(),{origin:'https://other.example'})).status,403);
- assert.equal((await call(undefined,undefined,{env:{...target,CF_ACCESS_SITE_AUD:''},admin:false})).body.code,'NEWS_ACCESS_CONFIG');
+ assert.equal((await call(undefined,payload(),{env:target,admin:false,origin:'https://other.example',headers:{'cf-access-authenticated-user-email':'site@example.org'}})).status,403);
 });
 test('annonces : rendu échappé, liens sûrs et aucun article/page dédiée',()=>{
  const html=card({id:1,title:'<img src=x onerror=alert(1)>',body:'**Fort**\n\n- Un\n- Deux\n\n<script>alert(1)</script>',image_key:'uploads/p.png',image_alt:'Une équipe',link_url:'javascript:alert(1)',link_label:'Voir'});

@@ -5,7 +5,7 @@ import {Window} from 'happy-dom';
 import {startNewsAdmin} from '../src/scripts/admin-news.js';
 import {card} from '../src/news/content';
 const next=()=>new Promise(r=>setImmediate(r));
-function setup(){const w=new Window({url:'https://example.org/admin/actualites/',settings:{enableImageFileLoading:false}});w.document.body.innerHTML='<main id="news-admin-root"><button id="news-add"></button><p id="news-admin-message"></p><section id="news-admin-list"></section><section id="news-admin-editor" hidden></section></main>';w.HTMLElement.prototype.scrollIntoView=()=>{};Object.assign(globalThis,{window:w,document:w.document,location:w.location,sessionStorage:w.sessionStorage,FormData:w.FormData,confirm:()=>true});return w;}
+function setup(){const w=new Window({url:'https://example.org/admin/actualites/',settings:{enableImageFileLoading:false}});w.document.body.innerHTML='<main id="news-admin-root"><button id="news-add"></button><p id="news-admin-message"></p><section id="news-admin-list"></section><section id="news-admin-editor" hidden></section></main>';w.HTMLElement.prototype.scrollIntoView=()=>{};(w as any).installAdminImageCropper=({upload}:any)=>upload;Object.assign(globalThis,{window:w,document:w.document,location:w.location,sessionStorage:w.sessionStorage,FormData:w.FormData,confirm:()=>true});return w;}
 test('annonces DOM : création, aperçu, raccourci tournoi, reprise réseau, publication et retrait',async()=>{
  const w=setup(),d=w.document,rows:any[]=[],sent:any[]=[];let failFirst=true;
  const transport=async(path:any,options:any={})=>{if(options.method==='POST'||options.method==='PUT'){const data=JSON.parse(options.body);sent.push(data);if(options.method==='POST'){if(!rows.length)rows.push({...data,id:1,version:1,created_at:1});if(failFirst){failFirst=false;throw new Error('network');}return Response.json(rows[0]);}rows[0]={...data,id:1,version:rows[0].version+1,created_at:1};return Response.json(rows[0]);}if(options.method==='DELETE'){rows.splice(0);return Response.json({ok:true});}return Response.json({news:rows});};
@@ -22,4 +22,16 @@ test('annonces DOM : image importée affichée dans l’aperçu puis retirée sa
 test('accueil : aucune section vide, annonces entièrement affichées, panne isolée et nouvelle vérification au retour',async()=>{
  const w=new Window({url:'https://example.org/',settings:{enableImageFileLoading:false}});w.document.body.innerHTML='<section id="home-news" hidden><div id="home-news-items"></div></section>';let news:any[]=[],fail=false;(w as any).card=card;w.fetch=(async()=>fail?new Response('',{status:500}):Response.json({news})) as any;w.eval(readFileSync(new URL('../src/scripts/news-public.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/,''));await next();assert.equal((w.document.querySelector('#home-news') as HTMLElement).hidden,true);
  news=[{id:1,title:'Super résultat',body:'Victoire **3–0**',link_url:'/matchs/',link_label:'Voir les résultats'}];w.document.dispatchEvent(new w.Event('visibilitychange'));await next();assert.equal((w.document.querySelector('#home-news') as HTMLElement).hidden,false);assert.match(w.document.querySelector('#home-news-items')!.textContent!,/Victoire 3–0/);assert.equal(w.document.querySelector('a')!.getAttribute('href'),'/matchs/');fail=true;w.document.dispatchEvent(new w.Event('visibilitychange'));await next();assert.equal((w.document.querySelector('#home-news') as HTMLElement).hidden,true);await w.happyDOM.abort();w.close();
+});
+
+test('annonces DOM : recadrage annulé conserve la photo et ne déclenche aucun envoi',async()=>{
+ const w=setup(),d=w.document;let uploads=0;let resolveCrop:any;
+ (w as any).installAdminImageCropper=()=>()=>new Promise(resolve=>{resolveCrop=resolve;});
+ await startNewsAdmin(d.querySelector('#news-admin-root'),async(path:any)=>{if(String(path).endsWith('upload'))uploads++;return Response.json({news:[{id:1,title:'Annonce',body:'Texte',image_key:'uploads/existing.webp',version:1}]});});
+ d.querySelector<HTMLElement>('[data-edit-news]')!.click();const input=d.querySelector<HTMLInputElement>('#news-upload')!;
+ Object.defineProperty(input,'files',{value:[new w.File(['image'],'image.png',{type:'image/png'})]});input.dispatchEvent(new w.Event('change'));await next();
+ assert.equal(d.querySelector<HTMLButtonElement>('[data-status=published]')!.disabled,true);
+ resolveCrop();await next();assert.equal(uploads,0);assert.match(d.querySelector('#news-live-preview img')!.getAttribute('src')!,/existing.webp/);
+ assert.equal(d.querySelector<HTMLButtonElement>('[data-status=published]')!.disabled,false);assert.match(d.querySelector('#news-upload-status')!.textContent!,/annulé/);
+ await w.happyDOM.abort();w.close();
 });

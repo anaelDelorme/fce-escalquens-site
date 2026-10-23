@@ -49,7 +49,16 @@ test('dupliquer : reprise et requêtes concurrentes ne créent qu’une copie co
 test('dupliquer : échec en fin de transaction annule aussi la fiche et les tailles',async t=>{
  const {DB,call,rows}=await fixture(t),key=crypto.randomUUID();
  await DB.exec("CREATE TRIGGER reject_copy BEFORE INSERT ON shop_options WHEN NEW.product_id<>1 BEGIN SELECT RAISE(ABORT,'test rollback');END;");
- assert.equal((await call(1,key)).status,500);assert.equal((await rows('shop_products')).length,1);assert.equal((await rows('shop_variants')).length,2);assert.equal((await rows('shop_options')).length,2);
+ // This failure is intentional: verify its diagnostic without printing a false alarm.
+ const errorLog=t.mock.method(console,'error',()=>{});
+ try{
+  const failed=await call(1,key);
+  assert.equal(failed.status,500);assert.equal(failed.body.code,'INTERNAL');
+  assert.equal(errorLog.mock.callCount(),1);
+  assert.deepEqual(errorLog.mock.calls[0].arguments,['shop_error',{incident:failed.body.incident}]);
+  assert.match(failed.body.incident,/^[a-f0-9]{8}$/);
+ }finally{errorLog.mock.restore();}
+ assert.equal((await rows('shop_products')).length,1);assert.equal((await rows('shop_variants')).length,2);assert.equal((await rows('shop_options')).length,2);
  await DB.exec('DROP TRIGGER reject_copy');assert.equal((await call(1,key)).status,201);assert.equal((await rows('shop_products')).length,2);
 });
 

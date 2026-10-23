@@ -31,42 +31,11 @@ Pour retirer une annonce sans perdre son contenu, ouvrir sa fiche et **Enregistr
 
 La gestion se trouve sous `/admin/actualites/`, ses API sous `/admin/actualites/api/`. Elle utilise l’application Cloudflare Access de **l’administration du site**, et la liste des administrateurs actifs de la base `DB`.
 
-En plus de la protection Cloudflare des chemins `/admin` et `/admin/*`, le Worker vérifie lui-même la signature du JWT, son émetteur, son expiration, l’adresse et l’audience. Un simple en-tête d’e-mail ne suffit pas. Les droits boutique et tournois ne donnent pas de droits sur ces annonces.
+**Mise à jour V5.2.19 :** les annonces utilisent désormais exactement l’autorisation des autres rubriques de l’administration du site. Aucune audience supplémentaire ni étape `configure-news-access.mjs` n’est nécessaire. Les anciennes variables peuvent rester présentes ; elles ne sont plus utilisées par les annonces.
 
-Deux variables sont utilisées :
+Cloudflare Access doit protéger `/admin` et `/admin/*`, y compris les API des annonces. Le Worker utilise la même fonction d’autorisation que le reste de l’administration : adresse Cloudflare active dans `admins` ou jeton d’administration existant. L’identité transmise par Cloudflare est donc fiable dans le périmètre protégé, comme pour les autres rubriques ; il ne faut pas exposer ces chemins sur une autre URL sans protection Access. Les droits boutique et tournois restent séparés. Les écritures vérifient également l’origine de la requête.
 
-| Variable | Valeur |
-| --- | --- |
-| `CF_ACCESS_ISSUER` | Domaine d’équipe Cloudflare déjà utilisé, par exemple `https://votre-equipe.cloudflareaccess.com`. |
-| `CF_ACCESS_SITE_AUD` | **Application Audience (AUD)** de l’application qui protège l’administration du site. Ce n’est ni son Policy ID, ni l’audience boutique ou tournois. |
-
-### Renseigner l’audience en staging
-
-1. Ouvrir l’application Cloudflare Access qui protège l’administration du site et copier son **Application Audience (AUD)**.
-2. Depuis Codespaces, dans le dépôt :
-
-```bash
-node scripts/configure-news-access.mjs --env staging --aud VOTRE_AUD_SITE
-```
-
-Le script reprend `CF_ACCESS_ISSUER` déjà présent dans le fichier. S’il n’y figure pas :
-
-```bash
-node scripts/configure-news-access.mjs --env staging --issuer https://VOTRE-EQUIPE.cloudflareaccess.com --aud VOTRE_AUD_SITE
-```
-
-3. Vérifier :
-
-```bash
-node scripts/configure-news-access.mjs --env staging --check
-git diff -- wrangler.jsonc
-```
-
-Le script conserve les bases D1, R2, les audiences boutique et tournois, les mails et les variables de production. L’AUD est un identifiant de configuration ; aucun identifiant HelloAsso ou mot de passe n’est nécessaire.
-
-L’erreur `NEWS_ACCESS_CONFIG` signifie que ces variables manquent. `ACCESS_INVALID` indique notamment une audience différente de l’application qui a authentifié le navigateur. `FORBIDDEN` signifie que l’adresse n’est pas active parmi les administrateurs du site.
-
-En local, la rubrique reprend le jeton `DEV_ADMIN_TOKEN` saisi via **Connexion locale** dans l’administration principale. Ce mode n’est accepté que pour `APP_ENV=local` sur localhost/127.0.0.1.
+En local, la rubrique reprend le jeton saisi via **Connexion locale** dans l’administration principale.
 
 ## Installation staging
 
@@ -78,7 +47,7 @@ git apply --check fce-correctif-v5.2.18.patch
 git apply fce-correctif-v5.2.18.patch
 ```
 
-2. Configurer l’audience du site comme ci-dessus.
+2. Avec la V5.2.19, aucune configuration Access supplémentaire n’est nécessaire pour les annonces.
 3. Vérifier :
 
 ```bash
@@ -87,7 +56,7 @@ npm run typecheck:shop
 npm run build
 ```
 
-4. Enregistrer et pousser **tous les fichiers du correctif et le fichier `wrangler.jsonc` configuré** sur `staging`. Le workflow applique la nouvelle migration **`migrations/0035_news.sql`** sur **DB**, puis déploie le Worker.
+4. Enregistrer et pousser **tous les fichiers du correctif ** sur `staging`. Le workflow applique la nouvelle migration **`migrations/0035_news.sql`** sur **DB**, puis déploie le Worker.
 
 La migration crée uniquement la table `news` et son index. Les articles boutique, commandes et inscriptions restent inchangés. Aucune migration ORDERS ou TOURNAMENTS, aucune nouvelle base et aucun réglage HelloAsso/mail à effectuer.
 
@@ -112,6 +81,6 @@ npx wrangler deploy --env staging
 
 Créer une annonce Tournoi avec image et lien, l’enregistrer en brouillon puis vérifier son absence sur l’accueil. La publier et vérifier l’image, le texte complet et le bouton sur téléphone et ordinateur. Essayer un lien Boutique et un résultat. Tester une fin passée, une date future, le retour en brouillon et une modification simultanée dans deux onglets.
 
-Les tests couvrent le rendu sûr, les dates, les brouillons, le contrôle JWT propre au site, les reprises réseau, les versions concurrentes, l’import d’images, l’aperçu et le formulaire. La recette visuelle sur vos appareils reste à effectuer après déploiement.
+Les tests couvrent le rendu sûr, les dates, les brouillons, les droits communs de l’administration du site, les reprises réseau, les versions concurrentes, l’import d’images, l’aperçu et le formulaire. La recette visuelle sur vos appareils reste à effectuer après déploiement.
 
 Vérification avant livraison : 138 tests passent ; TypeScript et build Astro validés. Aucun déploiement distant n’est effectué pendant la préparation du correctif.

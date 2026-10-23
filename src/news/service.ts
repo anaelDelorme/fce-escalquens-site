@@ -1,28 +1,16 @@
-import {createRemoteJWKSet,jwtVerify} from 'jose';
 import {body,response} from '../shop/security';
 import {ShopError,fail,integer,now,text,uuid,sha256,type Row} from '../shop/domain';
 import type {ShopEnv} from '../shop/service';
 import {safeLink} from './content';
 export interface NewsEnv extends ShopEnv {CF_ACCESS_SITE_AUD?:string}
-const keys=new Map<string,ReturnType<typeof createRemoteJWKSet>>();
-async function staff(req:Request,env:NewsEnv){
- const url=new URL(req.url);
- if(env.APP_ENV==='local'&&['localhost','127.0.0.1'].includes(url.hostname)&&env.DEV_ADMIN_TOKEN&&req.headers.get('x-admin-token')===env.DEV_ADMIN_TOKEN)return 'local-admin';
- const issuer=(env.CF_ACCESS_ISSUER||'').trim().replace(/\/+$/,''),audience=(env.CF_ACCESS_SITE_AUD||'').split(',').map(v=>v.trim()).filter(Boolean);
- if(!/^https:\/\/[a-z0-9-]+\.cloudflareaccess\.com$/.test(issuer)||!audience.length)fail('NEWS_ACCESS_CONFIG',503,'Renseignez CF_ACCESS_ISSUER et CF_ACCESS_SITE_AUD (application Cloudflare de l’administration du site).');
- const token=req.headers.get('cf-access-jwt-assertion');if(!token)fail('ACCESS_REQUIRED',401,'Reconnectez-vous à l’administration du site.');
- let email='';try{if(!keys.has(issuer))keys.set(issuer,createRemoteJWKSet(new URL(issuer+'/cdn-cgi/access/certs')));const {payload}=await jwtVerify(token,keys.get(issuer)!,{issuer,audience,algorithms:['RS256']});email=typeof payload.email==='string'?payload.email:'';}catch{fail('ACCESS_INVALID',403,'La session Cloudflare du site est invalide. Reconnectez-vous et vérifiez CF_ACCESS_SITE_AUD.');}
- if(!email||!await env.DB.prepare('SELECT email FROM admins WHERE email=? COLLATE NOCASE AND active=1').bind(email).first())fail('FORBIDDEN',403,'Cette adresse ne dispose pas des droits de gestion du site.');
- return email;
-}
 const columns='id,title,body,image_key,image_alt,link_url,link_label';
 export async function publicNews(env:NewsEnv){return (await env.DB.prepare(`SELECT ${columns} FROM news WHERE status='published' AND (starts_at IS NULL OR starts_at<=?) AND (ends_at IS NULL OR ends_at>?) ORDER BY display_order,created_at DESC,id DESC LIMIT 6`).bind(now(),now()).all<Row>()).results;}
-export async function newsRoute(req:Request,env:NewsEnv,upload:(actor:string)=>Promise<Response>):Promise<Response|null>{
+export async function newsRoute(req:Request,env:NewsEnv,upload:(actor:string)=>Promise<Response>,authorize:(req:Request)=>Promise<string|null>):Promise<Response|null>{
  const url=new URL(req.url),path=url.pathname.replace(/\/$/,''),isAdmin=path.startsWith('/admin/actualites/api/');
  if(!isAdmin&&path!=='/api/news')return null;
  try{
   if(isAdmin){
-   const actor=await staff(req,env);
+   const actor=await authorize(req);if(!actor)fail('ACCESS_REQUIRED',401,'Reconnectez-vous à l’administration du site avec une adresse autorisée.');
    if(!['GET','HEAD'].includes(req.method)&&req.headers.get('origin')!==url.origin)fail('ORIGIN',403,'Rechargez le formulaire depuis ce site.');
    if(path==='/admin/actualites/api/upload'){if(req.method!=='POST')fail('METHOD',405,'Méthode non autorisée.');return await upload(actor);}
    const match=path.match(/^\/admin\/actualites\/api\/news(?:\/(\d+))?$/);if(!match)fail('NOT_FOUND',404,'Ressource inconnue.');

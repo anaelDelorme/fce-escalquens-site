@@ -1,5 +1,4 @@
-(() => {
-  const baseUpload=upload;
+window.installAdminImageCropper = ({upload:baseUpload,profile:customProfile}={}) => {
 
   const dialog=document.createElement('dialog');
   dialog.id='image-cropper';
@@ -31,9 +30,12 @@
   const formatLabel=dialog.querySelector('#cropper-format');
   const help=dialog.querySelector('.cropper-help');
   const confirmButton=dialog.querySelector('#cropper-confirm');
-  let state=null;
+  let state=null,busy=false;
+  dialog.addEventListener('cancel',event=>{if(busy)event.preventDefault();});
+  const setBusy=value=>{busy=value;dialog.querySelectorAll('button').forEach(button=>button.disabled=value);};
 
   const profile=input=>{
+    if(customProfile)return customProfile(input);
     const field=input.dataset.upload;
     const form=document.querySelector('#editor form');
 
@@ -106,7 +108,10 @@
     constrain();render();
   };
 
-  const openCropper=(input,file)=>{
+  const openCropper=(input,file)=>new Promise(resolve=>{
+    let settled=false;
+    const finish=result=>{if(!settled){settled=true;resolve(result);}};
+    dialog.addEventListener('close',finish,{once:true});
     const objectUrl=URL.createObjectURL(file),image=new Image();
 
     image.onload=()=>{
@@ -150,17 +155,18 @@
     image.onerror=()=>{
       URL.revokeObjectURL(objectUrl);
       input.value='';
+      dialog.removeEventListener('close',finish);finish({error:'Cette image ne peut pas être lue. Choisissez un autre fichier.'});
       const message=input.closest('label')?.querySelector('.file-state');
       if(message)message.textContent='Cette image ne peut pas être lue.';
     };
 
     image.src=objectUrl;
-  };
+  });
 
-  upload=async input=>{
+  const cropUpload=async input=>{
     const file=input.files?.[0];
     if(!file||input.dataset.image!=='1'||!String(file.type||'').startsWith('image/'))return baseUpload(input);
-    openCropper(input,file);
+    return openCropper(input,file);
   };
 
   zoomInput.addEventListener('input',()=>setZoom(zoomInput.value));
@@ -186,18 +192,18 @@
 
   confirmButton.addEventListener('click',()=>{
     if(!state)return;
-    confirmButton.disabled=true;status.textContent='Préparation de l’image…';
+    setBusy(true);status.textContent='Préparation de l’image…';
 
     canvas.toBlob(async blob=>{
-      if(!blob){status.textContent='Impossible de générer l’image.';confirmButton.disabled=false;return}
+      if(!blob){status.textContent='Impossible de générer l’image.';setBusy(false);return}
       try{
         const baseName=String(state.file.name||'image').replace(/\.[^.]+$/,'').replace(/[^a-z0-9_-]+/gi,'-').replace(/^-|-$/g,'')||'image';
         const cropped=new File([blob],`${baseName}-recadree.webp`,{type:'image/webp'});
         const transfer=new DataTransfer();transfer.items.add(cropped);state.input.files=transfer.files;
         status.textContent='Envoi de l’image…';
         await baseUpload(state.input);
-        dialog.close();
-      }catch(error){status.textContent=error?.message||'Échec du chargement.';confirmButton.disabled=false}
+        setBusy(false);dialog.close();
+      }catch(error){status.textContent=error?.message||'Échec du chargement.';setBusy(false)}
     },'image/webp',0.9);
   });
 
@@ -206,4 +212,7 @@
     URL.revokeObjectURL(state.objectUrl);state.input.value='';state=null;
     ctx.clearRect(0,0,canvas.width,canvas.height);
   });
-})();
+  return cropUpload;
+};
+// Existing administration pages keep their current upload behaviour.
+if(typeof upload==='function')upload=window.installAdminImageCropper({upload});
