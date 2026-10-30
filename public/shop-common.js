@@ -177,7 +177,7 @@ export function sizeSummary(variants) {
 export function zoomImageMarkup(product,featured=false,className='') {
  if(!product.image_key)return '';
  const source='/media/'+encodeURIComponent(product.image_key).replace(/%2F/g,'/');
- return `<button type="button" class="shop-image-zoom ${className}" data-zoom-image="${source}" data-zoom-title="${esc(product.name)}" aria-label="Agrandir la photo : ${esc(product.name)}"><img src="${source}" alt="${esc(product.name)}" ${featured?'':'loading="lazy"'} decoding="async"><span class="shop-zoom-hint" aria-hidden="true">Agrandir ↗</span></button>`;
+ return `<button type="button" class="shop-image-zoom ${className}" data-zoom-image="${source}" data-zoom-title="${esc(product.name)}" aria-label="Agrandir la photo : ${esc(product.name)}"><img src="${source}" alt="${esc(product.name)}" ${featured?'':'loading="lazy"'} decoding="async"></button>`;
 }
 export function groupedVariantPricesMarkup(variants) {
  const groups=new Map();

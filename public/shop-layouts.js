@@ -1,18 +1,23 @@
-// Carousels are manual: native touch scrolling and keyboard access remain available.
+// Manual rails: native swipe/keyboard scrolling plus a discreet progress scrubber.
 export function initShopRails(doc=document){
  if(doc.body.dataset.shopLayout!=='rail')return;
  doc.querySelectorAll('[data-shop-category]').forEach(section=>{
-  const rail=section.querySelector('.shop-product-grid');if(!rail||section.querySelector('.shop-rail-controls'))return;
+  const rail=section.querySelector('.shop-product-grid');if(!rail||section.querySelector('.shop-rail-navigation'))return;
   const name=section.querySelector('h3')?.textContent||'Articles';
   rail.id='shop-rail-'+section.dataset.shopCategory;rail.tabIndex=0;rail.setAttribute('role','region');rail.setAttribute('aria-label',name+' : articles à faire défiler');
-  const controls=doc.createElement('div');controls.className='shop-rail-controls';
-  for(const [direction,label,glyph] of [[-1,'Articles précédents','←'],[1,'Articles suivants','→']]){
-   const button=doc.createElement('button');button.type='button';button.textContent=glyph;button.setAttribute('aria-label',label+' : '+name);button.setAttribute('aria-controls',rail.id);
-   button.onclick=()=>rail.scrollBy({left:direction*Math.max(240,rail.clientWidth*.85),behavior:doc.defaultView.matchMedia?.('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});controls.append(button);
-  }
-  section.querySelector('header').append(controls);
-  const [previous,next]=controls.querySelectorAll('button');
-  const update=()=>{previous.disabled=rail.scrollLeft<=1;next.disabled=rail.scrollLeft+rail.clientWidth>=rail.scrollWidth-2;};
+  const shell=doc.createElement('div');shell.className='shop-rail-shell';rail.before(shell);shell.append(rail);
+  const controls=doc.createElement('div');controls.className='shop-rail-navigation';
+  const hint=doc.createElement('span');hint.className='shop-rail-hint';hint.textContent='Faites défiler la collection';
+  const progress=doc.createElement('input');progress.type='range';progress.min='0';progress.max='100';progress.step='1';progress.value='0';progress.setAttribute('aria-label','Défilement des articles : '+name);progress.setAttribute('aria-controls',rail.id);
+  const count=doc.createElement('span');count.className='shop-rail-count';
+  controls.append(hint,progress,count);shell.after(controls);
+  const update=()=>{
+   const maximum=Math.max(0,rail.scrollWidth-rail.clientWidth),value=maximum?Math.round(rail.scrollLeft/maximum*100):0;
+   progress.value=String(Math.max(0,Math.min(100,value)));progress.style.setProperty('--rail-progress',progress.value+'%');progress.setAttribute('aria-valuetext',progress.value+' % de la collection');
+   const total=rail.querySelectorAll('[data-shop-product]:not([hidden])').length;count.textContent=total+' article'+(total>1?'s':'');
+   controls.hidden=maximum<=2;shell.classList.toggle('has-before',rail.scrollLeft>2);shell.classList.toggle('has-after',rail.scrollLeft<maximum-2);
+  };
+  progress.addEventListener('input',()=>{rail.scrollLeft=Math.max(0,rail.scrollWidth-rail.clientWidth)*Number(progress.value)/100;update();});
   rail.addEventListener('scroll',update,{passive:true});doc.addEventListener('shop-filter-changed',()=>{rail.scrollLeft=0;update();});
   doc.defaultView.addEventListener('resize',update);update();
  });

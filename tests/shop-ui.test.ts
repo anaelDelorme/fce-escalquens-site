@@ -241,7 +241,7 @@ test('carte publique : référence catalogue partielle visible avant de choisir 
  const data={products:[{...fixture.products[0],shop_category_id:1}],categories:[{id:1,name:'Tenues'}],settings:{shop_enabled:1}};
  w.fetch=(async(path:any)=>Response.json(String(path).includes('/api/page/')?data:{...fixture,variants})) as any;
  w.eval(readFileSync(new URL('../public/shop-common.js',import.meta.url),'utf8').replace(/export /g,'')+'\n'+readFileSync(new URL('../public/shop.js',import.meta.url),'utf8').replace(/^import[^\n]*\n/,''));await next();await next();
- const card=w.document.querySelector('.shop-product-card')!;assert.match(card.textContent!,/Prix catalogue/);assert.match(card.textContent!,/40\s*€/);assert.match(card.textContent!,/Tarif FCE/);assert.match(card.textContent!,/Enfant · 6 ans à 14 ans/);assert.match(card.textContent!,/Adulte · XS à 2XL/);assert.doesNotMatch(card.querySelector('.product-badges')!.textContent!,/8 ans/);
+ const card=w.document.querySelector('.shop-product-card')!;assert.match(card.textContent!,/Prix catalogue/);assert.match(card.textContent!,/40\s*€/);assert.match(card.textContent!,/Tarif FCE/);assert.match(card.querySelector('.product-summary')!.textContent!,/Enfant & adulte/);assert.match(card.querySelector('.product-summary')!.textContent!,/Personnalisable/);assert.equal(card.querySelector('.product-card-visual .product-badges'),null);assert.equal(card.querySelector('.product-card-visual .shop-zoom-hint'),null);assert.doesNotMatch(card.querySelector('.product-card-visual')!.textContent!,/Agrandir|Enfant|Personnalisable/);assert.equal(card.querySelector('[data-product-detail]')!.textContent,'Voir les détails');
  await w.happyDOM.abort();w.close();
 });
 

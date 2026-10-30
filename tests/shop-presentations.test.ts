@@ -22,13 +22,16 @@ test('zoom boutique : ouverture, agrandissement, erreur image et retour du focus
  dialog.querySelector<HTMLElement>('[data-image-close]')!.click();assert.equal(dialog.open,false);assert.equal(d.activeElement,trigger);assert.equal(dialog.querySelector('img')!.hasAttribute('src'),false);
  await w.happyDOM.abort();w.close();
 });
-test('boutique horizontale : flèches accessibles, limites du défilement et filtres',()=>{
+test('boutique horizontale : progression accessible, défilement natif, filtres et aucune flèche dans le titre',()=>{
  const w=new Window({url:'https://example.org/boutique-2/'}),d=w.document;d.body.dataset.shopLayout='rail';
- d.body.innerHTML='<section data-shop-category="1"><header><h3>Tenues</h3></header><div class="shop-product-grid"></div></section>';
- const rail=d.querySelector<HTMLElement>('.shop-product-grid')!;Object.defineProperties(rail,{clientWidth:{value:400},scrollWidth:{value:1000}});let distance=0;
- rail.scrollBy=(options:any)=>{distance=options.left;rail.scrollLeft+=distance;rail.dispatchEvent(new w.Event('scroll'));};
+ d.body.innerHTML='<section data-shop-category="1"><header><h3>Tenues</h3></header><div class="shop-product-grid"><article data-shop-product="1"></article><article data-shop-product="2"></article><article data-shop-product="3"></article></div></section>';
+ const rail=d.querySelector<HTMLElement>('.shop-product-grid')!;Object.defineProperties(rail,{clientWidth:{value:400},scrollWidth:{value:1000,writable:true}});
  w.eval(readFileSync(new URL('../public/shop-layouts.js',import.meta.url),'utf8').replace(/export /g,''));d.dispatchEvent(new w.Event('shop-loaded'));
- const buttons=d.querySelectorAll<HTMLButtonElement>('.shop-rail-controls button');assert.equal(buttons.length,2);assert.equal(buttons[0].disabled,true);assert.equal(buttons[1].disabled,false);buttons[1].click();assert.ok(distance>0);assert.equal(buttons[0].disabled,false);
- rail.scrollLeft=600;rail.dispatchEvent(new w.Event('scroll'));assert.equal(buttons[1].disabled,true);d.dispatchEvent(new w.Event('shop-filter-changed'));assert.equal(rail.scrollLeft,0);assert.equal(rail.tabIndex,0);
- d.dispatchEvent(new w.Event('shop-loaded'));assert.equal(d.querySelectorAll('.shop-rail-controls').length,1);w.close();
+ const progress=d.querySelector<HTMLInputElement>('.shop-rail-navigation input')!,shell=d.querySelector('.shop-rail-shell')!;
+ assert.ok(progress.getAttribute('aria-label')!.includes('Tenues'));assert.equal(d.querySelector('header button'),null);assert.equal(progress.value,'0');assert.equal(shell.classList.contains('has-after'),true);
+ progress.value='50';progress.dispatchEvent(new w.Event('input'));assert.equal(rail.scrollLeft,300);assert.equal(shell.classList.contains('has-before'),true);
+ rail.scrollLeft=600;rail.dispatchEvent(new w.Event('scroll'));assert.equal(progress.value,'100');assert.equal(shell.classList.contains('has-after'),false);assert.equal(d.querySelector('.shop-rail-count')!.textContent,'3 articles');
+ d.querySelector<HTMLElement>('[data-shop-product="2"]')!.hidden=true;d.dispatchEvent(new w.Event('shop-filter-changed'));assert.equal(rail.scrollLeft,0);assert.equal(progress.value,'0');assert.equal(d.querySelector('.shop-rail-count')!.textContent,'2 articles');assert.equal(rail.tabIndex,0);
+ d.dispatchEvent(new w.Event('shop-loaded'));assert.equal(d.querySelectorAll('.shop-rail-navigation').length,1);
+ Object.defineProperty(rail,'scrollWidth',{value:400});rail.dispatchEvent(new w.Event('scroll'));assert.equal(d.querySelector<HTMLElement>('.shop-rail-navigation')!.hidden,true);w.close();
 });

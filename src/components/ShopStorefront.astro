@@ -16,11 +16,11 @@ const preview=layout!=='grid';
     <link rel="stylesheet" href="/brand-charter.css">
     <link rel="stylesheet" href="/shop.css?v=5221">
     <link rel="stylesheet" href="/shop-commerce.css?v=5"><link rel="stylesheet" href="/commerce-ux.css?v=5216">
-    <link rel="stylesheet" href="/shop-presentations.css?v=5225">
+    <link rel="stylesheet" href="/shop-presentations.css?v=5226">
   </head>
   <body class={`shop-storefront shop-layout-${layout}`} data-shop-layout={layout}>
     <Header/>
-    {preview&&<nav class="shop-preview-notice" aria-label="Variantes de présentation"><strong>Présentation à tester · {layout==='rail'?'Défilement horizontal':'Catalogue éditorial'}</strong><a href="/boutique/">Boutique actuelle</a><a href="/boutique-2/" aria-current={layout==='rail'?'page':undefined}>Version 2</a><a href="/boutique-3/" aria-current={layout==='editorial'?'page':undefined}>Version 3</a></nav>}
+    {preview&&<nav class="shop-preview-notice" aria-label="Variantes de présentation"><strong>Présentation à tester · {layout==='rail'?'Défilement horizontal':layout==='editorial'?'Catalogue éditorial':'Collection immersive'}</strong><a href="/boutique/">Boutique actuelle</a><a href="/boutique-2/" aria-current={layout==='rail'?'page':undefined}>Version 2</a><a href="/boutique-3/" aria-current={layout==='editorial'?'page':undefined}>Version 3</a><a href="/boutique-4/" aria-current={layout==='future'?'page':undefined}>Version 4</a></nav>}
     <div class="commerce-toolbar"><span class="shop-toolbar-label">Boutique FCE</span><a href="#coach-access" id="open-coach">Tarifs coach</a><a href="/boutique/suivi/">Suivre une commande</a><button type="button" id="open-cart">Mon panier <span id="cart-count" aria-hidden="true">0</span><span id="cart-value" class="shop-cart-value"></span></button></div>
     <main class="shop-page is-loading" id="shop-page">
       <section id="shop-maintenance" class="shop-maintenance" hidden aria-label="Boutique temporairement fermée">
@@ -35,7 +35,7 @@ const preview=layout!=='grid';
         </div>
       </section>
       <section class="shop-welcome" aria-labelledby="shop-welcome-title">
-        <div class="shop-welcome-copy"><p class="eyebrow">La boutique du FC Escalquens</p><h1 id="shop-welcome-title">Portez les couleurs<br><span>du FCE.</span></h1><p>Tenues et accessoires pour l’entraînement, les matchs et le quotidien, au tarif FCE.</p><a class="shop-welcome-cta" href="#selection">Découvrir la collection <span aria-hidden="true">↓</span></a><ul class="shop-welcome-promises"><li>Remise au club ou par le coach</li><li>Paiement HelloAsso</li><li>Sans compte à créer</li></ul></div>
+        <div class="shop-welcome-copy"><p class="eyebrow">La boutique du FC Escalquens</p><h1 id="shop-welcome-title">{layout==='editorial'?<>La collection <span>FCE.</span></>:layout==='future'?<>L’esprit FCE.<br/><span>Nouvelle dimension.</span></>:<>Portez les couleurs<br/><span>du FCE.</span></>}</h1><p>Tenues et accessoires pour l’entraînement, les matchs et le quotidien, au tarif FCE.</p><a class="shop-welcome-cta" href="#selection">Découvrir la collection <span aria-hidden="true">↓</span></a><ul class="shop-welcome-promises"><li>Remise au club ou par le coach</li><li>Paiement HelloAsso</li><li>Sans compte à créer</li></ul></div>
         <div class="shop-welcome-visual"><img id="shop-hero-image" data-fallback-src="/hero-foot.webp" alt="Les couleurs du FC Escalquens"><span class="shop-welcome-label"><img src="/logo-fce.webp" alt=""><span>Du terrain au quotidien.<br><strong>Toujours FCE.</strong></span></span></div>
       </section>
 
