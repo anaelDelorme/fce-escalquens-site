@@ -24,7 +24,7 @@ const productSummary=product=>{
   if(product.options)labels.push('Personnalisable');
   return labels.length?`<p class="product-summary">${labels.map(shopEsc).join(' · ')}</p>`:'';
 };
-const productMeta=product=>product.delivery_delay?`<p class="product-delay-compact">Remise indicative · <strong>${shopEsc(product.delivery_delay)}</strong></p>`:'';
+const productMeta=product=>product.delivery_delay?`<p class="product-delay-compact">Délai estimé : <strong>${shopEsc(product.delivery_delay)}</strong></p>`:'';
 const orderButton=product=>`<div class="product-actions"><button class="product-order" type="button" data-order-product="${product.id}" ${product.sellable?'':'disabled'}>${shopEsc(product.orderLabel||'Commande bientôt disponible')} →</button><button class="product-detail" type="button" data-product-detail="${product.id}" aria-label="Voir les détails de ${shopEsc(product.name)}">Voir les détails</button></div>`;
 const productCard=product=>`<article class="shop-product-card" data-shop-product="${product.id}">
   <div class="product-card-visual">${productVisual(product)}</div>
