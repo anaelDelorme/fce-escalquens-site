@@ -1,5 +1,5 @@
 import { defineConfig } from "astro/config";
-import sitemap from "@astrojs/sitemap";
+import sitemap from "./scripts/shop-sitemap.mjs";
 export default defineConfig({
   output: "static",
   site: "https://fcescalquens.fr",

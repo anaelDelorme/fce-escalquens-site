@@ -132,7 +132,7 @@ export function priceMarkup(variants) {
     const min=Math.min(...values),max=Math.max(...values);
     const decimals=values.some(n=>n%100!==0)?2:0;
     const number=n=>new Intl.NumberFormat('fr-FR',{minimumFractionDigits:decimals,maximumFractionDigits:2}).format(n/100);
-    return (min===max?number(min):`${number(min)}–${number(max)}`)+' €';
+    return (min===max?number(min):`${number(min)} – ${number(max)}`)+' €';
   };
   const kinds=new Set(variants.map(v=>v.price_kind||'fce'));
   const label=kinds.size>1?'Votre tarif':kinds.has('coach')?'Tarif coach':'Tarif FCE';
@@ -171,4 +171,19 @@ export function sizeSummary(variants) {
  }
  const bounds=(name,rows)=>{if(!rows.length)return '';rows.sort((a,b)=>a.rank-b.rank);return name+' : '+rows[0].label+(rows[0].rank!==rows.at(-1).rank?' à '+rows.at(-1).label:'');};
  return [bounds('Enfant',children),bounds('Adulte',adults),...other].filter(Boolean).join('\n');
+}
+
+// Shared by catalogue cards, article details and all experimental layouts.
+export function zoomImageMarkup(product,featured=false,className='') {
+ if(!product.image_key)return '';
+ const source='/media/'+encodeURIComponent(product.image_key).replace(/%2F/g,'/');
+ return `<button type="button" class="shop-image-zoom ${className}" data-zoom-image="${source}" data-zoom-title="${esc(product.name)}" aria-label="Agrandir la photo : ${esc(product.name)}"><img src="${source}" alt="${esc(product.name)}" ${featured?'':'loading="lazy"'} decoding="async"><span class="shop-zoom-hint" aria-hidden="true">Agrandir ↗</span></button>`;
+}
+export function groupedVariantPricesMarkup(variants) {
+ const groups=new Map();
+ for(const variant of variants){
+  const key=JSON.stringify([variant.price_cents,variant.catalogue_price_cents??null,variant.price_kind||'fce',variant.color||'']);
+  if(!groups.has(key))groups.set(key,[]);groups.get(key).push(variant);
+ }
+ return [...groups.values()].map(group=>`<li><span class="detail-size-group">${esc(sizeSummary(group).replace(/\n/g,' · '))}${group[0].color?' · '+esc(group[0].color):''}</span>${priceMarkup(group)}</li>`).join('');
 }

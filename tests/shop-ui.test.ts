@@ -241,7 +241,7 @@ test('carte publique : référence catalogue partielle visible avant de choisir 
  const data={products:[{...fixture.products[0],shop_category_id:1}],categories:[{id:1,name:'Tenues'}],settings:{shop_enabled:1}};
  w.fetch=(async(path:any)=>Response.json(String(path).includes('/api/page/')?data:{...fixture,variants})) as any;
  w.eval(readFileSync(new URL('../public/shop-common.js',import.meta.url),'utf8').replace(/export /g,'')+'\n'+readFileSync(new URL('../public/shop.js',import.meta.url),'utf8').replace(/^import[^\n]*\n/,''));await next();await next();
- const card=w.document.querySelector('.shop-product-card')!;assert.match(card.textContent!,/Prix catalogue/);assert.match(card.textContent!,/40\s*€/);assert.match(card.textContent!,/Tarif FCE/);assert.match(card.textContent!,/Enfant : 6 ans à 14 ans/);assert.match(card.textContent!,/Adulte : XS à 2XL/);assert.doesNotMatch(card.querySelector('.product-meta')!.textContent!,/8 ans/);
+ const card=w.document.querySelector('.shop-product-card')!;assert.match(card.textContent!,/Prix catalogue/);assert.match(card.textContent!,/40\s*€/);assert.match(card.textContent!,/Tarif FCE/);assert.match(card.textContent!,/Enfant · 6 ans à 14 ans/);assert.match(card.textContent!,/Adulte · XS à 2XL/);assert.doesNotMatch(card.querySelector('.product-badges')!.textContent!,/8 ans/);
  await w.happyDOM.abort();w.close();
 });
 
@@ -260,4 +260,14 @@ test('dupliquer DOM : bouton par article, reprise réseau sans doublon et ouvert
  const input=d.querySelector<HTMLInputElement>('#content-form [name=name]')!;assert.equal(input.value,'Maillot (copie)');assert.equal((d.querySelector('#content-form [name=active]') as HTMLInputElement).checked,false);assert.equal(d.activeElement,input);assert.equal(rows[0].active,1);assert.match(notices.at(-1)!,/copie est masquée/);assert.ok(d.querySelector('#product-pricing'));
  d.querySelector<HTMLElement>('[data-duplicate-product="1"]')!.click();await next();await next();assert.notEqual(keys[2],keys[1]);assert.equal(rows.length,3);
  await w.happyDOM.abort();w.close();
+});
+
+test('détails compacts : tarifs regroupés, photo cliquable et toutes les tailles conservées dans le choix',async()=>{
+ const sizes=['6 ans','8 ans','10 ans','12 ans','14 ans','S','M','L','XL'];
+ const variants=sizes.map((size,i)=>({id:'compact'+i,product_id:1,label:size,size,price_cents:i<5?2600:3000,catalogue_price_cents:i<5?3000:3500}));
+ const w=setup({...fixture,variants}),d=w.document;d.body.insertAdjacentHTML('beforeend','<button data-product-detail="1">Détails</button>');
+ d.querySelector<HTMLElement>('[data-product-detail]')!.click();await next();
+ assert.equal(d.querySelectorAll('.detail-tariff-groups>li').length,2);assert.match(d.querySelector('.detail-tariff-groups')!.textContent!,/6 ans à 14 ans/);assert.ok(d.querySelector('#detail-content [data-zoom-image]'));
+ d.querySelector<HTMLElement>('#detail-order')!.click();await next();assert.equal(d.querySelector<HTMLDialogElement>('#detail-dialog')!.open,false);assert.equal(d.querySelector<HTMLDialogElement>('#product-dialog')!.open,true);
+ assert.equal(d.querySelectorAll('[name=variant] option').length,sizes.length+1);await w.happyDOM.abort();w.close();
 });

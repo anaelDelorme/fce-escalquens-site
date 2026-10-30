@@ -3,6 +3,8 @@ import {
   esc,
   money,
   priceMarkup,
+  groupedVariantPricesMarkup,
+  zoomImageMarkup,
   readStorage,
   saveStorage,
   showError,
@@ -354,7 +356,7 @@ document.addEventListener("click", async event => {
     if(!p)throw new Error("Cet article n’est plus disponible.");
     const variants=catalogue.variants.filter(v=>v.product_id===p.id),options=catalogue.options.filter(o=>o.product_id===p.id);
     const plain=value=>String(value||'').replace(/\[\/?(?:bordeaux|or)\]/gi,'').replace(/\*\*/g,'');
-    content.innerHTML=`<p class="eyebrow">La fiche de votre équipement</p><h2 id="detail-title">${esc(p.name)}</h2><img class="detail-image" src="/media/${encodeURIComponent(p.image_key).replace(/%2F/g,'/')}" alt="${esc(p.name)}"><p class="detail-description">${esc(plain(p.description||p.short_description||'Le club vous renseignera sur la composition et l’entretien de cet article.'))}</p><h3>Tailles et tarifs</h3><ul>${variants.map(v=>`<li>${esc(v.label)} ${esc(v.color)} ${priceMarkup([v])}</li>`).join('')||'<li>Tarifs de commande à venir.</li>'}</ul>${options.length?`<h3>Personnalisations disponibles</h3><ul>${options.map(o=>`<li>${esc(o.label)} : ${o.price_cents?'+ '+money(o.price_cents):'inclus'}</li>`).join('')}</ul>`:''}${p.delivery_delay?`<p>Délai indicatif : ${esc(p.delivery_delay)}</p>`:''}<button type="button" id="detail-order" ${variants.length?'':'disabled'}>${variants.length?(variants.length===1&&!options.length?"Ajouter au panier":"Choisir ma taille et mes options"):"Tailles et tarifs bientôt disponibles"} →</button>`;
+    content.innerHTML=`<p class="eyebrow">La fiche de votre équipement</p><h2 id="detail-title">${esc(p.name)}</h2><div class="detail-overview">${zoomImageMarkup(p,false,'detail-image')}${priceMarkup(variants)}</div><p class="detail-description">${esc(plain(p.description||p.short_description||'Le club vous renseignera sur la composition et l’entretien de cet article.'))}</p><h3>Tailles et tarifs</h3><ul class="detail-tariff-groups">${groupedVariantPricesMarkup(variants)||'<li>Tarifs de commande à venir.</li>'}</ul><p class="commerce-help">Choisissez votre taille précise à l’étape suivante.</p>${options.length?`<h3>Personnalisations disponibles</h3><ul class="detail-options">${options.map(o=>`<li>${esc(o.label)} : ${o.price_cents?'+ '+money(o.price_cents):'inclus'}</li>`).join('')}</ul>`:''}${p.delivery_delay?`<p class="commerce-help">Délai indicatif : ${esc(p.delivery_delay)}</p>`:''}<div class="detail-actions"><button type="button" id="detail-order" ${variants.length?'':'disabled'}>${variants.length?(variants.length===1&&!options.length?"Ajouter au panier":(options.length?"Choisir et personnaliser":"Choisir ma taille")):"Tailles et tarifs bientôt disponibles"} →</button></div>`;
     document.querySelector("#detail-order").onclick=()=>{dialog.close();if(variants.length===1 && !options.length){const same=cart.find(i=>i.variant_id===variants[0].id&&!i.options.length);if(same && same.quantity>=30){toast('Maximum 30 exemplaires par article.');return;}if(same)same.quantity++;else cart.push({variant_id:variants[0].id,quantity:1,options:[]});persist();cartDialog.showModal();renderCart();}else openProduct(p.id);};
   }catch(error){content.textContent=error.message;}
 });

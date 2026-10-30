@@ -1,0 +1,87 @@
+---
+import Header from './Header.astro';
+import Footer from './Footer.astro';
+const {layout='grid'}=Astro.props;
+const preview=layout!=='grid';
+---
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    {preview&&<><meta name="robots" content="noindex,nofollow"/><link rel="canonical" href="https://fcescalquens.fr/boutique/"/></>}
+    <title>Boutique du club — FC Escalquens</title>
+    <meta name="description" content="Tenues, accessoires et équipements aux couleurs du FC Escalquens. Découvrez la sélection du club et préparez votre commande.">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/enhancements.css?v=6">
+    <link rel="stylesheet" href="/brand-charter.css">
+    <link rel="stylesheet" href="/shop.css?v=5221">
+    <link rel="stylesheet" href="/shop-commerce.css?v=5"><link rel="stylesheet" href="/commerce-ux.css?v=5216">
+    <link rel="stylesheet" href="/shop-presentations.css?v=5225">
+  </head>
+  <body class={`shop-storefront shop-layout-${layout}`} data-shop-layout={layout}>
+    <Header/>
+    {preview&&<nav class="shop-preview-notice" aria-label="Variantes de présentation"><strong>Présentation à tester · {layout==='rail'?'Défilement horizontal':'Catalogue éditorial'}</strong><a href="/boutique/">Boutique actuelle</a><a href="/boutique-2/" aria-current={layout==='rail'?'page':undefined}>Version 2</a><a href="/boutique-3/" aria-current={layout==='editorial'?'page':undefined}>Version 3</a></nav>}
+    <div class="commerce-toolbar"><span class="shop-toolbar-label">Boutique FCE</span><a href="#coach-access" id="open-coach">Tarifs coach</a><a href="/boutique/suivi/">Suivre une commande</a><button type="button" id="open-cart">Mon panier <span id="cart-count" aria-hidden="true">0</span><span id="cart-value" class="shop-cart-value"></span></button></div>
+    <main class="shop-page is-loading" id="shop-page">
+      <section id="shop-maintenance" class="shop-maintenance" hidden aria-label="Boutique temporairement fermée">
+        <div class="shop-maintenance-inner">
+          <img id="shop-maintenance-image" alt="La boutique du FC Escalquens ouvre bientôt" hidden>
+          <div id="shop-maintenance-fallback" class="shop-maintenance-fallback">
+            <img src="/logo-fce.webp" alt="">
+            <p class="eyebrow">Boutique du club</p>
+            <h1>La boutique ouvre bientôt.</h1>
+            <p>Nous préparons les derniers détails. Revenez très vite !</p>
+          </div>
+        </div>
+      </section>
+      <section class="shop-welcome" aria-labelledby="shop-welcome-title">
+        <div class="shop-welcome-copy"><p class="eyebrow">La boutique du FC Escalquens</p><h1 id="shop-welcome-title">Portez les couleurs<br><span>du FCE.</span></h1><p>Tenues et accessoires pour l’entraînement, les matchs et le quotidien, au tarif FCE.</p><a class="shop-welcome-cta" href="#selection">Découvrir la collection <span aria-hidden="true">↓</span></a><ul class="shop-welcome-promises"><li>Remise au club ou par le coach</li><li>Paiement HelloAsso</li><li>Sans compte à créer</li></ul></div>
+        <div class="shop-welcome-visual"><img id="shop-hero-image" data-fallback-src="/hero-foot.webp" alt="Les couleurs du FC Escalquens"><span class="shop-welcome-label"><img src="/logo-fce.webp" alt=""><span>Du terrain au quotidien.<br><strong>Toujours FCE.</strong></span></span></div>
+      </section>
+
+      <section id="coach-access" class="shop-coach-access" aria-label="Accès aux tarifs coach"></section>
+
+      <section class="shop-feature" aria-labelledby="featured-title">
+        <div class="section-intro">
+          <p class="eyebrow">Le choix du club</p>
+          <h2 id="featured-title">À la une.</h2>
+        </div>
+        <div id="shop-featured" class="featured-product"><p>Chargement de l’article à la une…</p></div>
+      </section>
+
+      <section class="shop-selection" id="selection" aria-labelledby="selection-title">
+        <div class="section-intro split-heading">
+          <div><p class="eyebrow">À chacun ses couleurs</p><h2 id="selection-title">Les incontournables.</h2></div>
+          <p>Une sélection pour les joueurs, les coachs, les familles et les supporters.</p>
+        </div>
+        <div class="shop-browse" id="shop-browse" hidden><div class="shop-search-row"><label for="shop-search">Rechercher un article<input id="shop-search" type="search" placeholder="Maillot, veste, sac…" autocomplete="off"></label><p id="shop-results" role="status" aria-live="polite"></p></div><div id="shop-category-filters" class="shop-category-filters" role="group" aria-label="Filtrer par catégorie"></div><div id="shop-no-results" class="commerce-empty" hidden><h3>Aucun article trouvé</h3><p>Essayez un autre mot ou affichez toute la collection.</p><button id="shop-clear-search" type="button">Réinitialiser les filtres</button></div></div><div id="shop-categories" class="shop-category-list"><p>Chargement de la sélection…</p></div>
+      </section>
+
+      <section class="catalogue-band">
+        <div><p class="eyebrow">Toutes les références</p><h2>La collection complète.</h2><p>Téléchargez le catalogue à jour : tous les articles visibles, leurs tailles, leurs tarifs et leurs options.</p></div>
+        <button id="shop-catalogue" class="catalogue-button" type="button">Télécharger le catalogue PDF ↓</button><p id="catalogue-status" class="catalogue-status" role="status" aria-live="polite"></p>
+      </section>
+
+      <section class="order-process" aria-labelledby="order-title">
+        <div class="section-intro"><p class="eyebrow">Simple et accompagné</p><h2 id="order-title">Comment commander ?</h2></div>
+        <ol>
+          <li><b>01</b><div><h3>Composez votre panier</h3><p>Choisissez précisément les tailles, quantités et personnalisations. Vérifiez vos initiales avant de valider.</p></div></li>
+          <li><b>02</b><div><h3>Payez avec HelloAsso</h3><p>Un paiement sécurisé, sans créer de compte. Vous recevez le récapitulatif et votre lien personnel de suivi par e-mail.</p></div></li>
+          <li><b>03</b><div><h3>Retrouvez-nous au club</h3><p>Choisissez la remise par votre coach ou un rendez-vous au club. Nous vous prévenons dès que vos articles sont prêts.</p></div></li>
+        </ol>
+      </section>
+
+      <section class="commerce-section" id="commander" aria-labelledby="shop-end-title">
+        <div class="shop-end-card"><div><p class="eyebrow">Votre prochain équipement vous attend</p><h2 id="shop-end-title">Prêt à porter nos couleurs ?</h2><p>Retrouvez votre sélection et choisissez la remise par votre coach ou un rendez-vous au club.</p><button id="show-cart" type="button">Ouvrir mon panier →</button></div>
+        <nav class="commerce-support" aria-label="Informations boutique"><a href="/boutique/suivi/"><strong>Ma commande</strong><span>Retrouver mon suivi →</span></a><a href="/cgv/"><strong>Conditions de vente</strong><span>Remise, retours et garanties →</span></a><a href="/confidentialite/"><strong>Mes données personnelles</strong><span>Comprendre mes droits →</span></a></nav></div>
+      </section>
+      <noscript><p>Activez JavaScript pour configurer les articles et utiliser le panier. Pour une aide, contactez le club.</p></noscript>
+    </main>
+    <Footer/>
+    <dialog id="detail-dialog" class="commerce-dialog" aria-labelledby="detail-title"><button class="commerce-close" type="button" data-close aria-label="Fermer les détails">×</button><div id="detail-content"></div></dialog>
+    <dialog id="product-dialog" class="commerce-dialog" aria-labelledby="product-title"><button class="commerce-close" type="button" data-close aria-label="Fermer">×</button><div id="product-content"></div></dialog>
+    <dialog id="cart-dialog" class="commerce-dialog commerce-cart" aria-labelledby="cart-title"><button class="commerce-close" type="button" data-close aria-label="Fermer">×</button><p class="eyebrow">Boutique FC Escalquens</p><h2 id="cart-title">Mon panier.</h2><div id="cart-content"></div></dialog>
+    <div id="commerce-notice" class="commerce-toast" role="status" aria-live="polite" hidden></div>
+    <script src="../scripts/shop-entry.js"></script>
+  </body>
+</html>
