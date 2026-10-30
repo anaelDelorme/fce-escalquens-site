@@ -61,3 +61,14 @@ test('vestiaires : défilement direct, glisser sans sélection accidentelle, cla
  for(const card of first.querySelectorAll<HTMLElement>('[data-shop-product]'))card.hidden=card.dataset.shopProduct!=='7';d.dispatchEvent(new w.Event('shop-filter-changed'));
  assert.equal(buttons.filter(b=>!b.hidden).length,1);assert.equal(first.querySelector('.studio-live')!.textContent,'Article 7');w.close();
 });
+test('vestiaires : en-tête illustré par le catalogue, sans doublons, reprise et repli logo',()=>{
+ const {w,d}=fixture();
+ const hero=d.createElement('div');hero.id='studio-hero-pieces';hero.innerHTML='<img class="studio-hero-fallback" src="/logo-fce.webp" alt="">';d.body.prepend(hero);
+ d.dispatchEvent(new w.Event('shop-loaded'));
+ const images=()=>[...hero.querySelectorAll<HTMLImageElement>('.studio-hero-piece img')];
+ assert.deepEqual(images().map(img=>img.getAttribute('src')),['/media/1.webp','/media/3.webp','/media/2.webp']);assert.equal(hero.classList.contains('has-products'),true);
+ d.dispatchEvent(new w.Event('shop-loaded'));assert.equal(images().length,3);assert.equal(d.querySelectorAll('.studio-shell').length,2);
+ images().forEach(img=>img.dispatchEvent(new w.Event('error')));assert.equal(hero.classList.contains('has-products'),false);assert.ok(hero.querySelector('.studio-hero-fallback'));
+ d.querySelectorAll('.product-card-visual img').forEach(img=>img.setAttribute('src','/logo-fce.webp'));
+ d.dispatchEvent(new w.Event('shop-loaded'));assert.equal(images().length,0);assert.equal(hero.classList.contains('has-products'),false);w.close();
+});

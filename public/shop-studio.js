@@ -3,6 +3,20 @@ export function initShopStudio(doc=document){
  if(doc.body.dataset.shopLayout!=='experimental')return;
  const catalogue=doc.querySelector('#shop-categories');
  if(!catalogue)return;
+ // Compose the opening from real catalogue photos; no additional catalogue request.
+ const showcase=doc.querySelector('#studio-hero-pieces');
+ if(showcase){
+  showcase.querySelectorAll('.studio-hero-piece').forEach(node=>node.remove());
+  const categoryPhotos=[...catalogue.querySelectorAll('[data-shop-category]')].map(section=>section.querySelector('.product-card-visual img'));
+  const photos=[...categoryPhotos,...catalogue.querySelectorAll('.product-card-visual img')],seen=new Set();
+  for(const photo of photos){
+   const src=photo?.getAttribute('src');if(!src?.startsWith('/media/')||seen.has(src))continue;
+   seen.add(src);const piece=doc.createElement('div'),image=doc.createElement('img');piece.className='studio-hero-piece';image.src=src;image.alt='';image.decoding='async';
+   image.onerror=()=>{piece.remove();showcase.classList.toggle('has-products',!!showcase.querySelector('.studio-hero-piece'));};
+   piece.append(image);showcase.append(piece);if(seen.size===3)break;
+  }
+  showcase.classList.toggle('has-products',seen.size>0);
+ }
  catalogue._studioDispose?.();
  const disposers=[];
  catalogue.querySelectorAll('[data-shop-category]').forEach((section,sectionIndex)=>{
