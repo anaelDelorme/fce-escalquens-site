@@ -1,4 +1,4 @@
-// Boutique 5: independent category lockers, with four thumbnails per page.
+// Boutique 5: category lockers with native thumbnail scrolling.
 export function initShopStudio(doc=document){
  if(doc.body.dataset.shopLayout!=='experimental')return;
  const catalogue=doc.querySelector('#shop-categories');
@@ -15,28 +15,22 @@ export function initShopStudio(doc=document){
  const title=section.querySelector('header h3');
  const categoryName=title?.textContent||'Collection';
  if(title){title.id='studio-category-'+sectionIndex;section.setAttribute('aria-labelledby',title.id);}
- let selected=cards[0],overview=false,page=0;
- const pageSize=4;
+ let selected=cards[0],overview=false;
  const create=(tag,className,text)=>{const node=doc.createElement(tag);node.className=className;if(text)node.textContent=text;return node;};
  const nav=create('div','studio-navigation');
- const context=create('p','studio-context'),category=create('span','studio-category'),counter=create('span','studio-counter');context.append(category,counter);
+ const hint=create('p','studio-browse-hint','Choisissez votre article');
  const live=create('span','studio-live');live.setAttribute('role','status');live.setAttribute('aria-live','polite');live.setAttribute('aria-atomic','true');
- const actions=create('div','studio-navigation-actions');
- const previous=create('button','studio-step','←'),next=create('button','studio-step','→'),view=create('button','studio-view','Vue d’ensemble');
- for(const [button,label] of [[previous,'Article précédent'],[next,'Article suivant']]){button.type='button';button.setAttribute('aria-label',label);button.setAttribute('aria-controls',stage.id);}
- view.type='button';view.setAttribute('aria-pressed','false');view.setAttribute('aria-controls',stage.id);actions.append(previous,next,view);nav.append(context,live,actions);stage.before(nav);
+ const view=create('button','studio-view','Vue d’ensemble');view.type='button';view.setAttribute('aria-pressed','false');view.setAttribute('aria-controls',stage.id);
+ nav.append(hint,live,view);stage.before(nav);
  const shell=create('div','studio-shell'),thumbnails=create('nav','studio-thumbnails');thumbnails.setAttribute('aria-label','Choisir un article : '+categoryName);
  stage.before(shell);shell.append(stage,thumbnails);
- const shelf=create('div','studio-thumbnail-items'),paging=create('div','studio-thumbnail-paging');
- const pagePrevious=create('button','studio-shelf-step','←'),pageNext=create('button','studio-shelf-step','→'),pageStatus=create('span','studio-shelf-count');
- for(const [button,label] of [[pagePrevious,'Miniatures précédentes'],[pageNext,'Miniatures suivantes']]){button.type='button';button.setAttribute('aria-label',label+' : '+categoryName);}
- paging.append(pagePrevious,pageStatus,pageNext);thumbnails.append(shelf,paging);
- const entries=cards.map((card,index)=>{
+ const shelf=create('div','studio-thumbnail-items');shelf.setAttribute('role','group');shelf.setAttribute('aria-label','Articles : '+categoryName);thumbnails.append(shelf);
+ const entries=cards.map(card=>{
   const name=card.querySelector('h3')?.textContent||'Article',button=create('button','studio-thumbnail');button.type='button';button.setAttribute('aria-label',name);button.setAttribute('aria-controls',stage.id);
   const source=card.querySelector('.product-card-visual img'),image=create('img','');image.src=source?.getAttribute('src')||'/logo-fce.webp';image.alt='';image.loading='lazy';image.draggable=false;image.onerror=()=>{image.onerror=null;image.src='/logo-fce.webp';};
-  const number=create('span','studio-thumbnail-number',String(index+1).padStart(2,'0')),label=create('span','studio-thumbnail-name',name);
-  button.append(image,number,label);shelf.append(button);
-  card.querySelector('.product-card-visual')?.setAttribute('data-studio-number',String(index+1).padStart(2,'0'));
+  const label=create('span','studio-thumbnail-name',name);
+  button.append(image,label);shelf.append(button);
+  card.querySelector('.product-card-visual')?.removeAttribute('data-studio-number');
   button.addEventListener('click',()=>select(card));
   button.addEventListener('keydown',event=>{
    const visible=entries.filter(entry=>available().includes(entry.card)),at=visible.findIndex(entry=>entry.button===button);
@@ -47,30 +41,49 @@ export function initShopStudio(doc=document){
   return {card,button,name};
  });
  const available=()=>cards.filter(card=>!card.hidden&&!card.closest('[data-shop-category]')?.hidden);
- const draw=(followSelection=true)=>{
+ // Keep the selected thumbnail in view without scrolling the document.
+ const reveal=button=>{
+  if(!button)return;
+  const r=button.getBoundingClientRect(),bounds=shelf.getBoundingClientRect();
+  if(r.top<bounds.top)shelf.scrollTop-=bounds.top-r.top;
+  else if(r.bottom>bounds.bottom)shelf.scrollTop+=r.bottom-bounds.bottom;
+  if(r.left<bounds.left)shelf.scrollLeft-=bounds.left-r.left;
+  else if(r.right>bounds.right)shelf.scrollLeft+=r.right-bounds.right;
+ };
+ const draw=()=>{
   const visible=available();if(!visible.includes(selected))selected=visible[0]||null;
-  const index=visible.indexOf(selected);nav.hidden=shell.hidden=!visible.length;
-  if(followSelection)page=Math.max(0,Math.floor(index/pageSize));
-  page=Math.max(0,Math.min(page,Math.ceil(visible.length/pageSize)-1));
-  const shown=visible.slice(page*pageSize,(page+1)*pageSize);
+  nav.hidden=shell.hidden=!visible.length;
   shell.classList.toggle('is-overview',overview);thumbnails.hidden=overview;
   cards.forEach(card=>card.classList.toggle('studio-inactive',!overview&&card!==selected));
-  entries.forEach(entry=>{entry.button.hidden=!shown.includes(entry.card);const active=entry.card===selected;entry.button.setAttribute('aria-pressed',String(active));entry.button.tabIndex=(active&&shown.includes(entry.card))||(!shown.includes(selected)&&entry.card===shown[0])?0:-1;});
-  category.textContent=categoryName;
-  counter.textContent=visible.length?String(index+1).padStart(2,'0')+' / '+String(visible.length).padStart(2,'0'):'';
-  previous.disabled=index<=0;next.disabled=index>=visible.length-1;previous.hidden=next.hidden=overview;
+  entries.forEach(entry=>{entry.button.hidden=!visible.includes(entry.card);const active=entry.card===selected;entry.button.setAttribute('aria-pressed',String(active));entry.button.tabIndex=active?0:-1;});
   view.setAttribute('aria-pressed',String(overview));view.textContent=overview?'Vue immersive':'Vue d’ensemble';
-  live.textContent=selected?(overview?visible.length+' articles affichés':entries.find(entry=>entry.card===selected).name+', article '+(index+1)+' sur '+visible.length):'Aucun article';
-  pagePrevious.disabled=page<=0;pageNext.disabled=(page+1)*pageSize>=visible.length;
-  paging.hidden=visible.length<=pageSize;
-  pageStatus.textContent=visible.length?(page*pageSize+1)+'–'+Math.min((page+1)*pageSize,visible.length)+' / '+visible.length:'';
+  live.textContent=selected?(overview?visible.length+' articles affichés':entries.find(entry=>entry.card===selected).name):'Aucun article';
+  if(!overview)reveal(entries.find(entry=>entry.card===selected)?.button);
  };
  const select=card=>{selected=card;draw();};
- previous.addEventListener('click',()=>{const visible=available();select(visible[Math.max(0,visible.indexOf(selected)-1)]);});
- next.addEventListener('click',()=>{const visible=available();select(visible[Math.min(visible.length-1,visible.indexOf(selected)+1)]);});
  view.addEventListener('click',()=>{overview=!overview;draw();});
- pagePrevious.addEventListener('click',()=>{page--;draw(false);});
- pageNext.addEventListener('click',()=>{page++;draw(false);});
+ // Native touch and vertical wheel scrolling; horizontal wheel conversion on mobile only.
+ shelf.addEventListener('wheel',event=>{
+  if(event.ctrlKey||Math.abs(event.deltaX)>Math.abs(event.deltaY)||shelf.scrollWidth<=shelf.clientWidth+2||shelf.scrollHeight>shelf.clientHeight+2)return;
+  const maximum=shelf.scrollWidth-shelf.clientWidth,delta=event.deltaY*(event.deltaMode===1?16:event.deltaMode===2?shelf.clientWidth:1);
+  if((delta>0&&shelf.scrollLeft>=maximum-2)||(delta<0&&shelf.scrollLeft<=2))return;
+  event.preventDefault();shelf.scrollLeft=Math.max(0,Math.min(maximum,shelf.scrollLeft+delta));
+ },{passive:false});
+ let drag=null,swiped=false;
+ shelf.addEventListener('pointerdown',event=>{
+  swiped=false;if(event.pointerType!=='mouse'||event.button!==0)return;
+  drag={id:event.pointerId,x:event.clientX,y:event.clientY,left:shelf.scrollLeft,top:shelf.scrollTop};
+ });
+ shelf.addEventListener('pointermove',event=>{
+  if(!drag||drag.id!==event.pointerId)return;
+  if(!swiped&&Math.hypot(event.clientX-drag.x,event.clientY-drag.y)<6)return;
+  if(!swiped){shelf.setPointerCapture(event.pointerId);swiped=true;shelf.classList.add('is-dragging');}
+  event.preventDefault();shelf.scrollLeft=drag.left+drag.x-event.clientX;shelf.scrollTop=drag.top+drag.y-event.clientY;
+ });
+ const endDrag=()=>{drag=null;shelf.classList.remove('is-dragging');};
+ shelf.addEventListener('pointerup',endDrag);shelf.addEventListener('pointercancel',()=>{swiped=false;endDrag();});shelf.addEventListener('lostpointercapture',endDrag);shelf.addEventListener('pointerleave',()=>{if(!swiped)endDrag();});
+ shelf.addEventListener('dragstart',event=>event.preventDefault());
+ shelf.addEventListener('click',event=>{if(swiped){event.preventDefault();event.stopImmediatePropagation();swiped=false;}},true);
  const onFilter=()=>draw();
  doc.addEventListener('shop-filter-changed',onFilter);
  disposers.push(()=>doc.removeEventListener('shop-filter-changed',onFilter));
