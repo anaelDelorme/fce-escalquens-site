@@ -230,6 +230,16 @@
 }
 
 @media (max-width: 700px) {
+  /* Keep the detail sheet centered instead of inheriting the cart's bottom sheet. */
+  .shop-storefront #detail-dialog {
+    inset: 0;
+    width: calc(100% - 24px);
+    max-height: calc(100dvh - 32px);
+    margin: auto;
+    border-radius: 16px;
+    overflow-y: auto;
+  }
+
   .shop-storefront .shop-page .featured-product {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
