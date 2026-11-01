@@ -1,0 +1,111 @@
+/* Shared readability across the five comparative storefronts. */
+.shop-storefront :is(.shop-page, #detail-dialog) .shop-prices {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 16px;
+  text-align: left;
+}
+
+.shop-storefront :is(.shop-page, #detail-dialog) .shop-prices .shop-price-applied {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.shop-storefront :is(.shop-page, #detail-dialog) .shop-prices .shop-price-applied > span {
+  font: 700 12px/1.4 Arial, sans-serif;
+  color: #6b2633;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  text-decoration: none;
+}
+
+.shop-storefront :is(.shop-page, #detail-dialog) .shop-prices .shop-price-applied > strong {
+  order: 0;
+  font: 800 clamp(24px, 2.2vw, 30px)/1.2 Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.025em;
+  color: var(--wine);
+  white-space: normal;
+}
+
+.shop-storefront :is(.shop-page, #detail-dialog) .shop-prices .shop-price-reference {
+  font: 400 13px/1.5 Arial, sans-serif;
+  color: #65565b;
+}
+
+.shop-storefront :is(.shop-page, #detail-dialog) .shop-price-reference strong {
+  font: inherit;
+  font-weight: 600;
+  white-space: normal;
+}
+
+.shop-storefront .shop-page .product-actions .product-order,
+.shop-storefront #detail-dialog .detail-actions > button {
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.35;
+  min-height: 52px;
+  padding: 14px 18px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.shop-storefront .shop-page .product-actions {
+  flex-wrap: wrap;
+}
+
+.shop-storefront .shop-page .shop-product-card,
+.shop-storefront .shop-page .featured-product {
+  border: 3px solid #98616a;
+  background-color: #fffdf9;
+}
+
+/* Category boundaries remain visible on the cream and white backgrounds. */
+.shop-storefront .shop-page .shop-category {
+  border-top: 4px solid var(--wine);
+  padding-top: 32px;
+  margin-top: 24px;
+}
+
+.shop-storefront .shop-page > :is(.shop-feature, .shop-selection, .catalogue-band, .order-process, .commerce-section) {
+  border-top: 5px solid var(--wine);
+}
+
+/* The interactive variant frames each category and each browsing stage. */
+.shop-storefront.shop-layout-experimental .shop-page .studio-locker {
+  border: 3px solid #98616a;
+  border-top: 6px solid var(--wine);
+}
+
+.shop-storefront.shop-layout-experimental .studio-shell .studio-stage {
+  border: 3px solid #98616a;
+}
+
+.shop-storefront.shop-layout-experimental .studio-shell .shop-product-card {
+  border: 0;
+}
+
+.shop-storefront.shop-layout-experimental .studio-shell.is-overview .studio-stage {
+  gap: 3px;
+  background: #98616a;
+}
+
+.shop-storefront.shop-layout-experimental .studio-thumbnail {
+  border-width: 3px;
+  border-color: #98616a;
+}
+
+.shop-storefront.shop-layout-experimental .studio-thumbnail[aria-pressed="true"] {
+  border-color: var(--wine);
+}
+
+@media (max-width: 700px) {
+  .shop-storefront .shop-page .product-actions .product-order {
+    flex-basis: 100%;
+    min-width: 0;
+    width: 100%;
+  }
+}
