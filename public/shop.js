@@ -14,21 +14,11 @@ const productDescriptions=product=>String(product.short_description||'').trim()?
 const productVisual=(product,featured=false)=>product.image_key
   ?zoomImageMarkup(product,featured)
   :`<div class="product-placeholder"><img src="/logo-fce.webp" alt=""><span>${shopEsc(product.name)}</span><small>Photo à venir</small></div>`;
-const productSummary=product=>{
-  const sizes=String(product.sizes||''),labels=[];
-  if(/Enfant/.test(sizes)&&/Adulte/.test(sizes))labels.push('Enfant & adulte');
-  else if(/Enfant/.test(sizes))labels.push('Tailles enfant');
-  else if(/Adulte/.test(sizes))labels.push('Tailles adulte');
-  else if(product.configured_sizes&&/unique/i.test(sizes))labels.push('Taille unique');
-  else if(product.variant_count>1)labels.push('Plusieurs modèles');
-  if(product.options)labels.push('Personnalisable');
-  return labels.length?`<p class="product-summary">${labels.map(shopEsc).join(' · ')}</p>`:'';
-};
 const productMeta=product=>product.delivery_delay?`<p class="product-delay-compact">Délai estimé : <strong>${shopEsc(product.delivery_delay)}</strong></p>`:'';
 const orderButton=product=>`<div class="product-actions"><button class="product-order" type="button" data-order-product="${product.id}" ${product.sellable?'':'disabled'}>${shopEsc(product.orderLabel||'Commande bientôt disponible')} →</button><button class="product-detail" type="button" data-product-detail="${product.id}" aria-label="Voir les détails de ${shopEsc(product.name)}">Voir les détails</button></div>`;
 const productCard=product=>`<article class="shop-product-card" data-shop-product="${product.id}">
   <div class="product-card-visual">${productVisual(product)}</div>
-  <div class="product-card-copy"><h3>${shopEsc(product.name)}</h3>${product.price_markup||`<div class="shop-prices"><span class="shop-price-applied"><span>Tarif FCE</span><strong>${shopEsc(product.price_label||'Prix à confirmer')}</strong></span></div>`}${productSummary(product)}${productDescriptions(product)}${productMeta(product)}${orderButton(product)}</div>
+  <div class="product-card-copy"><h3>${shopEsc(product.name)}</h3>${product.price_markup||`<div class="shop-prices"><span class="shop-price-applied"><span>Tarif FCE</span><strong>${shopEsc(product.price_label||'Prix à confirmer')}</strong></span></div>`}${productDescriptions(product)}${productMeta(product)}${orderButton(product)}</div>
 </article>`;
 const revealShopHero=media=>{
   const hero=document.querySelector('#shop-hero-image');if(!hero)return;
@@ -69,7 +59,7 @@ async function loadShop(){
     if(Number(window.shopSettings.shop_enabled??1)===0)return;
     revealShopHero((data.site_media||[]).find(item=>item.slot==='shop_hero'));
     if(featured){
-      featuredNode.innerHTML=`<div class="featured-visual">${productVisual(featured,true)}<span>À la une</span></div><div class="featured-copy"><h3>${shopEsc(featured.name)}</h3>${featured.price_markup||`<div class="shop-prices"><span class="shop-price-applied"><span>Tarif FCE</span><strong>${shopEsc(featured.price_label||'Prix à confirmer')}</strong></span></div>`}${productSummary(featured)}${productDescriptions(featured)}${productMeta(featured)}${orderButton(featured)}</div>`;
+      featuredNode.innerHTML=`<div class="featured-visual">${productVisual(featured,true)}<span>À la une</span></div><div class="featured-copy"><h3>${shopEsc(featured.name)}</h3>${featured.price_markup||`<div class="shop-prices"><span class="shop-price-applied"><span>Tarif FCE</span><strong>${shopEsc(featured.price_label||'Prix à confirmer')}</strong></span></div>`}${productDescriptions(featured)}${productMeta(featured)}${orderButton(featured)}</div>`;
     }else featuredNode.innerHTML='<p class="shop-empty">La sélection de la boutique arrive bientôt.</p>';
     categoriesNode.innerHTML=categories.map((category,categoryIndex)=>{
       const visible=products.filter(product=>String(product.shop_category_id)===String(category.id)).sort((a,b)=>Number(b.highlighted)-Number(a.highlighted));
