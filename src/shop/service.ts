@@ -1,3 +1,4 @@
+import {optionQuery,listPersonalizations,savePersonalization,assignPersonalizations} from './personalizations';
 import {duplicateProduct} from "./duplicate-product";
 import {sortVariants,changeVariants} from "./variant-order";
 import {coachConfiguration,coachSession,coachLogin,coachLogout,changeCoachCode,refreshCoachCookie} from "./coach-access";
@@ -93,7 +94,7 @@ async function catalogue(env: ShopEnv, coach=false) {
       `SELECT id,product_id,label,size,color,sku,supplier,display_order,price_cents AS fce_price_cents,catalogue_price_cents,${coach?'COALESCE(coach_price_cents,price_cents)':'price_cents'} AS price_cents,${coach?"CASE WHEN coach_price_cents IS NOT NULL THEN 'coach' ELSE 'fce' END":"'fce'"} AS price_kind,active FROM shop_variants WHERE active=1 ORDER BY product_id,label`,
     ),
     env.DB.prepare(
-      "SELECT * FROM shop_options WHERE active=1 ORDER BY product_id,label",
+      optionQuery(true),
     ),
     env.DB.prepare("SELECT id,name,display_order FROM shop_categories WHERE active=1 ORDER BY display_order,name"),
   ]);
@@ -968,7 +969,7 @@ async function saveSettings(
     );
   return response({ ok: true, availability: await adminShopAvailability(env,s) });
 }
-async function saveVariant(request: Request, env: ShopEnv, option = false) {
+async function saveVariant(request: Request, env: ShopEnv) {
   const data = await body(request);
   const productId = integer(data.product_id, 1, Number.MAX_SAFE_INTEGER);
   if (
@@ -981,17 +982,13 @@ async function saveVariant(request: Request, env: ShopEnv, option = false) {
   const label = text(data.label, 120, true),
     price = integer(
       data.price_cents,
-      option ? 0 : 1,
-      option ? 100000 : 1000000,
+      1,
+      1000000,
     ),
     active = data.active === true ? 1 : 0;
-  const table=option?'shop_options':'shop_variants';
-  const existing=await env.DB.prepare(`SELECT ${option ? 'product_id' : 'product_id,color,sku,catalogue_price_cents,coach_price_cents'} FROM ${table} WHERE id=?`).bind(id).first<Row>();
+  const existing=await env.DB.prepare('SELECT product_id,color,sku,catalogue_price_cents,coach_price_cents FROM shop_variants WHERE id=?').bind(id).first<Row>();
   if(existing && existing.product_id!==productId)fail('VARIANT_PRODUCT',409,'Ce choix appartient à un autre article.');
-  if(option) {
-    await env.DB.prepare(`INSERT INTO shop_options(id,product_id,label,price_cents,requires_text,max_length,active) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET label=excluded.label,price_cents=excluded.price_cents,requires_text=excluded.requires_text,max_length=excluded.max_length,active=excluded.active WHERE shop_options.product_id=excluded.product_id`)
-      .bind(id,productId,label,price,data.requires_text===true?1:0,integer(data.max_length,1,40),active).run();
-  } else {
+  {
     const optionalPrice=(key:string)=>data[key]===undefined?existing?.[key]??null:data[key]===null||data[key]===''?null:integer(data[key],1,1000000);
     const cataloguePrice=optionalPrice('catalogue_price_cents'),coachPrice=optionalPrice('coach_price_cents');
     const supplierId=text(data.supplier_id,64,true);
@@ -1006,6 +1003,7 @@ async function saveVariant(request: Request, env: ShopEnv, option = false) {
     if(simple){
       statements.push(env.DB.prepare('UPDATE shop_variants SET active=0 WHERE product_id=? AND id<>?').bind(productId,id));
       statements.push(env.DB.prepare('UPDATE shop_options SET active=0 WHERE product_id=?').bind(productId));
+      statements.push(env.DB.prepare('UPDATE shop_products SET personalizations_version=personalizations_version+1 WHERE id=?').bind(productId));
     }
     statements.push(env.DB.prepare(`INSERT INTO shop_variants(id,product_id,label,size,color,sku,supplier,supplier_id,price_cents,active,catalogue_price_cents,coach_price_cents) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET label=excluded.label,size=excluded.size,color=excluded.color,sku=excluded.sku,supplier=excluded.supplier,supplier_id=excluded.supplier_id,price_cents=excluded.price_cents,active=excluded.active,catalogue_price_cents=excluded.catalogue_price_cents,coach_price_cents=excluded.coach_price_cents WHERE shop_variants.product_id=excluded.product_id`)
       .bind(id,productId,simple?'Taille unique':label,simple?'':text(data.size||'',40),text(data.color===undefined?(existing?.color??''):data.color,60),text(data.sku===undefined?(existing?.sku??''):data.sku,100),supplier.name,supplierId,price,active,cataloguePrice,coachPrice));
@@ -1116,6 +1114,12 @@ export async function shopRoute(
     if (!["GET", "HEAD"].includes(request.method)) sameOrigin(request, env);
     if (isAdmin) {
       const actor = await staff(request, env);
+      if(path === '/admin-boutique/api/personalizations'){
+        if(request.method==='GET')return response({personalizations:await listPersonalizations(env)});
+        if(request.method==='PUT')return await savePersonalization(request,env);
+      }
+      const assignments=path.match(/^\/admin-boutique\/api\/products\/(\d+)\/personalizations$/);
+      if(assignments && request.method==='PUT')return await assignPersonalizations(request,env,integer(Number(assignments[1]),1,Number.MAX_SAFE_INTEGER));
       const duplicate=path.match(/^\/admin-boutique\/api\/products\/(\d+)\/duplicate$/);
       if(duplicate){if(request.method!=='POST')fail('METHOD',405,'Utilisez le bouton Dupliquer de la fiche article.');return await duplicateProduct(request,env,integer(Number(duplicate[1]),1,Number.MAX_SAFE_INTEGER),actor);}
       if(path==='/admin-boutique/api/coach-code'&&request.method==='POST')return await changeCoachCode(request,env,actor);
@@ -1197,19 +1201,20 @@ export async function shopRoute(
       ) {
         const [products, variants, options] = await env.DB.batch<Row>([
           env.DB.prepare(
-            "SELECT id,name,active,price_label FROM shop_products ORDER BY name",
+            "SELECT id,name,active,price_label,personalizations_version FROM shop_products ORDER BY name",
           ),
           env.DB.prepare(
             "SELECT * FROM shop_variants ORDER BY product_id,label",
           ),
           env.DB.prepare(
-            "SELECT * FROM shop_options ORDER BY product_id,label",
+            optionQuery(),
           ),
         ]);
         return response({
           products: products.results,
           variants: sortVariants(variants.results),
           options: options.results,
+          personalizations: await listPersonalizations(env),
         });
       }
       if (path === "/admin-boutique/api/variants/prices" && request.method === "PUT") return await changeVariants(request,env);
@@ -1217,7 +1222,7 @@ export async function shopRoute(
       if (path === "/admin-boutique/api/variants" && request.method === "PUT")
         return await saveVariant(request, env);
       if (path === "/admin-boutique/api/options" && request.method === "PUT")
-        return await saveVariant(request, env, true);
+        fail('PERSONALIZATION_SHARED',410,'Les personnalisations se gèrent désormais dans le catalogue commun. Rechargez la gestion boutique.');
       if (path === "/admin-boutique/api/orders" && request.method === "GET") {
         const page = Math.max(
           0,

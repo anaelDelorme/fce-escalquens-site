@@ -232,6 +232,7 @@ before(async () => {
   await DB.exec(readFileSync(new URL('../migrations/0030_shop_suppliers.sql',import.meta.url),'utf8'));
   await DB.exec(readFileSync(new URL('../migrations/0033_shop_reference_coach_prices.sql',import.meta.url),'utf8'));
   await DB.exec(readFileSync(new URL('../migrations/0034_shop_variant_order.sql',import.meta.url),'utf8'));
+  await DB.exec(readFileSync(new URL('../migrations/0035_shared_personalizations.sql',import.meta.url),'utf8'));
   await DB.exec("CREATE TABLE venues(id INTEGER PRIMARY KEY,name TEXT,address TEXT,maps_url TEXT,active INTEGER,display_order INTEGER); INSERT INTO venues VALUES(1,'Stade du club','1 rue du Stade','https://maps.example/stade',1,0);");
   await DB.exec("CREATE TABLE tournaments(id INTEGER PRIMARY KEY,name TEXT,starts_on TEXT,categories TEXT,status TEXT);INSERT INTO tournaments VALUES(1,'Tournoi U11','2027-06-10','[\"U11\"]','open');");
   await DB.exec(readFileSync(new URL('../migrations/0031_tournament_checkout.sql',import.meta.url),'utf8'));
@@ -1232,7 +1233,7 @@ test('tarifs : prix affiché synchronisé, mode simple atomique et commandes pas
  // A catalogue text edit cannot overwrite the computed price of configured products.
  const edit=await worker.fetch(request('/admin-boutique/api/content/shop_products/991',{price_label:'1 €',image_key:'a.webp'},{admin:true,method:'PUT'}),env as any,ctx);assert.equal(edit.status,200);
  assert.equal((await DB.prepare('SELECT price_label FROM shop_products WHERE id=991').first<any>()).price_label,'De 12,50 € à 15,00 €');
- await DB.prepare("INSERT INTO shop_options(id,product_id,label,price_cents,requires_text,max_length,active) VALUES('old-option',991,'Initiales',200,1,4,1)").run();
+ await DB.prepare("INSERT INTO shop_options(id,product_id,personalization_id,active) SELECT 'old-option',991,id,1 FROM shop_personalizations LIMIT 1").run();
  const snapshot=await ORDERS.prepare('SELECT name,supplier,unit_cents FROM order_items ORDER BY id LIMIT 1').first<any>();
  const simple=await save({id:first.body.id,simple:true,label:'Taille unique',size:'',price_cents:1800});assert.equal(simple.status,200);
  const active=(await DB.prepare('SELECT * FROM shop_variants WHERE product_id=991 AND active=1').all<any>()).results;assert.equal(active.length,1);assert.equal(active[0].label,'Taille unique');assert.equal(active[0].size,'');
@@ -1586,7 +1587,8 @@ test('tarifs coach : code hashé, cookie privé, prix caché, révocation et tot
  await DB.prepare('UPDATE shop_products SET active=1,image_key=\'test.webp\' WHERE id=1').run();
  await DB.prepare('UPDATE shop_categories SET active=1 WHERE id=1').run();
  await DB.prepare('UPDATE shop_variants SET active=1,price_cents=2300,catalogue_price_cents=3500,coach_price_cents=1700 WHERE id=?').bind(ids.variant).run();
- await DB.prepare('UPDATE shop_options SET active=1,price_cents=150 WHERE id=?').bind(ids.option).run();
+ await DB.prepare('UPDATE shop_options SET active=1 WHERE id=?').bind(ids.option).run();
+ await DB.prepare('UPDATE shop_personalizations SET active=1,price_cents=150 WHERE id=?').bind(ids.option).run();
  paymentAuthorized=false;providerDown=false;refund=0;
  const raw=async(path:string,data?:any,cookie='',admin=false,origin='http://localhost:8787')=>{
    const req=request(path,data,{admin,origin});if(cookie)req.headers.set('cookie',cookie);

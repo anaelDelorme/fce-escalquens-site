@@ -2,7 +2,7 @@ import {body,rateLimit,response} from './security';
 import {fail,uuid,type Row} from './domain';
 import type {ShopEnv} from './service';
 
-// Each copied size/customization gets a new UUID v4, generated inside the transaction.
+// Each copied size/assignment gets a new UUID; shared definitions stay shared.
 const newUuid="lower(hex(randomblob(4)))||'-'||lower(hex(randomblob(2)))||'-4'||substr(lower(hex(randomblob(2))),2)||'-'||substr('89ab',(random()&3)+1,1)||substr(lower(hex(randomblob(2))),2)||'-'||lower(hex(randomblob(6)))";
 
 export async function duplicateProduct(request:Request,env:ShopEnv,sourceId:number,actor:string){
@@ -15,7 +15,7 @@ export async function duplicateProduct(request:Request,env:ShopEnv,sourceId:numb
  if(!await env.DB.prepare('SELECT id FROM shop_products WHERE id=?').bind(sourceId).first())fail('PRODUCT_MISSING',404,'Cet article n’existe plus. Rechargez la liste.');
  const productFields=['shop_category_id','short_description','description','price_label','price_details','sizes','options','delivery_delay','image_key','display_order'];
  const variantFields=['label','size','color','sku','supplier','supplier_id','price_cents','catalogue_price_cents','coach_price_cents','active','display_order'];
- const optionFields=['label','price_cents','requires_text','max_length','active'];
+ const optionFields=['personalization_id','active'];
  try{
   await env.DB.batch([
    env.DB.prepare(`INSERT INTO shop_products(slug,name,active,featured,highlighted,${productFields.join(',')}) SELECT ?,substr(name,1,990)||' (copie)',0,0,0,${productFields.join(',')} FROM shop_products WHERE id=?`).bind(slug,sourceId),

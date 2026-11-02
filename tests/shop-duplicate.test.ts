@@ -13,6 +13,7 @@ async function fixture(t:any){
  const supplier=(await DB.prepare('SELECT id FROM shop_suppliers LIMIT 1').first<any>()).id;
  for(const [i,size] of ['6 ans','M'].entries())await DB.prepare('INSERT INTO shop_variants(id,product_id,label,size,color,sku,supplier,supplier_id,price_cents,catalogue_price_cents,coach_price_cents,active,display_order) VALUES(?,1,?,?,\'Bordeaux\',\'ancienne-réf\',\'Intersport / Kappa\',?,2500,3500,1900,?,?)').bind(crypto.randomUUID(),size,size,supplier,i===0?1:0,1-i).run();
  await DB.prepare('INSERT INTO shop_options(id,product_id,label,price_cents,requires_text,max_length,active) VALUES(?,1,\'Initiales\',300,1,12,1),(?,1,\'Logo\',0,0,4,0)').bind(crypto.randomUUID(),crypto.randomUUID()).run();
+ await DB.exec(readFileSync(new URL('../migrations/0035_shared_personalizations.sql',import.meta.url),'utf8'));
  // Existing order and line snapshots are independent of the site catalogue.
  await ORDERS.exec("INSERT INTO orders(id,reference,request_hash,token_hash,token_expires,email,first_name,last_name,phone,delivery_method,total_cents,terms_version,terms_snapshot,terms_accepted_at,created_at,updated_at) VALUES('existing','FCE-TEST','hash','token',1,'client@example.org','A','B','0102030405','club',2800,'v1','conditions',1,1,1);INSERT INTO order_items(id,order_id,product_id,variant_id,name,sku,supplier,size,color,options_json,unit_cents,quantity) VALUES('item','existing',1,'old','Maillot','','Club','M','','[]',2800,1);");
  const env={DB,ORDERS,APP_ENV:'local',TRACKING_SECRET:'a'.repeat(64),DEV_ADMIN_TOKEN:'test',SHOP_ORIGIN:'http://localhost:8787'} as unknown as ShopEnv;
@@ -20,11 +21,11 @@ async function fixture(t:any){
   const request=new Request(`http://localhost:8787/admin-boutique/api/products/${id}/duplicate`,{method,headers:{...(admin?{'x-admin-token':'test'}:{}),origin,'content-type':'application/json'},...(method==='POST'?{body:JSON.stringify({idempotency_key:key})}:{})});
   const response=await shopRoute(request,env,{waitUntil(){}} as any);assert.ok(response);return {status:response.status,body:await response.json() as any};
  };
- const rows=async(table:string,product?:number)=>(await DB.prepare(`SELECT * FROM ${table}${product!==undefined?' WHERE product_id=?':''} ORDER BY id`).bind(...(product!==undefined?[product]:[])).all<any>()).results;
+ const rows=async(table:string,product?:number)=>(await DB.prepare(`${table==='shop_options'?'SELECT o.*,p.label,p.price_cents,p.requires_text,p.max_length FROM shop_options o JOIN shop_personalizations p ON p.id=o.personalization_id':'SELECT * FROM '+table}${product!==undefined?' WHERE product_id=?':''} ORDER BY ${table==='shop_options'?'o.id':'id'}`).bind(...(product!==undefined?[product]:[])).all<any>()).results;
  return {DB,ORDERS,call,rows};
 }
 
-test('dupliquer : fiche complète masquée, nouveaux identifiants et tailles/trois prix/options indépendants',async t=>{
+test('dupliquer : fiche complète masquée, nouveaux identifiants et tailles indépendantes et personnalisations partagées',async t=>{
  const {DB,ORDERS,call,rows}=await fixture(t),source=(await rows('shop_products'))[0],before=JSON.stringify(await rows('shop_variants'));
  const orderBefore=JSON.stringify((await ORDERS.prepare('SELECT * FROM order_items').all()).results);
  const result=await call(1);assert.equal(result.status,201,JSON.stringify(result.body));const copy=(await rows('shop_products')).find(p=>p.id===result.body.id)!;
@@ -35,7 +36,7 @@ test('dupliquer : fiche complète masquée, nouveaux identifiants et tailles/tro
   for(const clone of clones){uuid(clone.id);assert.ok(!original.some(v=>v.id===clone.id));const row=original.find(v=>v.label===clone.label)!;for(const key of Object.keys(row).filter(k=>!['id','product_id'].includes(k)))assert.equal(clone[key],row[key],key);}
  }
  await DB.prepare('UPDATE shop_variants SET price_cents=1700 WHERE product_id=?').bind(copy.id).run();assert.equal(JSON.stringify(await rows('shop_variants',1)),before);
- await DB.prepare('UPDATE shop_options SET label=\'Autre texte\' WHERE product_id=?').bind(copy.id).run();assert.equal((await rows('shop_options',1)).filter(v=>v.label==='Initiales').length,1);
+ await DB.prepare('UPDATE shop_personalizations SET price_cents=450 WHERE id=(SELECT personalization_id FROM shop_options WHERE product_id=? AND active=1)').bind(copy.id).run();assert.equal((await rows('shop_options',1)).find(v=>v.label==='Initiales').price_cents,450);assert.equal((await rows('shop_options',copy.id)).find(v=>v.label==='Initiales').price_cents,450);
  assert.equal(JSON.stringify((await ORDERS.prepare('SELECT * FROM order_items').all()).results),orderBefore);
 });
 

@@ -1,3 +1,4 @@
+import {renderPersonalizations} from "./admin-shop-personalizations.js";
 import { mountShopVisibility } from "./admin-shop-visibility.js";
 import { renderContent } from "./admin-shop-content.js";
 import { renderSuppliers } from "./admin-shop-suppliers.js";
@@ -255,6 +256,7 @@ async function render() {
       orders,
       products: () => renderContent(root, call, notice, "shop_products"),
       suppliers: () => renderSuppliers(root, call, notice),
+      personalizations: () => renderPersonalizations(root, call, notice),
       categories: () => renderContent(root, call, notice, "shop_categories"),
       cover: async () => {root.innerHTML='<div id="cover-media"></div><div id="cover-display"></div>';await renderContent(root.querySelector('#cover-media'),call,notice,'site_media');await renderContent(root.querySelector('#cover-display'),call,notice,'shop_settings');},
       settings: settingsView,

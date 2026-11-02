@@ -122,7 +122,7 @@ export function priceCart(
         "Un article n’est plus disponible. Revenez au panier.",
       );
     const quantity = integer(line.quantity, 1, 30);
-    if (!Array.isArray(line.options) || line.options.length > 10)
+    if (!Array.isArray(line.options) || line.options.length > 100)
       fail("INVALID_OPTIONS", 400, "Options invalides.");
     const ids = new Set();
     const selected = line.options
