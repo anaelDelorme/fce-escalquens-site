@@ -68,7 +68,7 @@ export async function cataloguePdf(cat: Catalogue, stamp = new Date(), images: C
         // Group sizes sharing a price to keep a full size range readable without a long table.
         const prices=new Map<string,{price:number;reference:number;labels:string[]}>();for(const v of variants){const key=v.price_cents+':'+(v.catalogue_price_cents||'');if(!prices.has(key))prices.set(key,{price:v.price_cents,reference:v.catalogue_price_cents,labels:[]});prices.get(key)!.labels.push(v.label+(v.color?' / '+v.color:''));}
         const detailLines=variants.length?[...prices.values()].map(({price,reference,labels})=>`${labels.join(', ')} : ${money(price)}${reference?' · catalogue '+money(reference):''}`):[p.sizes?`Tailles : ${p.sizes}`:'Tailles à préciser', 'Commande en ligne prochainement'];
-        for(const o of options)detailLines.push(`${o.label} : ${o.price_cents?'+ '+money(o.price_cents):'inclus'}`);
+        for(const o of options)detailLines.push(`${o.label}${o.required?' (obligatoire)':''} : ${o.price_cents?'+ '+money(o.price_cents):'inclus'}`);
         if(p.delivery_delay)detailLines.push(`Délai indicatif : ${p.delivery_delay}`);
         const available=Math.max(1,Math.floor((y-(bottom+32))/12.4));
         const details=wrap(detailLines.join('\n'),300,9);const chosen=details.slice(0,available);

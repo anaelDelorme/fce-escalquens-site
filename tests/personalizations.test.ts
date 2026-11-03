@@ -17,6 +17,7 @@ async function fixture(t:any){
  await DB.prepare("INSERT INTO shop_options(id,product_id,label,price_cents,requires_text,max_length,active) VALUES(?,1,'Initiales',200,1,4,0)").bind(duplicateId).run();
  for(const id of [1,2,3])await DB.prepare("INSERT INTO shop_variants(id,product_id,label,size,sku,price_cents) VALUES(?,?,'M','M','',1000)").bind(`v${id}`,id).run();
  await DB.exec(readFileSync(new URL('../migrations/0035_shared_personalizations.sql',import.meta.url),'utf8'));
+ await DB.exec(readFileSync(new URL('../migrations/0036_required_personalizations.sql',import.meta.url),'utf8'));
  const env={DB,ORDERS,APP_ENV:'local',DEV_ADMIN_TOKEN:'test',SHOP_ORIGIN:'http://localhost:8787',TRACKING_SECRET:'x'.repeat(64)} as unknown as ShopEnv;
  const call=async(path:string,data?:any,{admin=true,origin='http://localhost:8787'}={})=>{
   const request=new Request(`http://localhost:8787${path.startsWith('/api/')?path:'/admin-boutique/api/'+path}`,{method:data===undefined?'GET':'PUT',headers:{origin,...(admin?{'x-admin-token':'test'}:{}),'content-type':'application/json'},...(data===undefined?{}:{body:JSON.stringify(data)})});
@@ -83,4 +84,39 @@ test('sécurité et concurrence : accès contrôlé, montants invalides et séle
  assert.equal((await DB.prepare('SELECT COUNT(*) AS n FROM shop_options WHERE product_id=1 AND active=1').first<any>()).n,0);
  assert.equal((await call('products/999/personalizations',{version:1,personalization_ids:[]})).status,404);
  assert.equal((await call('options',{product_id:1})).status,410);
+});
+
+test('migration obligatoire : écussons avec ou sans accent, prix et disponibilité conservés',async t=>{
+ const DB=new TestDatabase();t.after(()=>DB.close());
+ await DB.exec('CREATE TABLE shop_personalizations(id INTEGER PRIMARY KEY,label TEXT,price_cents INTEGER,active INTEGER,version INTEGER);');
+ for(const [i,label] of ['Ecusson FCE','Écusson du club','écussons brodés','ECUSSON','Initiales'].entries())await DB.prepare('INSERT INTO shop_personalizations VALUES(?,?,250,?,3)').bind(i,label,i===1?0:1).run();
+ await DB.exec(readFileSync(new URL('../migrations/0036_required_personalizations.sql',import.meta.url),'utf8'));
+ const rows=(await DB.prepare('SELECT * FROM shop_personalizations ORDER BY id').all<any>()).results;
+ assert.deepEqual(rows.map(p=>p.required),[1,1,1,1,0]);
+ assert.deepEqual(rows.map(p=>p.version),[4,4,4,4,3]);
+ assert.equal(rows[1].active,0);assert.ok(rows.every(p=>p.price_cents===250));
+});
+
+test('obligatoire : réglage partagé, contrôle serveur et supplément imposé dans le total',async t=>{
+ const {call}=await fixture(t);
+ let p=(await call('personalizations')).body.personalizations.find((p:any)=>p.price_cents===200);
+ assert.equal(p.required,0);
+ assert.equal((await call('personalizations',{...p,label:'Écusson',required:true,active:true,requires_text:false})).status,200);
+ const cat=(await call('/api/shop/catalogue')).body;
+ for(const id of [1,2]){
+  const option=cat.options.find((o:any)=>o.product_id===id);
+  assert.equal(option.required,1);
+  assert.throws(()=>priceCart([{variant_id:`v${id}`,quantity:1,options:[]}],cat.variants,cat.options,cat.products),(e:any)=>e.code==='REQUIRED_OPTION');
+  const priced=priceCart([{variant_id:`v${id}`,quantity:2,options:[{id:option.id,price_cents:0,required:false}]}],cat.variants,cat.options,cat.products);
+  assert.equal(priced.total,2400);
+ }
+ p=(await call('personalizations')).body.personalizations.find((x:any)=>x.id===p.id);
+ // An older admin client updating another field must not clear the new setting.
+ const {required,...older}=p;
+ assert.equal((await call('personalizations',{...older,active:true,requires_text:false})).status,200);
+ p=(await call('personalizations')).body.personalizations.find((x:any)=>x.id===p.id);assert.equal(p.required,1);
+ for(const bad of [-1,2,'yes',null])assert.equal((await call('personalizations',{...p,required:bad,active:true})).status,400);
+ assert.equal((await call('personalizations',{...p,required:false,active:true,requires_text:false})).status,200);
+ const optional=(await call('/api/shop/catalogue')).body;
+ assert.equal(priceCart([{variant_id:'v1',quantity:1,options:[]}],optional.variants,optional.options,optional.products).total,1000);
 });

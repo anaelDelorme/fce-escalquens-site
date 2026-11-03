@@ -5,7 +5,7 @@ import type {ShopEnv} from './service';
 // Public option IDs belong to the article assignment. Definitions are always
 // joined live so a shared price change also reaches checkout and catalogue PDF.
 export const optionQuery = (publicOnly=false) => `SELECT o.id,o.product_id,o.personalization_id,o.active,
- p.label,p.price_cents,p.requires_text,p.max_length,p.active AS personalization_active
+ p.label,p.price_cents,p.requires_text,p.max_length,p.required,p.active AS personalization_active
  FROM shop_options o JOIN shop_personalizations p ON p.id=o.personalization_id
  ${publicOnly?'WHERE o.active=1 AND p.active=1':''} ORDER BY o.product_id,p.label,o.id`;
 
@@ -18,12 +18,13 @@ export async function listPersonalizations(env:ShopEnv){
 export async function savePersonalization(request:Request,env:ShopEnv){
  const data=await body(request),id=data.id?uuid(data.id):crypto.randomUUID();
  const values=[text(data.label,120,true),integer(data.price_cents,0,100000),data.requires_text===true?1:0,integer(data.max_length,1,40),data.active===true?1:0];
+ const required=data.required===undefined?null:integer(typeof data.required==='boolean'?Number(data.required):data.required,0,1);
  if(data.id){
-  const result=await env.DB.prepare(`UPDATE shop_personalizations SET label=?,price_cents=?,requires_text=?,max_length=?,active=?,version=version+1 WHERE id=? AND version=?`)
-   .bind(...values,id,integer(data.version,1,Number.MAX_SAFE_INTEGER)).run();
+  const result=await env.DB.prepare(`UPDATE shop_personalizations SET label=?,price_cents=?,requires_text=?,max_length=?,active=?,required=COALESCE(?,required),version=version+1 WHERE id=? AND version=?`)
+   .bind(...values,required,id,integer(data.version,1,Number.MAX_SAFE_INTEGER)).run();
   if(!result.meta.changes)fail('PERSONALIZATION_CHANGED',409,'Cette personnalisation a changé. Rechargez la liste avant de modifier son tarif.');
  }else{
-  await env.DB.prepare('INSERT INTO shop_personalizations(id,label,price_cents,requires_text,max_length,active) VALUES(?,?,?,?,?,?)').bind(id,...values).run();
+  await env.DB.prepare('INSERT INTO shop_personalizations(id,label,price_cents,requires_text,max_length,active,required) VALUES(?,?,?,?,?,?,COALESCE(?,0))').bind(id,...values,required).run();
  }
  return response({ok:true,id});
 }

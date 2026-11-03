@@ -233,6 +233,7 @@ before(async () => {
   await DB.exec(readFileSync(new URL('../migrations/0033_shop_reference_coach_prices.sql',import.meta.url),'utf8'));
   await DB.exec(readFileSync(new URL('../migrations/0034_shop_variant_order.sql',import.meta.url),'utf8'));
   await DB.exec(readFileSync(new URL('../migrations/0035_shared_personalizations.sql',import.meta.url),'utf8'));
+ await DB.exec(readFileSync(new URL('../migrations/0036_required_personalizations.sql',import.meta.url),'utf8'));
   await DB.exec("CREATE TABLE venues(id INTEGER PRIMARY KEY,name TEXT,address TEXT,maps_url TEXT,active INTEGER,display_order INTEGER); INSERT INTO venues VALUES(1,'Stade du club','1 rue du Stade','https://maps.example/stade',1,0);");
   await DB.exec("CREATE TABLE tournaments(id INTEGER PRIMARY KEY,name TEXT,starts_on TEXT,categories TEXT,status TEXT);INSERT INTO tournaments VALUES(1,'Tournoi U11','2027-06-10','[\"U11\"]','open');");
   await DB.exec(readFileSync(new URL('../migrations/0031_tournament_checkout.sql',import.meta.url),'utf8'));

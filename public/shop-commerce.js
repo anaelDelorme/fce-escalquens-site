@@ -66,6 +66,9 @@ function validLine(line) {
       catalogue.options.some(
         (x) => x.id === o.id && x.product_id === v.product_id,
       ),
+    ) &&
+    catalogue.options.filter(o=>o.product_id===v.product_id&&Number(o.required)===1).every(
+      o=>line.options.some(selected=>selected.id===o.id&&(!o.requires_text||(typeof selected.text==='string'&&selected.text.trim().length>0&&selected.text.trim().length<=o.max_length))),
     )
   );
 }
@@ -95,14 +98,20 @@ function openProduct(id, editIndex = null) {
   document.querySelector("#product-content").innerHTML =
     `<form id="product-form"><p class="eyebrow">Votre équipement, vos détails</p><div class="commerce-product-summary"><img src="/media/${encodeURIComponent(product.image_key).replace(/%2F/g, "/")}" alt=""><h2 id="product-title">${esc(product.name)}</h2></div><p class="commerce-help">Chaque taille affiche son prix exact, hors options. Le total se met à jour avant l’ajout au panier.</p><label>Taille et modèle<select name="variant" required><option value="" disabled ${existing || variants.length === 1 ? "" : "selected"}>Choisissez une taille et un modèle</option>${variants.map((v) => `<option value="${esc(v.id)}" ${existing?.variant_id === v.id || (!existing && variants.length === 1) ? "selected" : ""}>${esc(v.label)}${v.color ? ` — ${esc(v.color)}` : ""} · ${money(v.price_cents)}</option>`).join("")}</select></label><label style="margin-top:18px">Quantité<input name="quantity" type="number" min="1" max="30" value="${existing?.quantity || 1}" required></label>${options.length ? "<h3>Les petits détails qui comptent</h3>" : ""}${options
       .map((o) => {
-        const selected = existing?.options.find((x) => x.id === o.id);
-        return `<div class="commerce-option"><label class="commerce-check"><input type="checkbox" name="option:${esc(o.id)}" ${selected ? "checked" : ""}><span>${esc(o.label)} <strong>${o.price_cents ? `+ ${money(o.price_cents)}` : "Inclus"}</strong></span></label>${o.requires_text ? `<label data-text-for="${esc(o.id)}" ${selected ? "" : "hidden"}><span>Texte exact à appliquer</span><input name="text:${esc(o.id)}" type="text" maxlength="${o.max_length}" value="${esc(selected?.text || "")}" ${selected ? "required" : "disabled"} autocomplete="off"><small class="commerce-muted">${o.max_length} caractères maximum. Vérifiez les majuscules et l’orthographe.</small></label>` : ""}</div>`;
+        const previous = existing?.options.find((x) => x.id === o.id);
+        const mandatory = Number(o.required)===1;
+        const selected = mandatory || !!previous;
+        return `<div class="commerce-option"><label class="commerce-check"><input type="checkbox" name="option:${esc(o.id)}" ${selected ? "checked" : ""} ${mandatory?"disabled":""}><span>${esc(o.label)} <strong>${o.price_cents ? `+ ${money(o.price_cents)}` : "Inclus"}</strong>${mandatory?' <small class="commerce-muted">Obligatoire</small>':''}</span></label>${o.requires_text ? `<label data-text-for="${esc(o.id)}" ${selected ? "" : "hidden"}><span>Texte exact à appliquer</span><input name="text:${esc(o.id)}" type="text" maxlength="${o.max_length}" value="${esc(previous?.text || "")}" ${selected ? "required" : "disabled"} autocomplete="off"><small class="commerce-muted">${o.max_length} caractères maximum. Vérifiez les majuscules et l’orthographe.</small></label>` : ""}</div>`;
       })
       .join(
         "",
       )}<div id="product-price-comparison"></div><p class="commerce-product-price" id="product-price" aria-live="polite"></p>${options.some(o=>o.requires_text) ? '<p class="commerce-help">Les articles personnalisés ne bénéficient pas du droit de rétractation. Les garanties légales restent applicables.</p>' : ""}<p id="product-error" class="commerce-message" role="alert" hidden></p><button type="submit">${existing ? "Enregistrer les modifications" : "Ajouter au panier"} →</button></form>`;
   const form = document.querySelector("#product-form");
   const update = () => {
+    for(const o of options.filter(o=>Number(o.required)===1)){
+      form.elements[`option:${o.id}`].checked=true;
+      form.elements[`option:${o.id}`].disabled=true;
+    }
     for (const o of options.filter((o) => o.requires_text)) {
       const checked = form.elements[`option:${o.id}`].checked;
       const field = form.elements[`text:${o.id}`];
@@ -127,6 +136,7 @@ function openProduct(id, editIndex = null) {
   update();
   form.addEventListener("submit", (event) => {
     event.preventDefault();
+    update();
     if (!form.reportValidity()) return;
     const line = {
       variant_id: form.elements.variant.value,
@@ -356,7 +366,7 @@ document.addEventListener("click", async event => {
     if(!p)throw new Error("Cet article n’est plus disponible.");
     const variants=catalogue.variants.filter(v=>v.product_id===p.id),options=catalogue.options.filter(o=>o.product_id===p.id);
     const plain=value=>String(value||'').replace(/\[\/?(?:bordeaux|or)\]/gi,'').replace(/\*\*/g,'');
-    content.innerHTML=`<p class="eyebrow">La fiche de votre équipement</p><h2 id="detail-title">${esc(p.name)}</h2><div class="detail-overview">${zoomImageMarkup(p,false,'detail-image')}${priceMarkup(variants)}</div><p class="detail-description">${esc(plain(p.description||p.short_description||'Le club vous renseignera sur la composition et l’entretien de cet article.'))}</p><h3>Tailles et tarifs</h3><ul class="detail-tariff-groups">${groupedVariantPricesMarkup(variants)||'<li>Tarifs de commande à venir.</li>'}</ul><p class="commerce-help">Choisissez votre taille précise à l’étape suivante.</p>${options.length?`<h3>Personnalisations disponibles</h3><ul class="detail-options">${options.map(o=>`<li>${esc(o.label)} : ${o.price_cents?'+ '+money(o.price_cents):'inclus'}</li>`).join('')}</ul>`:''}${p.delivery_delay?`<p class="commerce-help">Délai indicatif : ${esc(p.delivery_delay)}</p>`:''}<div class="detail-actions"><button type="button" id="detail-order" ${variants.length?'':'disabled'}>${variants.length?(variants.length===1&&!options.length?"Ajouter au panier":(options.length?"Choisir et personnaliser":"Choisir ma taille")):"Tailles et tarifs bientôt disponibles"} →</button></div>`;
+    content.innerHTML=`<p class="eyebrow">La fiche de votre équipement</p><h2 id="detail-title">${esc(p.name)}</h2><div class="detail-overview">${zoomImageMarkup(p,false,'detail-image')}${priceMarkup(variants)}</div><p class="detail-description">${esc(plain(p.description||p.short_description||'Le club vous renseignera sur la composition et l’entretien de cet article.'))}</p><h3>Tailles et tarifs</h3><ul class="detail-tariff-groups">${groupedVariantPricesMarkup(variants)||'<li>Tarifs de commande à venir.</li>'}</ul><p class="commerce-help">Choisissez votre taille précise à l’étape suivante.</p>${options.length?`<h3>Personnalisations disponibles</h3><ul class="detail-options">${options.map(o=>`<li>${esc(o.label)}${Number(o.required)===1?' (obligatoire)':''} : ${o.price_cents?'+ '+money(o.price_cents):'inclus'}</li>`).join('')}</ul>`:''}${p.delivery_delay?`<p class="commerce-help">Délai indicatif : ${esc(p.delivery_delay)}</p>`:''}<div class="detail-actions"><button type="button" id="detail-order" ${variants.length?'':'disabled'}>${variants.length?(variants.length===1&&!options.length?"Ajouter au panier":(options.length?"Choisir et personnaliser":"Choisir ma taille")):"Tailles et tarifs bientôt disponibles"} →</button></div>`;
     document.querySelector("#detail-order").onclick=()=>{dialog.close();if(variants.length===1 && !options.length){const same=cart.find(i=>i.variant_id===variants[0].id&&!i.options.length);if(same && same.quantity>=30){toast('Maximum 30 exemplaires par article.');return;}if(same)same.quantity++;else cart.push({variant_id:variants[0].id,quantity:1,options:[]});persist();cartDialog.showModal();renderCart();}else openProduct(p.id);};
   }catch(error){content.textContent=error.message;}
 });

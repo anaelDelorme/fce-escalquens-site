@@ -149,6 +149,15 @@ export function priceCart(
         };
       })
       .sort((a: Row, b: Row) => a.id.localeCompare(b.id));
+    const missingRequired = options.find(
+      (o) => o.product_id === p.id && o.active === 1 && o.required === 1 && !ids.has(o.id),
+    );
+    if (missingRequired)
+      fail(
+        "REQUIRED_OPTION",
+        409,
+        `Personnalisation obligatoire manquante : ${missingRequired.label}. Modifiez cet article dans le panier.`,
+      );
     return {
       product_id: p.id,
       variant_id: v.id,

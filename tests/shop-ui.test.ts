@@ -6,16 +6,59 @@ import {renderContent} from '../src/scripts/admin-shop-content.js';
 import {renderVariants} from '../src/scripts/admin-shop-variants.js';
 const next=()=>new Promise(resolve=>setImmediate(resolve));
 const fixture={products:[{id:1,name:'Maillot',image_key:'maillot.webp',short_description:'Accroche publique',description:'Composition uniquement dans les détails',active:1},{id:2,name:'Sac',image_key:'sac.webp',active:1}],variants:[{id:'v1',product_id:1,label:'6 ans',price_cents:2000},{id:'v2',product_id:1,label:'M',price_cents:2500},{id:'v3',product_id:2,label:'Unique',price_cents:1500}],options:[{id:'o1',product_id:1,label:'Initiales',price_cents:250,requires_text:1,max_length:4}],checkout_available:false,environment:'sandbox'};
-function setup(catalogue=fixture,coachMarkup=false){
+const badge={id:'badge',product_id:1,label:'Écusson FCE',price_cents:300,requires_text:0,max_length:4,required:1};
+function setup(catalogue=fixture,coachMarkup=false,storedCart:any=null){
  const window=new Window({url:'https://boutique.example/boutique/',settings:{disableCSSFileLoading:true,disableJavaScriptFileLoading:true}});
  window.document.write('<button id="open-cart"><span id="cart-count"></span></button><button id="show-cart"></button><div id="commerce-notice" hidden></div><button data-order-product="1">Choisir</button><button data-order-product="2">Ajouter</button><button data-product-detail="1">Détails</button><dialog id="product-dialog"><button data-close></button><div id="product-content"></div></dialog><dialog id="cart-dialog"><button data-close></button><div id="cart-content"></div></dialog><dialog id="detail-dialog"><button data-close></button><div id="detail-content"></div></dialog>');
  if(coachMarkup)window.document.body.insertAdjacentHTML("beforeend",'<a href="#coach-access" id="open-coach">Tarifs coach</a><section id="coach-access"></section><div id="shop-browse"></div>');
  window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};window.HTMLDialogElement.prototype.close=function(){this.open=false;};
  window.fetch=(async()=>Response.json(catalogue)) as any;
+ if(storedCart)window.sessionStorage.setItem('fce-cart-v1',JSON.stringify(storedCart));
  const common=readFileSync(new URL('../public/shop-common.js',import.meta.url),'utf8').replace(/export /g,'');
  const commerce=readFileSync(new URL('../public/shop-commerce.js',import.meta.url),'utf8').replace(/^import[\s\S]*?from "\.\/shop-common.js";/,'');
  window.eval(common+'\n'+commerce);return window;
 }
+test('personnalisation obligatoire DOM : précochée et verrouillée, supplément inclus, modification conservée',async()=>{
+ const w=setup({...fixture,options:[...fixture.options,badge]}),d=w.document;
+ d.querySelector<HTMLElement>('[data-order-product="1"]')!.click();await next();
+ const form=d.querySelector<HTMLFormElement>('#product-form')!;
+ const forced=form.elements.namedItem('option:badge') as HTMLInputElement;
+ assert.equal(forced.checked,true);assert.equal(forced.disabled,true);forced.click();assert.equal(forced.checked,true);
+ const optional=form.elements.namedItem('option:o1') as HTMLInputElement;assert.equal(optional.checked,false);assert.equal(optional.disabled,false);
+ (form.elements.namedItem('variant') as HTMLSelectElement).value='v2';
+ (form.elements.namedItem('quantity') as HTMLInputElement).value='2';
+ form.dispatchEvent(new w.Event('input',{bubbles:true}));assert.match(d.querySelector('#product-price')!.textContent!,/56,00/);
+ // Disabled controls are omitted by FormData; selection extraction must still
+ // include this option, even if a script attempts to uncheck it before submit.
+ forced.checked=false;form.dispatchEvent(new w.Event('submit',{cancelable:true}));
+ const stored=JSON.parse(w.sessionStorage.getItem('fce-cart-v1')!);assert.deepEqual(stored[0].options,[{id:'badge',text:''}]);
+ assert.match(d.querySelector('#cart-content')!.textContent!,/Écusson FCE/);
+ d.querySelector<HTMLElement>('[data-edit="0"]')!.click();
+ const edited=d.querySelector<HTMLInputElement>('[name="option:badge"]')!;assert.equal(edited.checked,true);assert.equal(edited.disabled,true);
+ await w.happyDOM.abort();w.close();
+});
+test('personnalisation obligatoire avec texte : saisie visible et requise avant l’ajout',async()=>{
+ const w=setup({...fixture,options:fixture.options.map(o=>({...o,required:1}))}),d=w.document;
+ d.querySelector<HTMLElement>('[data-order-product="1"]')!.click();await next();
+ const form=d.querySelector<HTMLFormElement>('#product-form')!,input=form.elements.namedItem('text:o1') as HTMLInputElement;
+ (form.elements.namedItem('variant') as HTMLSelectElement).value='v1';
+ assert.equal(input.disabled,false);assert.equal(input.required,true);assert.equal(input.closest('label')!.hidden,false);
+ form.dispatchEvent(new w.Event('submit',{cancelable:true}));assert.equal(d.querySelector('#cart-count')!.textContent,'0');
+ input.value='AD';form.dispatchEvent(new w.Event('submit',{cancelable:true}));
+ assert.equal(d.querySelector('#cart-count')!.textContent,'1');assert.match(d.querySelector('#cart-content')!.textContent!,/AD/);
+ await w.happyDOM.abort();w.close();
+});
+test('ancien panier : option devenue obligatoire manquante, paiement bloqué puis réparation via Modifier',async()=>{
+ const w=setup({...fixture,options:[badge] as any,checkout_available:true},false,[{variant_id:'v1',quantity:1,options:[]}]),d=w.document;
+ d.querySelector<HTMLElement>('#open-cart')!.click();await next();
+ assert.equal(d.querySelector<HTMLButtonElement>('#cart-to-checkout')!.disabled,true);
+ assert.match(d.querySelector('#cart-content')!.textContent!,/retirée ou modifiée/);
+ d.querySelector<HTMLElement>('[data-edit="0"]')!.click();
+ d.querySelector('#product-form')!.dispatchEvent(new w.Event('submit',{cancelable:true}));
+ assert.equal(d.querySelector<HTMLButtonElement>('#cart-to-checkout')!.disabled,false);
+ assert.deepEqual(JSON.parse(w.sessionStorage.getItem('fce-cart-v1')!)[0].options,[{id:'badge',text:''}]);
+ await w.happyDOM.abort();w.close();
+});
 test('panier DOM : taille, personnalisation, ajout, ouverture du panier, modification et retrait sans boucle',async()=>{
  const w=setup(),d=w.document;
  d.querySelector<HTMLElement>('[data-order-product="1"]')!.click();await next();

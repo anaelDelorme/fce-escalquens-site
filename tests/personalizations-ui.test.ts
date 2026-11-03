@@ -20,6 +20,7 @@ test('catalogue commun DOM : modification unique du tarif, version et règles de
  assert.match(root.textContent!,/5/);root.querySelector<HTMLElement>('[data-personalization-edit]')!.click();
  assert.match(root.querySelector('form')!.textContent!,/5 article/);
  const form=root.querySelector<HTMLFormElement>('#personalization-form')!;
+ (form.elements.namedItem('required') as HTMLSelectElement).value='1';
  // Happy DOM's number-step validator uses floating-point remainder; browsers
  // correctly accept whole euro amounts with a 0.01 step.
  (form.elements.namedItem('price') as HTMLInputElement).step='any';
@@ -28,6 +29,7 @@ test('catalogue commun DOM : modification unique du tarif, version et règles de
  assert.equal(root.querySelector<HTMLElement>('#personalization-max-length')!.hidden,true);
  form.dispatchEvent(new w.Event('submit',{cancelable:true}));await next();await next();
  assert.equal(writes.length,1);assert.equal(writes[0].version,3);assert.equal(writes[0].price_cents,500);assert.equal(writes[0].requires_text,false);
+ assert.equal(writes[0].required,true);assert.match(root.querySelector('tbody')!.textContent!,/Obligatoire/);
  assert.match(notice,/tous les articles/);assert.match(root.querySelector('tbody')!.textContent!,/5,00/);
 });
 
