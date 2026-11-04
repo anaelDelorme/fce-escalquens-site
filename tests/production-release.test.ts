@@ -18,7 +18,7 @@ test('reprise production : remappage des articles et tournois, médias boutique 
  await DB.exec("INSERT INTO shop_categories(id,slug,name) VALUES(20,'tenues','Ancien');INSERT INTO shop_products(id,slug,name,image_key,shop_category_id) VALUES(44,'maillot','Ancien','prod.webp',20),(45,'autre','Autre','other.webp',20);INSERT INTO shop_suppliers(id,name) VALUES('prod-supplier','Kappa');");
  await TOURNAMENTS.exec("INSERT INTO tournaments(id,slug,name,starts_on,image_key,poster_key,rules_key) VALUES(73,'coupe','Ancien','2027-06-01','prod-event.webp','prod-poster.webp','prod-rules.pdf');INSERT INTO orders(id,reference,request_hash,token_hash,token_expires,email,first_name,last_name,phone,delivery_method,total_cents,terms_version,terms_snapshot,terms_accepted_at,created_at,updated_at) VALUES('real','FCE-REAL','hash','token',1,'client@example.org','A','B','0102030405','club',1000,'v1','CGV',1,1,1);");
  const before=JSON.stringify((await TOURNAMENTS.prepare('SELECT * FROM orders').all()).results);
- const source={shop:{
+ const source={business_settings:{contact_email:'club@example.org',organization_slug:'sandbox-slug',HELLOASSO_CLIENT_SECRET:'must-not-copy'},shop:{
   shop_categories:[{id:1,slug:'tenues',name:'Tenues',active:1}],
   shop_suppliers:[{id:'stage-supplier',name:'Kappa',active:1}],
   shop_personalizations:[{id:'badge',label:'Écusson',price_cents:250,requires_text:0,max_length:4,active:1,required:1}],
@@ -33,7 +33,7 @@ test('reprise production : remappage des articles et tournois, médias boutique 
   tournament_teams:[{tournament_id:5,team_id:3,notes:'U11'}],
  },teams:[{id:3,slug:'u11'}]};
  const target={shop:{shop_products:[{id:44,slug:'maillot'},{id:45,slug:'autre'}],shop_suppliers:[{id:'prod-supplier',name:'Kappa'}]},tournaments:{},teams:[{id:99,slug:'u11'}]};
- const plan=productionPlan(source,target,'release-test');
+ const plan=productionPlan(source,target,'release-test',{organizationSlug:'fce'});
  await DB.exec(plan.shop_sql);await TOURNAMENTS.exec(plan.tournaments_sql);
  const product=await DB.prepare("SELECT * FROM shop_products WHERE slug='maillot'").first<any>();assert.equal(product.id,44);assert.equal(product.shop_category_id,20);assert.equal(product.name,"Maillot d'été");assert.equal(product.image_key,'releases/release-test/shop/uploads/maillot.webp');
  assert.equal(await DB.prepare("SELECT * FROM shop_products WHERE id=45").first(),null);
@@ -51,6 +51,9 @@ test('reprise production : remappage des articles et tournois, médias boutique 
  assert.equal((await DB.prepare('SELECT COUNT(*) AS n FROM shop_products').first<any>()).n,1);
  assert.equal((await TOURNAMENTS.prepare('SELECT COUNT(*) AS n FROM tournaments').first<any>()).n,2);
  assert.equal((await DB.prepare('PRAGMA foreign_key_check').all()).results.length,0);
+ const ORDERS=new TestDatabase();t.after(()=>ORDERS.close());await ORDERS.exec("CREATE TABLE settings(id INTEGER PRIMARY KEY,data TEXT,version INTEGER);INSERT INTO settings VALUES(1,'{}',0);CREATE TABLE orders(id TEXT PRIMARY KEY);INSERT INTO orders VALUES('real-order');");
+ await ORDERS.exec(plan.settings_sql);const business=JSON.parse((await ORDERS.prepare('SELECT data FROM settings').first<any>()).data);
+ assert.equal(business.contact_email,'club@example.org');assert.equal(business.organization_slug,'fce');assert.equal(business.checkout_enabled,false);assert.equal(business.legal_ready,false);assert.doesNotMatch(plan.settings_sql,/must-not-copy|sandbox-slug/);assert.equal((await ORDERS.prepare('SELECT id FROM orders').first<any>()).id,'real-order');
 });
 
 test('reprise production : tables de paiement, chemins média et correspondances ambiguës refusés',()=>{

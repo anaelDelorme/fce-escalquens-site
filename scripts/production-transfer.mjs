@@ -3,6 +3,7 @@ import {quote} from './tournaments-transfer.mjs';
 
 export const shopTables=['shop_categories','shop_suppliers','shop_personalizations','shop_products','shop_variants','shop_options','shop_settings','site_media'];
 export const tournamentTables=['tournaments','tournament_sales','tournament_teams'];
+export const businessFields=['seller_name','seller_id','seller_address','seller_phone','contact_email','collection_address','collection_instructions','delivery_days'];
 const columns={
  shop_categories:['slug','name','description','display_order','active'],
  shop_suppliers:['id','name','contact_name','email','phone','address','notes','active'],
@@ -23,7 +24,7 @@ function insert(table,row,key,expressions={}){
 function checkBundle(bundle,allowed){
  for(const [table,value] of Object.entries(bundle||{}))if(!allowed.includes(table)||!Array.isArray(value))throw Error('Table hors périmètre : '+table);
 }
-export function productionPlan(source,target,release){
+export function productionPlan(source,target,release,{organizationSlug}={}){
  if(!/^[a-z0-9][a-z0-9-]{0,70}$/.test(release))throw Error('Identifiant de reprise invalide.');
  checkBundle(source.shop,shopTables);checkBundle(source.tournaments,tournamentTables);
  const media=new Map(),shop=['UPDATE shop_settings SET shop_enabled=0 WHERE id=1;','DELETE FROM shop_options;','DELETE FROM shop_variants;'],tournaments=['DELETE FROM tournament_sales;'];
@@ -106,5 +107,9 @@ export function productionPlan(source,target,release){
  const eventSlugs=[...events.values()].map(t=>t.slug);
  tournaments.push(`DELETE FROM tournament_sales WHERE tournament_id NOT IN (SELECT id FROM tournaments${eventSlugs.length?` WHERE slug IN (${eventSlugs.map(quote).join(',')})`:' WHERE 0'});`);
  tournaments.push(removeOthers('tournaments','slug',eventSlugs));
- return {release,shop_sql:shop.join('\n')+'\n',tournaments_sql:tournaments.join('\n')+'\n',media:[...media.values()],counts:{articles:products.size,variants:rows(source.shop,'shop_variants').length,personalizations:definitions.size,tournaments:events.size,media:media.size},desired_shop_enabled:settings?.shop_enabled??1,desired_tournament_sales:rows(source.tournaments,'tournament_sales').map(s=>({slug:events.get(s.tournament_id).slug,enabled:s.enabled})),sales_closed:true};
+ const business=Object.fromEntries(businessFields.filter(k=>source.business_settings?.[k]!=null).map(k=>[k,source.business_settings[k]]));
+ if(organizationSlug)business.organization_slug=organizationSlug;
+ business.checkout_enabled=false;business.legal_ready=false;
+ const settingsSQL=`UPDATE settings SET data=json_patch(data,${quote(JSON.stringify(business))}),version=version+1 WHERE id=1;\n`;
+ return {release,shop_sql:shop.join('\n')+'\n',tournaments_sql:tournaments.join('\n')+'\n',settings_sql:settingsSQL,media:[...media.values()],counts:{articles:products.size,variants:rows(source.shop,'shop_variants').length,personalizations:definitions.size,tournaments:events.size,media:media.size},desired_shop_enabled:settings?.shop_enabled??1,desired_tournament_sales:rows(source.tournaments,'tournament_sales').map(s=>({slug:events.get(s.tournament_id).slug,enabled:s.enabled})),sales_closed:true};
 }

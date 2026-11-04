@@ -2,11 +2,11 @@ import {spawnSync} from 'node:child_process';
 import {mkdirSync,readFileSync,writeFileSync} from 'node:fs';
 import {resolve,join,dirname} from 'node:path';
 import {createHash} from 'node:crypto';
-import {productionPlan,shopTables,tournamentTables} from './production-transfer.mjs';
+import {productionPlan,shopTables,tournamentTables,businessFields} from './production-transfer.mjs';
 import {publicMedia} from './public-media.mjs';
 
 const args=process.argv.slice(2),known=['--config','--out','--release','--media-source'];
-for(let i=0;i<args.length;i+=2)if(!known.includes(args[i])||!args[i+1]||args[i+1].startsWith('--'))throw Error('Usage: node scripts/prepare-production.mjs [--config fichier] [--out dossier] [--release identifiant]');
+for(let i=0;i<args.length;i+=2)if(!known.includes(args[i])||!args[i+1]||args[i+1].startsWith('--'))throw Error('Usage: node scripts/prepare-production.mjs [--config fichier] [--out dossier] [--release identifiant] [--media-source auto|r2|public]');
 const get=(key,fallback)=>args.includes(key)?args[args.indexOf(key)+1]:fallback;
 const config=JSON.parse(readFileSync(get('--config','wrangler.jsonc'),'utf8'));
 const release=get('--release','fce-'+new Date().toISOString().replace(/[:.TZ]/g,'-').replace(/-+$/,''));
@@ -46,14 +46,16 @@ function tables(env,db,names,required=false){
 }
 const targetTournaments=valid(binding(config,'TOURNAMENTS')?.database_id)?'TOURNAMENTS':'DB';
 const source={shop:tables('staging','DB',shopTables,true),tournaments:tables('staging','TOURNAMENTS',tournamentTables,true),teams:query('staging','DB','SELECT id,slug FROM teams')};
+source.business_settings=query('staging','ORDERS',`SELECT ${businessFields.map(k=>`json_extract(data,'$.${k}') AS ${k}`).join(',')} FROM settings WHERE id=1`)[0]||{};
 if(!query('staging','DB','PRAGMA table_info(shop_personalizations)').some(c=>c.name==='required'))throw Error('La migration des personnalisations obligatoires manque en staging.');
 const venues=new Map(query('staging','DB','SELECT id,name FROM venues').map(v=>[v.id,v.name]));
 for(const t of source.tournaments.tournaments)if(!t.venue)t.venue=venues.get(t.venue_id)||'';
 const target={shop:tables('production','DB',shopTables),tournaments:tables('production',targetTournaments,tournamentTables),teams:query('production','DB','SELECT id,slug FROM teams')};
 for(const [name,value] of [['source.json',source],['target.json',target]])writeFileSync(join(folder,name),JSON.stringify(value,null,2)+'\n',{mode:0o600});
-const plan=productionPlan(source,target,release);
+const plan=productionPlan(source,target,release,{organizationSlug:config.vars?.HELLOASSO_ORGANIZATION_SLUG});
 writeFileSync(join(folder,'shop.sql'),plan.shop_sql,{mode:0o600});
 writeFileSync(join(folder,'tournaments.sql'),plan.tournaments_sql,{mode:0o600});
+writeFileSync(join(folder,'settings.sql'),plan.settings_sql,{mode:0o600});
 for(const object of plan.media){
  let needPublic=mediaSource==='public';
  if(!needPublic){try{
@@ -69,6 +71,6 @@ for(const object of plan.media){
  const bytes=readFileSync(join(folder,object.file));object.sha256=createHash('sha256').update(bytes).digest('hex');object.bytes=bytes.length;
 }
 const checksum=file=>createHash('sha256').update(readFileSync(join(folder,file))).digest('hex');
-const manifest={release,created_at:new Date().toISOString(),counts:plan.counts,source_bucket:stageBucket,target_bucket:prodBucket,target_site_db:binding(config,'DB').database_id,target_tournaments_db:binding(config,'TOURNAMENTS')?.database_id||null,production_tournament_snapshot_from:targetTournaments,media:plan.media,sql_sha256:{shop:checksum('shop.sql'),tournaments:checksum('tournaments.sql')},desired_shop_enabled:plan.desired_shop_enabled,desired_tournament_sales:plan.desired_tournament_sales,sales_closed:true};
+const manifest={release,created_at:new Date().toISOString(),counts:plan.counts,source_bucket:stageBucket,target_bucket:prodBucket,target_site_db:binding(config,'DB').database_id,target_orders_db:binding(config,'ORDERS')?.database_id||null,target_tournaments_db:binding(config,'TOURNAMENTS')?.database_id||null,production_tournament_snapshot_from:targetTournaments,media:plan.media,sql_sha256:{shop:checksum('shop.sql'),tournaments:checksum('tournaments.sql'),settings:checksum('settings.sql')},business_contact_present:!!source.business_settings.contact_email,desired_shop_enabled:plan.desired_shop_enabled,desired_tournament_sales:plan.desired_tournament_sales,sales_closed:true};
 writeFileSync(join(folder,'manifest.json'),JSON.stringify(manifest,null,2)+'\n',{mode:0o600});
 console.log(JSON.stringify({folder,counts:plan.counts,production_writes:0,tournament_media_copied:0}));

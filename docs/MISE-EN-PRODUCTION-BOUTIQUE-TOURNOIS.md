@@ -49,7 +49,7 @@ Le dossier privé ignoré `.production-preparation/<reprise>/` contient :
 
 - `source.json` : contenus staging sélectionnés, sans transactions de test ;
 - `target.json` : état de référence des contenus production ;
-- `shop.sql`, `tournaments.sql` : imports proposés, à relire ;
+- `shop.sql`, `tournaments.sql`, `settings.sql` : imports proposés, à relire ;
 - `media/` et `manifest.json` : fichiers téléchargés, clés R2 source/destination,
   sommes SHA-256, tailles, bases cibles et nombres d’articles/tournois.
   Si la lecture directe R2 est refusée, la préparation essaie uniquement les
@@ -95,10 +95,12 @@ node scripts/configure-ovh-mail.mjs --env production
 node scripts/check-production.mjs
 ```
 
-Ne pas copier la ligne `ORDERS.settings` de staging : elle peut contenir le slug
-Sandbox et des réglages de test. Les paramètres techniques de production et les
-secrets restent propres à leur environnement. Les deux modules utilisent les
-paramètres paiement/mail de ORDERS production.
+Ne pas copier intégralement `ORDERS.settings` de staging. `settings.sql` reprend
+uniquement vendeur, contact du club, lieu/consignes et délais de retrait, via une
+liste explicite de champs. Il impose le slug production confirmé `fce` et laisse
+paiement et validation juridique fermés pour revue. Aucun jeton, secret ou réglage
+Sandbox n’est repris. Les deux modules utilisent ces paramètres communs de
+ORDERS production.
 
 ## Bascule des contenus après revue
 
@@ -117,7 +119,9 @@ déploiement : cela écraserait les modifications ultérieures faites en product
    MIME approprié. Vérifier le fichier relu depuis la destination. Ne pas remplacer
    les anciennes clés R2 du site.
 4. Exécuter `shop.sql` uniquement sur DB production, et `tournaments.sql`
-   uniquement sur TOURNAMENTS production. Garder les services fermés si une étape
+   uniquement sur TOURNAMENTS production. `settings.sql` s’exécute uniquement sur
+   ORDERS et ne touche que les champs métier de configuration, pas les commandes.
+   Garder les services fermés si une étape
    échoue : vérifier/restaurer la sauvegarde concernée avant toute reprise.
 5. Vérifier `PRAGMA foreign_key_check`, quantités et tarifs dans les destinations,
    ainsi que le chargement HTTP des images. Vérifier que les données réelles de
