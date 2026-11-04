@@ -18,7 +18,8 @@ const call = (path, options) => api(`/admin-tournois/api/${path}`, options),
     cancelled: "Annulée",
     attended: "Équipes accueillies",
   };
-let registrationFilters={q:'',payment:'',registration:'',tournament:'',category:''};
+let registrationFilters={q:'',payment:'',registration:'',category:''};
+let selectedTournamentId=new URLSearchParams(location.search).get('tournoi')||'';
 let tournamentEnvironment='sandbox';
 const field = (name, label, value = "", type = "text") =>
   `<label>${label}<input name="${name}" type="${type}" value="${esc(value)}" required></label>`;
@@ -30,13 +31,13 @@ const localTime = (seconds) =>
         .toISOString()
         .slice(0, 16)
     : "";
-async function action(button, fn) {
+async function action(button, fn, success='Opération terminée.') {
   button.disabled = true;
   button.setAttribute("aria-busy","true");
   message.textContent = "Enregistrement…";
   try {
     await fn();
-    message.textContent = "Opération terminée.";
+    message.textContent = success;
   } catch (error) {
     message.textContent = error.message;
     message.focus();
@@ -67,17 +68,33 @@ function categoryOverview(rows) {
   const sorted=[...groups.values()].sort((a,b)=>String(a.tournament).localeCompare(String(b.tournament),'fr')||a.category.localeCompare(b.category,'fr',{numeric:true}));
   return sorted.length ? `<div class="tournament-category-grid">${sorted.map(g=>`<article class="tournament-category-card"><div class="tournament-category-heading"><h3>${esc(g.category)}</h3><strong>${g.total}<small> équipe${g.total>1?'s':''}</small></strong></div><p>${esc(g.tournament)}</p><p class="commerce-help">${g.accepted} validée${g.accepted>1?'s':''} · ${g.pending} à valider</p><ul>${g.teams.sort((a,b)=>String(a.club_name).localeCompare(String(b.club_name),'fr')).map(r=>`<li><button type="button" class="tournament-category-team" data-category-order="${esc(r.order_id)}"><span><b>${esc(r.club_name)}</b>${r.team_name&&!/^\d+ équipes?$/i.test(r.team_name)?`<small>${esc(r.team_name)}</small>`:''}</span><strong>${r.quantity} équipe${r.quantity>1?'s':''}</strong></button></li>`).join('')}</ul></article>`).join('')}</div>` : '<p class="commerce-empty">Aucune équipe active pour cette sélection.</p>';
 }
-async function registrations() {
-  const { registrations: rows } = await call("registrations");
-  const tournaments=[...new Set(rows.map(r=>r.tournament_name))];
+async function registrations(clearDetail=false) {
+  const requestedTournament=selectedTournamentId;
+  const { registrations: rows, tournaments, tournament_id } = await call(`registrations${selectedTournamentId?'?tournament_id='+encodeURIComponent(selectedTournamentId):''}`);
+  if(requestedTournament&&String(requestedTournament)!==String(selectedTournamentId))return;
+  selectedTournamentId=tournament_id;
+  const selected=tournaments.find(t=>t.id===tournament_id);
+  if(!selected){root.innerHTML='<section class="commerce-card commerce-empty"><h2>Aucun tournoi à suivre</h2><p>Créez un tournoi pour retrouver ici ses inscriptions.</p><a href="/admin-tournois/tournois/">Gérer les tournois →</a></section>';return;}
+  const url=new URL(location.href);url.searchParams.set('tournoi',String(tournament_id));if(clearDetail)url.searchParams.delete('inscription');history.replaceState(null,'',url);
+  const tournamentDate=t=>t.starts_on?new Date(t.starts_on+'T12:00:00Z').toLocaleDateString('fr-FR',{dateStyle:'medium',timeZone:'Europe/Paris'}):'Archives';
   const categories=[...new Set(rows.flatMap(r=>registrationSections(r).map(s=>s.category)))].sort((a,b)=>a.localeCompare(b,'fr',{numeric:true}));
-  root.innerHTML=`<section class="commerce-card"><div class="commerce-result-head"><h2 id="category-overview-title">Équipes par catégorie</h2><button id="export-registrations" class="commerce-secondary" type="button">Exporter la sélection CSV ↓</button></div><details class="registration-filters"><summary>Rechercher ou filtrer les inscriptions</summary><div class="commerce-filters"><label>Rechercher<input id="registration-search" type="search" value="${esc(registrationFilters.q)}" placeholder="Club, équipe, référence…"></label><label>Tournoi<select id="tournament-filter"><option value="">Tous les tournois</option>${tournaments.map(name=>`<option value="${esc(name)}" ${registrationFilters.tournament===name?'selected':''}>${esc(name)}</option>`).join('')}</select></label><label>Catégorie<select id="category-filter"><option value="">Toutes les catégories</option>${categories.map(category=>`<option value="${esc(category)}" ${registrationFilters.category===category?'selected':''}>${esc(category)}</option>`).join('')}</select></label><label>Paiement<select id="payment-filter"><option value="">Tous</option>${Object.entries(paymentLabels).map(([k,v])=>`<option value="${k}" ${registrationFilters.payment===k?'selected':''}>${esc(v)}</option>`).join('')}</select></label><label>Inscription<select id="registration-filter"><option value="">Toutes</option>${Object.entries(labels).map(([k,v])=>`<option value="${k}" ${registrationFilters.registration===k?'selected':''}>${esc(v)}</option>`).join('')}</select></label><button id="reset-registration-filters" class="commerce-secondary" type="button">Effacer</button></div></details><p id="registration-count" class="commerce-help" role="status" aria-live="polite"></p><section aria-labelledby="category-overview-title"><p class="commerce-help">Les inscriptions annulées sont exclues des effectifs.</p><div id="registration-categories"></div></section><div class="commerce-overview" aria-label="Résumé des inscriptions chargées"><div>Inscriptions chargées<strong>${rows.length}</strong><small>500 inscriptions au maximum</small></div><div>À valider<strong>${rows.filter(r=>r.registration_status==='pending').length}</strong></div><div>Paiements en attente<strong>${rows.filter(r=>r.payment_status==='pending'&&r.registration_status!=='cancelled').length}</strong></div></div><h2>Liste des inscriptions</h2><div class="tournament-admin-table commerce-mobile-cards" id="registration-table"></div><p class="commerce-help">L’acceptation par le club et le paiement sont deux états distincts. Les remboursements s’effectuent dans HelloAsso.</p></section><section id="registration-detail"></section>`;
+  root.innerHTML=`<section class="commerce-card tournament-registration-context"><label for="followed-tournament">Tournoi suivi</label><select id="followed-tournament">${tournaments.map(t=>`<option value="${t.id}" ${t.id===selectedTournamentId?'selected':''}>${esc(t.name)} · ${esc(tournamentDate(t))}</option>`).join('')}</select><h2>${esc(selected.name)}</h2><p class="commerce-help">${esc(tournamentDate(selected))} · Les effectifs, inscriptions et exports ci-dessous concernent uniquement ce tournoi.</p></section><section class="commerce-card"><div class="commerce-result-head"><h2 id="category-overview-title">Équipes par catégorie</h2><button id="export-registrations" class="commerce-secondary" type="button">Exporter la sélection CSV ↓</button></div><details class="registration-filters"><summary>Rechercher ou filtrer les inscriptions</summary><div class="commerce-filters"><label>Rechercher<input id="registration-search" type="search" value="${esc(registrationFilters.q)}" placeholder="Club, équipe, référence…"></label><label>Catégorie<select id="category-filter"><option value="">Toutes les catégories</option>${categories.map(category=>`<option value="${esc(category)}" ${registrationFilters.category===category?'selected':''}>${esc(category)}</option>`).join('')}</select></label><label>Paiement<select id="payment-filter"><option value="">Tous</option>${Object.entries(paymentLabels).map(([k,v])=>`<option value="${k}" ${registrationFilters.payment===k?'selected':''}>${esc(v)}</option>`).join('')}</select></label><label>Inscription<select id="registration-filter"><option value="">Toutes</option>${Object.entries(labels).map(([k,v])=>`<option value="${k}" ${registrationFilters.registration===k?'selected':''}>${esc(v)}</option>`).join('')}</select></label><button id="reset-registration-filters" class="commerce-secondary" type="button">Effacer</button></div></details><p id="registration-count" class="commerce-help" role="status" aria-live="polite"></p><section aria-labelledby="category-overview-title"><p class="commerce-help">Les inscriptions annulées sont exclues des effectifs.</p><div id="registration-categories"></div></section><div class="commerce-overview" aria-label="Résumé des inscriptions chargées"><div>Inscriptions chargées<strong>${rows.length}</strong><small>500 inscriptions au maximum</small></div><div>À valider<strong>${rows.filter(r=>r.registration_status==='pending').length}</strong></div><div>Paiements en attente<strong>${rows.filter(r=>r.payment_status==='pending'&&r.registration_status!=='cancelled').length}</strong></div></div><h2>Liste des inscriptions</h2><div class="tournament-admin-table commerce-mobile-cards" id="registration-table"></div><p class="commerce-help">L’acceptation par le club et le paiement sont deux états distincts. Les remboursements s’effectuent dans HelloAsso.</p></section><section id="registration-detail"></section>`;
+  root.querySelector('#followed-tournament').onchange=e=>action(e.target,async()=>{
+    const previous=selectedTournamentId,previousFilters=registrationFilters;
+    const oldContent=[...root.children].slice(1),oldHeading=[...root.querySelector('.tournament-registration-context').querySelectorAll('h2,p')];
+    for(const element of [...oldContent,...oldHeading])element.hidden=true;
+    root.setAttribute('aria-busy','true');message.textContent='Chargement du suivi…';
+    selectedTournamentId=Number(e.target.value);registrationFilters={q:'',payment:'',registration:'',category:''};
+    try { await registrations(true); }
+    catch(error){selectedTournamentId=previous;registrationFilters=previousFilters;e.target.value=String(previous);for(const element of [...oldContent,...oldHeading])element.hidden=false;throw error;}
+    finally {root.removeAttribute('aria-busy');}
+  },'');
   let visible=rows;
   function draw(){
-    registrationFilters={q:root.querySelector('#registration-search').value,payment:root.querySelector('#payment-filter').value,registration:root.querySelector('#registration-filter').value,tournament:root.querySelector('#tournament-filter').value,category:root.querySelector('#category-filter').value};
+    registrationFilters={q:root.querySelector('#registration-search').value,payment:root.querySelector('#payment-filter').value,registration:root.querySelector('#registration-filter').value,category:root.querySelector('#category-filter').value};
     const normalize=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
     const f=registrationFilters;
-    visible=rows.filter(r=>(!f.payment||r.payment_status===f.payment)&&(!f.registration||r.registration_status===f.registration)&&(!f.tournament||r.tournament_name===f.tournament)&&(!f.category||registrationSections(r).some(s=>s.category===f.category))&&normalize(`${r.reference} ${r.club_name} ${r.team_name} ${r.tournament_name} ${r.email}`).includes(normalize(f.q)));
+    visible=rows.filter(r=>(!f.payment||r.payment_status===f.payment)&&(!f.registration||r.registration_status===f.registration)&&(!f.category||registrationSections(r).some(s=>s.category===f.category))&&normalize(`${r.reference} ${r.club_name} ${r.team_name} ${r.tournament_name} ${r.email}`).includes(normalize(f.q)));
     root.querySelector('#registration-count').textContent=`${visible.length} inscription(s) sur les ${rows.length} chargées`;
     root.querySelector('#export-registrations').disabled=!visible.length;
     root.querySelector('#registration-categories').innerHTML=categoryOverview(visible.map(row=>({...row,sections_json:JSON.stringify(registrationSections(row).filter(s=>!f.category||s.category===f.category).map(s=>({section:s.category,quantity:s.quantity,participating:true})))})));
@@ -86,8 +103,8 @@ async function registrations() {
     root.querySelectorAll('[data-order]').forEach(button=>button.onclick=()=>action(button,()=>show(button.dataset.order,true)));
   }
   root.querySelector('#registration-search').oninput=draw;
-  for(const id of ['payment-filter','registration-filter','tournament-filter','category-filter'])root.querySelector(`#${id}`).onchange=draw;
-  root.querySelector('#reset-registration-filters').onclick=()=>{for(const id of ['registration-search','payment-filter','registration-filter','tournament-filter','category-filter'])root.querySelector(`#${id}`).value='';draw();};
+  for(const id of ['payment-filter','registration-filter','category-filter'])root.querySelector(`#${id}`).onchange=draw;
+  root.querySelector('#reset-registration-filters').onclick=()=>{for(const id of ['registration-search','payment-filter','registration-filter','category-filter'])root.querySelector(`#${id}`).value='';draw();};
   draw();
   root.querySelector("#export-registrations").onclick = () => {
     const cell = (value) =>
@@ -134,14 +151,16 @@ async function registrations() {
       ),
       a = document.createElement("a");
     a.href = url;
-    a.download = "inscriptions-tournois.csv";
+    a.download = `inscriptions-tournoi-${selectedTournamentId}.csv`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 }
 async function show(id, focus = false) {
-  const data = await call(`registrations/${id}`),
-    o = data.order,
+  const context=selectedTournamentId;
+  const data = await call(`registrations/${id}`);
+  if(context!==selectedTournamentId||Number(data.registration.tournament_id)!==Number(selectedTournamentId))return;
+  const o = data.order,
     r = data.registration,
     target = root.querySelector("#registration-detail");
   target.innerHTML = `<section class="commerce-card commerce-admin-detail" tabindex="-1"><div class="commerce-detail-heading"><div><p class="eyebrow">Fiche d’inscription</p><h2>${esc(o.reference)}</h2></div><button type="button" id="close-registration-detail" class="commerce-secondary">Fermer la fiche ×</button></div><p>${esc(r.tournament_name)} · ${esc(r.club_name)} · ${esc(r.team_name)}</p><p>${esc(o.first_name)} ${esc(o.last_name)} · ${esc(o.email)} · ${esc(o.phone)}</p>${sectionsSummary(r)}${
@@ -246,12 +265,16 @@ async function admins() {
   };
 }
 call("status")
-  .then((status) => {
+  .then(async(status) => {
     tournamentEnvironment=status.environment;
     document.querySelector("#tournament-environment").textContent =
       status.environment === "production"
         ? "PRODUCTION — inscriptions et paiements réels"
         : "SANDBOX — paiements de test, mails réservés au destinataire de test";
+    const id=new URLSearchParams(location.search).get('inscription');
+    if(root.dataset.page==='registrations'&&/^[a-f0-9-]{36}$/.test(id||'')){
+      const detail=await call(`registrations/${id}`);selectedTournamentId=detail.registration.tournament_id;
+    }
     return (
       {
         registrations,

@@ -416,14 +416,25 @@ export async function tournamentRoute(
       if (
         path === "/admin-tournois/api/registrations" &&
         request.method === "GET"
-      )
+      ) {
+        const tournaments = (await env.ORDERS.prepare(
+          "SELECT id,name,starts_on,status FROM tournaments UNION ALL SELECT r.tournament_id AS id,MAX(r.tournament_name) AS name,'' AS starts_on,'finished' AS status FROM tournament_registrations r WHERE NOT EXISTS(SELECT 1 FROM tournaments t WHERE t.id=r.tournament_id) GROUP BY r.tournament_id ORDER BY starts_on DESC,id DESC",
+        ).all<Row>()).results;
+        const requested = new URL(request.url).searchParams.get('tournament_id');
+        if(requested!==null&&!/^[1-9]\d{0,9}$/.test(requested))fail('TOURNAMENT',400,'Choisissez un tournoi valide.');
+        const selected = requested!==null ? integer(Number(requested),1,2147483647)
+          : (tournaments.find(t=>t.status==='open')||tournaments.find(t=>t.status==='published')||tournaments[0])?.id??null;
+        if(selected!==null&&!tournaments.some(t=>t.id===selected))fail('TOURNAMENT',404,'Ce tournoi est introuvable.');
         return response({
-          registrations: (
+          tournaments,
+          tournament_id: selected,
+          registrations: selected===null ? [] : (
             await env.ORDERS.prepare(
-              "SELECT o.id,o.reference,o.email,o.first_name,o.last_name,o.total_cents,o.payment_status,o.version,r.* FROM orders o JOIN tournament_registrations r ON r.order_id=o.id WHERE o.kind='tournament' ORDER BY o.created_at DESC LIMIT 500",
-            ).all()
+              "SELECT o.id,o.reference,o.email,o.first_name,o.last_name,o.total_cents,o.payment_status,o.version,r.* FROM orders o JOIN tournament_registrations r ON r.order_id=o.id WHERE o.kind='tournament' AND r.tournament_id=? ORDER BY o.created_at DESC LIMIT 500",
+            ).bind(selected).all()
           ).results,
         });
+      }
       const match = path.match(
         /^\/admin-tournois\/api\/registrations\/([a-f0-9-]{36})(?:\/(reconcile|resend|rotate-link|resolve-attempt|cheque-received))?$/,
       );

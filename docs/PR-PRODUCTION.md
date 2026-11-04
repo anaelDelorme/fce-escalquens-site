@@ -1,11 +1,7 @@
-La boutique propose désormais uniquement le tarif FCE : l’accès par code coach, ses sessions et les champs de prix coach sont retirés. Les commandes déjà enregistrées gardent leur montant et la remise par le coach reste disponible.
+Le séparateur de la section « À la une » touchait le bloc d’accueil de la boutique. Un espace de 28 à 48 px est ajouté avant la ligne, avec actualisation de la version du CSS pour les navigateurs déjà ouverts.
 
-Les mails boutique, tournois et notifications club utilisent une présentation commune : en-tête du club, informations principales, récapitulatif lisible et bouton de suivi. Les destinataires et les transports sont conservés. Les conditions acceptées sont jointes au texte des confirmations et ne sont plus répétées dans les simples relances de suivi.
+Le suivi administratif affiche désormais un seul tournoi à la fois. Le sélecteur reste visible en haut ; il n’existe plus de vue « Tous les tournois ». Le tournoi sélectionné est conservé dans l’URL. Les inscriptions, effectifs par catégorie, compteurs, fiches et exports CSV restent dans ce contexte ; effacer les filtres ne change pas de tournoi. Les liens directs vers une inscription ouvrent le tournoi correspondant.
 
-L’administration des inscriptions affiche les effectifs par catégorie et par tournoi, les clubs/équipes concernés et un filtre de catégorie. Les quantités de chaque section sont additionnées ; les inscriptions annulées sont exclues des effectifs. Le récapitulatif porte sur les inscriptions chargées, avec la limite existante de 500 explicitement indiquée.
+Le filtrage est effectué dans SQL avant la limite de 500 inscriptions, par identifiant du tournoi. Deux tournois de même nom restent distincts. Les tournois sans inscription et les inscriptions historiques dont la configuration a été retirée restent accessibles.
 
-Une opération dédiée copie tous les articles, variantes, personnalisations et images de staging vers la production, après sauvegardes chiffrées et vérification de chaque média. Seul le catalogue est remplacé ; commandes, paiements, tournois et paramètres HelloAsso restent en production. Les prix coach sont supprimés et la visibilité initiale de la boutique est restaurée après vérification.
-
-Validation : 193 tests, TypeScript, build et vérifications de configuration. Les tests couvrent les anciens cookies coach, les destinataires et le contenu des mails, les effectifs par catégorie et l’isolation de la copie boutique, y compris les échecs et modifications concurrentes. Aucun mail réel ni paiement de test lancé.
-
-La copie du catalogue utilise le workflow « Copier la boutique staging vers production » sur la branche dédiée `ops/sync-shop-production`. Le code de cette PR est déployé lors de sa fusion dans `main`.
+Validation : 194 tests, TypeScript, build et contrôle visuel mobile/ordinateur. Tests dédiés au filtrage avant la limite, aux noms identiques, aux archives, aux liens directs et à l’export d’un seul tournoi. Aucun changement des données de production.

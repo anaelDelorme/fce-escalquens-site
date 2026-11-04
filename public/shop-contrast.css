@@ -201,6 +201,10 @@
   border-top: 3px solid var(--wine);
 }
 
+.shop-storefront .shop-page > .shop-feature {
+  margin-top: clamp(28px, 4vw, 48px);
+}
+
 /* The interactive variant frames each category and each browsing stage. */
 .shop-storefront.shop-layout-experimental .shop-page .studio-locker {
   border: 3px solid #98616a;
