@@ -14,6 +14,16 @@ Pour les règlements HelloAsso, « Vérifier chez HelloAsso » affiche le résul
 
 L’export CSV contient une ligne par catégorie pour chaque inscription, avec `nb_equipes`. Par exemple, deux U11 et une U13F donnent deux lignes : U11 / 2 et U13F / 1. Le tournoi et les filtres sélectionnés restent appliqués. Les catégories non participantes sont exclues. `total_cents` correspond au montant de la catégorie, calculé à partir du tarif par équipe de l’inscription ; `registration_total_cents` indique le total de l’inscription et se répète comme information de référence. Si le tarif par équipe ne peut pas être déduit en centimes entiers d’une ancienne inscription, le montant de catégorie reste vide et le total original est conservé.
 
+## Exports des commandes boutique
+
+Dans la liste des commandes, appliquer la recherche et les filtres, puis utiliser « Exporter les commandes CSV » ou « Télécharger les bons fournisseur en un PDF ». Les deux exports portent sur tous les résultats de la recherche appliquée, même depuis une autre page de la liste. Une saisie non validée par « Appliquer » ne modifie pas leur périmètre. « Toutes les commandes » et « Effacer » permettent de retirer les filtres ; le raccourci « Payées, à préparer » permet de préparer le PDF des commandes à passer au fournisseur.
+
+Le CSV comporte une ligne par commande et 15 colonnes en français : référence, date de commande, nom, prénom, e-mail, téléphone, licencié, équipe, état de préparation, état du paiement, détail de la commande, quantité totale, montant en euros, mode de remise et fournisseurs. Le détail conserve les articles, tailles, couleurs, personnalisations et leurs textes, les quantités et les montants. Format UTF-8 avec marqueur pour Excel, séparateur point-virgule et décimales françaises. Les cellules sont protégées contre l’interprétation d’un texte comme formule.
+
+Le PDF regroupe les bons des commandes payées et non annulées répondant aux mêmes critères. Chaque commande client commence sur une nouvelle page et peut se poursuivre sur plusieurs pages. Les coordonnées privées du client et les prix de vente restent exclus, comme dans le bon individuel. La pagination du fichier est globale. Le téléchargement individuel est conservé ; aucun téléchargement ne marque les commandes comme transmises au fournisseur et aucun mail n’est envoyé.
+
+Les endpoints d’export sont réservés à l’administration boutique et renvoient des réponses non mises en cache. Les résultats sont parcourus par lots avec un curseur de date et d’identifiant pour couvrir toutes les commandes sans être limité aux 50 lignes visibles. Une erreur empêche le téléchargement d’un fichier partiel. Aucune migration ni secret supplémentaire n’est nécessaire.
+
 ## Copie du catalogue staging vers production
 
 Le workflow « Copier la boutique staging vers production » s’exécute uniquement sur la branche `ops/sync-shop-production`, lors d’un push intentionnel vers cette branche ou d’une relance manuelle sur celle-ci. Un push ordinaire sur main, staging ou une branche de PR ne lance pas cette copie.

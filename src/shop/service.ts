@@ -34,6 +34,7 @@ import { drainMail, queueMail, testMail, mailQueueStatus } from "./mail";
 import { mailReady, mailTransportReady } from "./mail-config";
 import { smtpConfigured } from "./smtp";
 import { priceLabelStatement } from "./catalogue-pricing";
+import { orderSearch, orderExportPage, supplierOrder } from './order-exports';
 export interface ShopEnv {
   DB: D1Database;
   ORDERS: D1Database;
@@ -915,8 +916,7 @@ async function updateFulfillment(
 }
 function purchaseOrder(order: Row, items: Row[], s: Settings) {
   return response({
-    order:Object.fromEntries(['reference','first_name','last_name','licensed_name','team'].map(key=>[key,order[key]])),
-    items:items.map(item=>Object.fromEntries(['name','supplier','size','quantity','options_json'].map(key=>[key,item[key]]))),
+    ...supplierOrder(order,items),
     club:Object.fromEntries(['seller_name','seller_address','contact_email','seller_phone'].map(key=>[key,s[key as keyof Settings]])),
   });
 }
@@ -1231,22 +1231,21 @@ export async function shopRoute(
           0,
           Math.min(100000, Number(url.searchParams.get("page")) || 0),
         );
-        const q = (url.searchParams.get("q") || "").slice(0, 100);
-        const payment = (url.searchParams.get("payment") || "").slice(0, 30),
-          fulfillment = (url.searchParams.get("fulfillment") || "").slice(
-            0,
-            30,
-          );
+        const search=orderSearch(url);
         const rows = await env.ORDERS.prepare(
-          `SELECT id,reference,email,first_name,last_name,team,total_cents,payment_status,fulfillment,created_at,version FROM orders WHERE kind='shop' AND (?='' OR instr(lower(reference||' '||email||' '||first_name||' '||last_name),lower(?))>0) AND (?='' OR payment_status=?) AND (?='' OR fulfillment=?) ORDER BY created_at DESC LIMIT 51 OFFSET ?`,
+          `SELECT o.id,o.reference,o.email,o.first_name,o.last_name,o.team,o.total_cents,o.payment_status,o.fulfillment,o.created_at,o.version FROM orders o WHERE ${search.where} ORDER BY o.created_at DESC,o.id DESC LIMIT 51 OFFSET ?`,
         )
-          .bind(q, q, payment, payment, fulfillment, fulfillment, page * 50)
+          .bind(...search.bindings, page * 50)
           .all<Row>();
         return response({
           orders: rows.results.slice(0, 50),
           has_more: rows.results.length > 50,
           page,
         });
+      }
+      if(request.method==='GET'&&['/admin-boutique/api/orders/export','/admin-boutique/api/orders/purchase-orders'].includes(path)) {
+        const supplier=path.endsWith('/purchase-orders');
+        return response({...await orderExportPage(env,url,supplier),...(supplier?{club:Object.fromEntries(['seller_name','seller_address','contact_email','seller_phone'].map(key=>[key,s[key as keyof Settings]]))}:{})});
       }
       if (path === "/admin-boutique/api/surveys" && request.method === "GET") {
         const aggregate = await env.ORDERS.prepare(

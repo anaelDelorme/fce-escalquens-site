@@ -2,6 +2,7 @@ import {renderPersonalizations} from "./admin-shop-personalizations.js";
 import { mountShopVisibility } from "./admin-shop-visibility.js";
 import { renderContent } from "./admin-shop-content.js";
 import { renderSuppliers } from "./admin-shop-suppliers.js";
+import { ordersCsv, collectOrderExport, downloadExport } from './admin-shop-exports.js';
 import {
   api,
   esc,
@@ -75,9 +76,11 @@ async function orders() {
 }
 async function loadList() {
   const version=++listVersion;
+  const exportFilters={...filters};
   const list=document.querySelector('#orders-list');list.setAttribute('aria-busy','true');
+  list.querySelectorAll('[data-export-orders]').forEach(button=>button.disabled=true);
   let result;
-  try { result=await call(`orders?${new URLSearchParams({...filters,page})}`); }
+  try { result=await call(`orders?${new URLSearchParams({...exportFilters,page})}`); }
   finally { if(version===listVersion)list.removeAttribute('aria-busy'); }
   if(version!==listVersion)return;
   const rows=result.orders;
@@ -86,6 +89,21 @@ async function loadList() {
     button.setAttribute('aria-pressed',String(!filters.q&&(mode==='all'?!filters.payment&&!filters.fulfillment:mode==='prepare'?filters.payment==='paid'&&filters.fulfillment==='new':!filters.payment&&filters.fulfillment==='ready')));
   });
   list.innerHTML=`<div class="commerce-result-head"><h2>Vos commandes</h2><p>${rows.length} résultat(s) sur cette page${result.has_more?' · suite disponible':''}</p></div>${rows.length?`<div class="commerce-overview" aria-label="Résumé des commandes affichées"><div>Commandes affichées<strong>${rows.length}</strong></div><div>Payées<strong>${rows.filter(o=>o.payment_status==='paid').length}</strong></div><div>À remettre<strong>${rows.filter(o=>o.fulfillment==='ready').length}</strong></div></div><div class="commerce-table-wrap commerce-mobile-cards"><table><thead><tr><th scope="col">Commande</th><th scope="col">Client</th><th scope="col">Montant</th><th scope="col">Paiement</th><th scope="col">Préparation</th></tr></thead><tbody>${rows.map(o=>`<tr><td data-label="Commande"><div><a href="#commande" data-order="${esc(o.id)}">${esc(o.reference)}</a><small>${date(o.created_at)}</small></div></td><td data-label="Client"><div>${esc(o.first_name)} ${esc(o.last_name)}<small>${esc(o.email)}${o.team?' · '+esc(o.team):''}</small></div></td><td data-label="Montant"><div>${money(o.total_cents)}</div></td><td data-label="Paiement"><div><span class="commerce-badge ${o.payment_status==='paid'?'is-paid':o.payment_status==='pending'?'is-pending':'is-neutral'}">${esc(paymentLabels[o.payment_status]||o.payment_status)}</span></div></td><td data-label="Préparation"><div>${esc(fulfillmentLabels[o.fulfillment]||o.fulfillment)}</div></td></tr>`).join('')}</tbody></table></div>`:'<div class="commerce-empty"><h3>Aucune commande ici</h3><p>Aucune commande ne correspond à ces critères. Vous pouvez effacer les filtres ou modifier votre recherche.</p><button type="button" id="empty-reset-orders" class="commerce-secondary">Afficher toutes les commandes</button></div>'}<div class="commerce-actions commerce-pagination"><button id="previous-orders" class="commerce-secondary" type="button" ${page===0?'disabled':''}>← Précédente</button><span>Page ${page+1}</span><button id="next-orders" class="commerce-secondary" type="button" ${!result.has_more?'disabled':''}>Suivante →</button></div>`;
+  list.querySelector('.commerce-result-head').insertAdjacentHTML('afterend',`<div class="commerce-actions"><button type="button" class="commerce-secondary" data-export-orders="csv" ${rows.length?'':'disabled'}>Exporter les commandes CSV ↓</button><button type="button" class="commerce-secondary" data-export-orders="pdf" ${rows.length?'':'disabled'}>Télécharger les bons fournisseur en un PDF ↓</button></div><p class="commerce-help">Les exports reprennent tous les résultats de la recherche appliquée, toutes pages confondues. Le PDF contient un bon par commande payée et non annulée. Son téléchargement ne change pas l’état des commandes.</p>`);
+  list.querySelectorAll('[data-export-orders]').forEach(button=>button.onclick=()=>action(button,async()=>{
+    const supplier=button.dataset.exportOrders==='pdf';
+    notice('Préparation de l’export de tous les résultats…');
+    const data=await collectOrderExport(call,supplier?'orders/purchase-orders':'orders/export',exportFilters);
+    if(!data.orders.length)throw new Error(supplier?'Aucune commande payée et non annulée ne correspond à cette recherche.':'Aucune commande ne correspond à cette recherche.');
+    const stamp=new Date().toISOString().slice(0,10);
+    if(supplier){
+      const [{purchaseOrdersPdf},logoResponse]=await Promise.all([import('../shop/purchase-order-pdf'),fetch('/logo-fce.png',{redirect:'error'})]);
+      if(!logoResponse.ok)throw new Error('Le logo du club ne peut pas être chargé. Réessayez le téléchargement.');
+      const bytes=await purchaseOrdersPdf(data.orders,data.club,new Uint8Array(await logoResponse.arrayBuffer()));
+      downloadExport(new Blob([bytes],{type:'application/pdf'}),`bons-fournisseur-${stamp}.pdf`);
+    }else downloadExport(new Blob([ordersCsv(data.orders)],{type:'text/csv;charset=utf-8'}),`commandes-boutique-${stamp}.csv`);
+    notice(`${supplier?'PDF unique':'CSV'} téléchargé : ${data.orders.length} commande${data.orders.length>1?'s':''}.`);
+  }));
   document.querySelector('#empty-reset-orders')?.addEventListener('click',()=>document.querySelector('#reset-order-filters').click());
   list.querySelectorAll('[data-order]').forEach(a=>a.onclick=event=>{event.preventDefault();orderDetail(a.dataset.order,true).catch(e=>showError(message,e));});
   for(const [id,step] of [['previous-orders',-1],['next-orders',1]])document.querySelector(`#${id}`).onclick=()=>{page+=step;loadList().catch(e=>showError(message,e));};
