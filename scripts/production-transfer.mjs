@@ -84,7 +84,7 @@ export function productionPlan(source,target,release,{organizationSlug}={}){
  shop.push(removeOthers('shop_personalizations','id',[...definitions.keys()]));
  shop.push(removeOthers('shop_suppliers','id',[...suppliers.values()].map(s=>rows(target.shop,'shop_suppliers').find(p=>p.name.toLowerCase()===s.name.toLowerCase())?.id||s.id)));
  const settings=rows(source.shop,'shop_settings')[0];
- if(settings)shop.push(`UPDATE shop_settings SET catalogue_title=${quote(settings.catalogue_title||'Catalogue')},catalogue_key=${quote(mediaKey(settings.catalogue_key))},maintenance_image_key=${quote(mediaKey(settings.maintenance_image_key))},shop_enabled=0 WHERE id=1;`);
+ if(settings)shop.push(`UPDATE shop_settings SET catalogue_title=${quote(settings.catalogue_title||'Catalogue')},catalogue_key=${quote(mediaKey(settings.catalogue_key))},maintenance_image_key=${quote(mediaKey(settings.maintenance_image_key))},contact_email=${quote(settings.contact_email||'')},order_subject=${quote(settings.order_subject||'')},shop_enabled=0 WHERE id=1;`);
  for(const hero of rows(source.shop,'site_media').filter(p=>p.slot==='shop_hero'))shop.push(`UPDATE site_media SET object_key=${quote(mediaKey(hero.object_key))},alt_text=${quote(hero.alt_text||'')} WHERE slot='shop_hero';`);
  const events=new Map(rows(source.tournaments,'tournaments').map(t=>[t.id,t]));
  if(events.size)tournaments.push(`UPDATE tournament_sales SET enabled=0 WHERE tournament_id IN (SELECT id FROM tournaments WHERE slug IN (${[...events.values()].map(t=>quote(t.slug)).join(',')}));`);

@@ -155,6 +155,10 @@ test('compte rendu Actions : seul le statut contrôlé est publié, branche main
   const files=run('git',['ls-tree','--name-only',ref],remote);assert.equal(files.stdout.trim(),'status.json');
   const status=JSON.parse(run('git',['show',ref+':status.json'],remote).stdout);assert.equal(status.counts.articles,4);assert.equal(status.production_writes,0);assert.equal(status.artifact,'success');assert.match(status.artifact_url,/artifacts\/456$/);assert.doesNotMatch(JSON.stringify(status),/must not be committed/);
   assert.equal(status.production_tournaments_initialized,false);assert.equal(status.production_tournament_snapshot_from,'DB');
+  assert.match(status.manifest_sha256,/^[a-f0-9]{64}$/);
   assert.notEqual(run('git',['rev-parse','--verify','refs/heads/main'],remote).status,0);
+  const failed=run(process.execPath,[resolve('scripts/production-report.mjs')],work,{...process.env,GITHUB_RUN_ID:'124',GITHUB_SHA:'code-sha',GITHUB_REPOSITORY:'club/site',PRODUCTION_OPERATION:'importer',APPLY_OUTCOME:'failure'});
+  assert.equal(failed.status,0,failed.stderr);
+  const partial=JSON.parse(run('git',['show',ref+':status.json'],remote).stdout);assert.equal(partial.production_write_step_started,true);assert.equal(partial.operation_outcome,'failure');assert.equal(Object.hasOwn(partial,'production_writes'),false);
  }finally{rmSync(folder,{recursive:true,force:true});}
 });

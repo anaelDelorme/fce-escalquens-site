@@ -48,3 +48,6 @@ backups/boutique-*/
 .tournaments-copy-*/
 backups-tournois/
 .production-preparation/
+.production-maintenance/
+.production-import/
+.production-encrypted/

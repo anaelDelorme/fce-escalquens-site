@@ -60,12 +60,34 @@ Le dossier privé ignoré `.production-preparation/<reprise>/` contient :
   des redirections/pages de connexion. `retrieved_via` précise la méthode.
   `--media-source r2` interdit ce repli ; `--media-source public` le force.
 
-Un téléchargement incomplet ne produit pas de manifeste final. Les artefacts
-Actions expirent après 7 jours. Les garder dans un espace privé du club,
-jamais dans un commit. Ce script n’écrit ni D1 ni R2 en production. Le compte rendu sans données
+Un téléchargement incomplet ne produit pas de manifeste final. Le dépôt étant
+public, les artefacts GitHub Actions contiennent uniquement une archive `.fce`
+chiffrée (AES-256-GCM, clé dérivée par scrypt). La clé d'au moins 32 caractères
+est fournie par le secret **GitHub Actions** `PRODUCTION_ARCHIVE_PASSWORD`,
+distinct des quatre secrets du Worker. La conserver dans l'espace sécurisé du
+club ; elle est nécessaire pour relire/restaurer les archives. Sans cette clé,
+aucune archive en clair n'est publiée. Les anciennes préparations en clair
+générées avant le chiffrement sont retirées après conservation de leur
+remplacement chiffré, sans toucher aux autres artefacts du dépôt.
+
+Les artefacts de préparation expirent après 7 jours. Les garder dans un espace
+privé du club, jamais dans un commit. Ce script n’écrit ni D1 ni R2 en production. Le compte rendu sans données
 privées (statut, nombres de contenus, empreintes SQL et URL de PR) est publié
 sur `release/production-preparation-report`. Les dumps et médias restent dans
-l’artefact privé, pas dans Git.
+l’archive chiffrée, pas dans Git.
+
+Après téléchargement de l'artefact et extraction du ZIP GitHub, relire son
+contenu localement depuis cette branche avec la clé conservée par le club :
+
+```bash
+read -rs -p "Clé d'archivage : " PRODUCTION_ARCHIVE_PASSWORD
+export PRODUCTION_ARCHIVE_PASSWORD
+node scripts/production-archive.mjs --action decrypt --file preparation-NUMERO_RUN.fce --out .production-preparation/relecture-NUMERO_RUN
+```
+
+La même commande fonctionne pour `backup-NUMERO_RUN.fce`, en choisissant un
+dossier privé de restauration distinct. Une mauvaise clé ou une archive
+modifiée est refusée sans conserver de fichier déchiffré partiel.
 
 Si la base TOURNAMENTS production n'est pas encore configurée ou initialisée
 (migrations et marqueur de copie `v5.2`), l'état de référence des tournois est lu
@@ -104,6 +126,10 @@ est aussi exécuté avant les migrations du workflow de déploiement.
    `HELLOASSO_CLIENT_ID`, `HELLOASSO_CLIENT_SECRET`, `SMTP_PASSWORD`.
    Les identifiants HelloAsso doivent être ceux du compte de production.
    Ne pas remplacer une clé TRACKING_SECRET déjà utilisée en production.
+   Leur présence a été vérifiée après configuration par le club dans le
+   [run de préparation 41802970302](https://github.com/anaelDelorme/fce-escalquens-site/actions/runs/41802970302).
+   Ce contrôle ne vérifie ni la validité des identifiants HelloAsso ni le mot
+   de passe SMTP ; ces diagnostics restent à effectuer sur le Worker déployé.
 5. Le slug réel HelloAsso confirmé par le club est `fce` :
 
 ```bash
@@ -118,6 +144,74 @@ liste explicite de champs. Il impose le slug production confirmé `fce` et laiss
 paiement et validation juridique fermés pour revue. Aucun jeton, secret ou réglage
 Sandbox n’est repris. Les deux modules utilisent ces paramètres communs de
 ORDERS production.
+
+## Opérations manuelles dans GitHub Actions
+
+Le workflow **Déployer** possède un champ `operation`. La valeur par défaut
+`preparer` et le push de la branche de préparation restent en lecture.
+`initialiser` et `importer` sont des lancements manuels qui écrivent en
+production ; ils ne déploient pas le Worker. Les opérations et déploiements du
+workflow sont sérialisés. Ne pas modifier les contenus depuis l'administration
+pendant leur exécution.
+
+Prérequis commun : le secret GitHub Actions `PRODUCTION_ARCHIVE_PASSWORD` doit
+être configuré. Les sauvegardes et préparations sont chiffrées avant leur envoi
+dans les artefacts du dépôt public ; les fichiers en clair restent dans le runner
+éphémère pour l'opération demandée.
+
+### Initialiser les bases
+
+1. Ouvrir **Actions → Déployer → Run workflow**, sélectionner la branche
+   `release/boutique-tournois-production`, puis `operation=initialiser`.
+2. Renseigner `admin_email` avec l'adresse du premier responsable **à la fois**
+   boutique et tournois, déjà autorisée dans les deux politiques Cloudflare Access.
+   Aucune adresse de staging ni aucun administrateur du site n'est repris
+   automatiquement. Les responsables existants désactivés ne sont pas réactivés.
+3. Lancer le workflow. Il vérifie les bases et les noms des quatre secrets,
+   sauvegarde les trois D1, puis conserve leurs sauvegardes chiffrées dans l'artefact
+   `sauvegarde-production-<run>` **avant toute écriture**. Elles expirent après
+   30 jours : les conserver aussi dans un espace privé du club.
+4. Le workflow ferme les ventes/inscriptions, applique les migrations du bon
+   module sur chaque base, copie l'historique réel des tournois depuis les anciennes
+   bases production et crée les deux habilitations explicites. Une copie déjà
+   validée n'est pas relancée. Aucun historique de staging n'est importé.
+5. Après succès, une nouvelle préparation est créée dans
+   `preparation-production-<run>`. Son compte rendu sur
+   `release/production-preparation-report` doit indiquer
+   `production_tournaments_initialized=true`, avec un `manifest_sha256`.
+
+La case `prepare_only` ne concerne que `operation=preparer` ; la conserver cochée.
+Les champs `preparation_run_id` et `manifest_sha256` restent vides pour cette
+initialisation. Le catalogue staging n'est pas encore importé à ce stade.
+
+### Importer l'archive relue
+
+1. Télécharger, déchiffrer localement et relire la nouvelle archive après initialisation :
+   articles, prix, suppléments obligatoires, tournoi/formulaire, coordonnées du
+   vendeur et destinataire club. Vérifier les valeurs du manifeste.
+2. Relancer **Déployer** sur la même branche avec `operation=importer`,
+   `preparation_run_id=<run de l'archive relue>` et
+   `manifest_sha256=<empreinte publiée dans son compte rendu>`.
+3. L'import refuse une archive antérieure à l'initialisation, une destination
+   différente, un manifeste/SQL/média modifié ou des contenus production changés
+   depuis l'export. Les services doivent être fermés. Le SQL est régénéré depuis
+   les seules tables autorisées et comparé aux fichiers relus.
+4. Les trois bases sont à nouveau sauvegardées et l'artefact est conservé avant
+   les écritures. Les images sont envoyées dans leur espace R2 dédié, puis relues
+   et comparées par SHA-256 **avant l'import SQL**. Le jeton Cloudflare de GitHub
+   Actions doit permettre la lecture et l'écriture des objets R2 production
+   (permission de compte **Workers R2 Storage: Edit**). Le repli sur les médias
+   publics utilisé pour préparer l'archive ne donne pas de droit d'écriture R2.
+5. Les trois SQL sont exécutés sur leurs bases respectives. Le contrôle vérifie
+   les références, les articles/tailles, les tarifs boutique/personnalisations,
+   les formulaires/tarifs tournois, les médias et l'absence de changement des
+   tables de transactions. Les ventes restent fermées pour les diagnostics.
+
+Si une étape d'écriture échoue, une partie des écritures peut avoir eu lieu.
+Le compte rendu le signale sans prétendre qu'il n'y a eu aucune modification.
+Garder les services fermés et contrôler les sauvegardes avant de reprendre ;
+aucune restauration automatique n'écrase d'éventuels paiements arrivés entre-temps.
+La procédure de fusion et les diagnostics après déploiement restent ci-dessous.
 
 ## Bascule des contenus après revue
 
