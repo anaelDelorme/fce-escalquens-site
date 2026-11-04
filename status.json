@@ -3,13 +3,13 @@
   "preparation": "skipped",
   "pr": "unknown",
   "pr_url": null,
-  "run_url": "https://github.com/anaelDelorme/fce-escalquens-site/actions/runs/41832085741",
+  "run_url": "https://github.com/anaelDelorme/fce-escalquens-site/actions/runs/41833330766",
   "artifact": "skipped",
   "artifact_url": null,
   "archive_encrypted": false,
   "operation": "importer",
-  "operation_outcome": "failure",
-  "backup_artifact_url": "https://github.com/anaelDelorme/fce-escalquens-site/actions/runs/41832085741/artifacts/13322039753",
+  "operation_outcome": "success",
+  "backup_artifact_url": "https://github.com/anaelDelorme/fce-escalquens-site/actions/runs/41833330766/artifacts/13324965390",
   "backup_encrypted": true,
   "production_write_step_started": true,
   "production_databases": {
@@ -22,5 +22,15 @@
     "HELLOASSO_CLIENT_ID": true,
     "HELLOASSO_CLIENT_SECRET": true,
     "SMTP_PASSWORD": true
-  }
+  },
+  "imported": true,
+  "sales_closed": true,
+  "counts": {
+    "articles": 38,
+    "variants": 365,
+    "personalizations": 6,
+    "tournaments": 1,
+    "media": 40
+  },
+  "manifest_sha256": "5f4920cf453423f51e6ac1494533f6ed8066f4655f673cde65401dd76fc441e6"
 }
