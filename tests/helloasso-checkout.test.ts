@@ -70,3 +70,25 @@ test('HelloAsso : données rejetées distinctes des droits, délais incertains s
  await assert.rejects(()=>checkout(env,s,order,'private-token'),(error:any)=>error.code==='PAYMENT_UNCERTAIN');
  assert.equal(attempts,1);assert.equal((await f.tournaments.prepare('SELECT state FROM checkout_attempts').first<any>()).state,'uncertain');
 });
+
+test('HelloAsso : HTTP 400 conservé avec le champ du payeur, une seule demande et aucun montant ou statut modifié',async t=>{
+ const f=await fixture(t),order=await f.order(f.orders,'shop');let requests=0;
+ t.mock.method(globalThis,'fetch',async(url:any)=>{if(String(url).endsWith('/oauth2/token'))return Response.json({access_token:'fake-token',expires_in:1800});requests++;return Response.json({errors:{'payer.firstName':['PRIVATE_PAYER_VALUE secret@example.org TOKEN']}},{status:400});});
+ const before=await f.orders.prepare('SELECT * FROM orders').all(),s=await settings(f.env);
+ await assert.rejects(()=>checkout(f.env,s,order,'private-token'),(error:any)=>{assert.match(error.message,/Prénom du payeur/);assert.doesNotMatch(error.message,/PRIVATE_|secret@|TOKEN/);return true;});
+ assert.equal(requests,1);const attempt=await f.orders.prepare('SELECT state,last_error FROM checkout_attempts').first<any>();assert.deepEqual({...attempt},{state:'failed',last_error:'HELLOASSO_REJECTED:400:first_name'});
+ assert.deepEqual(await f.orders.prepare('SELECT * FROM orders').all(),before);assert.equal((await f.orders.prepare('SELECT COUNT(*) AS n FROM payments').first<any>()).n,0);
+});
+
+test('HelloAsso : ancien paiement actif ou déjà payé repris sans revalider ni modifier son identité',async t=>{
+ const f=await fixture(t),order=await f.order(f.orders,'shop');let requests=0;
+ await f.orders.prepare("UPDATE orders SET first_name='123',phone='......',payment_status='paid' WHERE id=?").bind(order.id).run();
+ let saved=await f.orders.prepare('SELECT * FROM orders WHERE id=?').bind(order.id).first<any>();
+ t.mock.method(globalThis,'fetch',async(url:any)=>{requests++;if(String(url).endsWith('/oauth2/token'))return Response.json({access_token:'fake',expires_in:1800});return Response.json({id:789,redirectUrl:'https://www.helloasso.com/checkout/existing'});});
+ assert.deepEqual(await checkout(f.env,await settings(f.env),saved,'token'),{paid:true});assert.equal(requests,0);
+ await f.orders.prepare("UPDATE orders SET payment_status='pending',last_checked=0 WHERE id=?").bind(order.id).run();await f.orders.prepare("INSERT INTO checkout_attempts(id,order_id,intent_id,state,created_at) VALUES('existing',?,789,'pending',?)").bind(order.id,Math.floor(Date.now()/1000)).run();
+ saved=await f.orders.prepare('SELECT * FROM orders WHERE id=?').bind(order.id).first<any>();
+ assert.deepEqual(await checkout(f.env,await settings(f.env),saved,'token'),{redirect_url:'https://www.helloasso.com/checkout/existing'});
+ assert.equal((await f.orders.prepare('SELECT COUNT(*) AS n FROM checkout_attempts').first<any>()).n,1);
+ assert.equal((await f.orders.prepare('SELECT first_name FROM orders').first<any>()).first_name,'123');
+});

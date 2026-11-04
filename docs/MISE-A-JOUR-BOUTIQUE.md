@@ -24,6 +24,12 @@ Le PDF regroupe les bons des commandes payées et non annulées répondant aux m
 
 Les endpoints d’export sont réservés à l’administration boutique et renvoient des réponses non mises en cache. Les résultats sont parcourus par lots avec un curseur de date et d’identifiant pour couvrir toutes les commandes sans être limité aux 50 lignes visibles. Une erreur empêche le téléchargement d’un fichier partiel. Aucune migration ni secret supplémentaire n’est nécessaire.
 
+## Coordonnées et diagnostic HelloAsso
+
+Les formulaires des cinq boutiques et des tournois partagent des contrôles de prénom, nom, e-mail et téléphone avec leur API. Les erreurs sont affichées sous les champs avant toute création ; les noms internationaux et la ponctuation sont conservés. Les mentions de coach, d’équipe et de club ont leurs champs dédiés. La spécification officielle ne publie pas d’interdiction des parenthèses : aucune suppression automatique de texte n’est appliquée au nom.
+
+Les prochaines tentatives refusées conservent le statut HTTP et les noms de champs que le site sait reconnaître, sans valeur personnelle ni message brut du prestataire. Ces diagnostics sont lisibles dans les fiches administratives boutique et tournois. Le détail des anciennes erreurs n’est pas reconstituable. Les reprises des commandes déjà enregistrées restent idempotentes et aucun paiement n’est relancé automatiquement. Voir [les contraintes documentées et les protections](HELLOASSO-COORDONNEES.md).
+
 ## Protection avant chaque déploiement production
 
 Le workflow de déploiement prépare des points de restauration **D1 Time Travel** pour DB, ORDERS et TOURNAMENTS, avec un instant de reprise commun, avant toute migration et avant de publier le Worker. Il utilise uniquement `wrangler d1 time-travel info`, qui lit les repères de la sauvegarde native Cloudflare. L’export SQL complet est réservé à la maintenance, car Wrangler indique qu’il peut rendre D1 temporairement indisponible.

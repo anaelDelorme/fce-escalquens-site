@@ -7,6 +7,7 @@ import {
   money,
   date,
   paymentLabels,
+  paymentAttemptMessage,
   mailStatusList,
 } from "../../public/shop-common.js";
 const root = document.querySelector("#tournament-admin"),
@@ -200,7 +201,7 @@ async function show(id, focus = false, provided = null) {
     )
     .join(
       "",
-    )}</select></label><label>Message visible par le contact<textarea name="public_note" maxlength="1500">${esc(o.public_note)}</textarea></label><label>Note interne au club<textarea name="internal_note" maxlength="3000">${esc(o.internal_note)}</textarea></label><div><button type="submit">Enregistrer et informer le contact</button></div></form>${r.registration_status==='cancelled'?`<section class="commerce-mail-context"><p>${r.archived_at?'Cette inscription a été retirée du suivi courant.':'Cette inscription est annulée. Vous pouvez la retirer des listes et exports courants.'}</p><button type="button" class="commerce-secondary" data-archive-registration>${r.archived_at?'Remettre dans le suivi':'Retirer du suivi'}</button></section>`:''}<h3>Suivi des e-mails</h3>${tournamentEnvironment!=="production"?'<p class="commerce-mail-context">En staging, tous les mails clients et club sont redirigés vers MAIL_TEST_TO. Le destinataire effectif est indiqué pour chaque envoi.</p>':""}${mailStatusList(data.mails)}<details><summary>Historique et paiements</summary>${data.events.map((e) => `<p>${date(e.created_at)} · ${esc(e.message)}</p>`).join("")}<h3>Tentatives de paiement</h3>${data.attempts.map((a) => `<p>${esc(a.intent_id || "Sans réponse")} · ${esc(a.state)} · ${esc(a.last_error)}<br><small>Tentative : ${esc(a.id)}</small></p>`).join("")}</details>${
+    )}</select></label><label>Message visible par le contact<textarea name="public_note" maxlength="1500">${esc(o.public_note)}</textarea></label><label>Note interne au club<textarea name="internal_note" maxlength="3000">${esc(o.internal_note)}</textarea></label><div><button type="submit">Enregistrer et informer le contact</button></div></form>${r.registration_status==='cancelled'?`<section class="commerce-mail-context"><p>${r.archived_at?'Cette inscription a été retirée du suivi courant.':'Cette inscription est annulée. Vous pouvez la retirer des listes et exports courants.'}</p><button type="button" class="commerce-secondary" data-archive-registration>${r.archived_at?'Remettre dans le suivi':'Retirer du suivi'}</button></section>`:''}<h3>Suivi des e-mails</h3>${tournamentEnvironment!=="production"?'<p class="commerce-mail-context">En staging, tous les mails clients et club sont redirigés vers MAIL_TEST_TO. Le destinataire effectif est indiqué pour chaque envoi.</p>':""}${mailStatusList(data.mails)}<details><summary>Historique et paiements</summary>${data.events.map((e) => `<p>${date(e.created_at)} · ${esc(e.message)}</p>`).join("")}<h3>Tentatives de paiement</h3>${data.attempts.map((a) => `<p>${esc(a.intent_id || "Sans réponse")} · ${esc(a.state)} · ${esc(paymentAttemptMessage(a.last_error))}<br><small>Tentative : ${esc(a.id)}</small></p>`).join("")}</details>${
     data.attempts.some(
       (a) => !a.intent_id && ["creating", "uncertain"].includes(a.state),
     )

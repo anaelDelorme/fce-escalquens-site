@@ -9,6 +9,7 @@ import {
   saveStorage,
   showError,
 } from "./shop-common.js";
+import {bindContactValidation} from './shop-contact.js';
 const productDialog = document.querySelector("#product-dialog"),
   cartDialog = document.querySelector("#cart-dialog");
 let cart = readStorage("fce-cart-v1", []),
@@ -245,6 +246,13 @@ function renderCart() {
     );
   document.querySelector("#continue-selection").onclick=()=>cartDialog.close();
   const form = document.querySelector("#checkout-form");
+  const validateContact=bindContactValidation(form);
+  const identityHelp=document.createElement('p');identityHelp.className='commerce-help wide';identityHelp.id='shop-payer-help';
+  identityHelp.textContent='Indiquez le prénom et le nom du payeur. Réservez les mentions de coach ou de catégorie au champ Équipe / catégorie.';
+  form.querySelector('.commerce-form-grid').append(identityHelp);
+  for(const name of ['first_name','last_name']){form.elements[name].setAttribute('aria-describedby',`${form.elements[name].getAttribute('aria-describedby')} shop-payer-help`);form.elements[name].spellcheck=false;form.elements[name].setAttribute('autocorrect','off');}
+  form.elements.email.setAttribute('inputmode','email');form.elements.email.spellcheck=false;
+  form.elements.phone.setAttribute('inputmode','tel');form.elements.phone.placeholder='06 12 34 56 78 ou +33 6 12 34 56 78';
   const setStep=step=>{checkoutStep=step;form.hidden=step===1;document.querySelector('#cart-next').hidden=step===2;document.querySelector('#cart-step-selection').setAttribute('aria-current',step===1?'step':'false');document.querySelector('#cart-step-details').setAttribute('aria-current',step===2?'step':'false');if(step===2){form.querySelector('input')?.focus();}else document.querySelector('#cart-to-checkout').focus();};
   document.querySelector('#cart-to-checkout').onclick=()=>setStep(2);
   document.querySelector('#cart-back').onclick=()=>setStep(1);
@@ -267,7 +275,7 @@ function renderCart() {
   form.addEventListener("change", updateDelivery);updateDelivery();
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (!form.reportValidity()) return;
+    if (!validateContact()||!form.reportValidity()) return;
     const button = form.querySelector("button[type=submit]"),
       errorNode = document.querySelector("#checkout-error");
     button.disabled = true;

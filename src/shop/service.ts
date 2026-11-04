@@ -35,6 +35,8 @@ import { mailReady, mailTransportReady } from "./mail-config";
 import { smtpConfigured } from "./smtp";
 import { priceLabelStatement } from "./catalogue-pricing";
 import { orderSearch, orderExportPage, supplierOrder } from './order-exports';
+import {payerContact,contactField} from './contact';
+import {HelloAssoRejection} from './helloasso-errors';
 export interface ShopEnv {
   DB: D1Database;
   ORDERS: D1Database;
@@ -293,17 +295,18 @@ async function createOrder(request: Request, env: ShopEnv, s: Settings) {
       400,
       "Veuillez lire et accepter les conditions générales de vente à jour.",
     );
+  let order = await env.ORDERS.prepare("SELECT * FROM orders WHERE id=?").bind(id).first<Row>();
+  // Preserve the original request hash on retries of orders accepted before these checks.
+  const contact=order?{email:email(data.email),first_name:text(data.first_name,80,true),last_name:text(data.last_name,80,true),phone:text(data.phone,30,true)}:payerContact(data);
   const customer = {
-    email: email(data.email),
-    first_name: text(data.first_name, 80, true),
-    last_name: text(data.last_name, 80, true),
-    phone: text(data.phone, 30, true),
+    email:contact.email,
+    first_name:contact.first_name,
+    last_name:contact.last_name,
+    phone:contact.phone,
     licensed_name: text(data.licensed_name || "", 120),
     team: text(data.team || "", 80),
     delivery_method: data.delivery_method,
   };
-  if (!/^[+0-9 ().-]{6,30}$/.test(customer.phone))
-    fail("PHONE", 400, "Vérifiez le numéro de téléphone.");
   if (
     !["coach", "club"].includes(customer.delivery_method) ||
     (customer.delivery_method === "coach" &&
@@ -318,9 +321,6 @@ async function createOrder(request: Request, env: ShopEnv, s: Settings) {
   const requestHash = await sha256(
     JSON.stringify({ customer, items: data.items, terms: TERMS_VERSION,...(data.pricing_mode==='coach'?{coach:true}:{}) }),
   );
-  let order = await env.ORDERS.prepare("SELECT * FROM orders WHERE id=?")
-    .bind(id)
-    .first<Row>();
   if (order && order.request_hash !== requestHash)
     fail(
       "IDEMPOTENCY_CONFLICT",
@@ -524,6 +524,10 @@ export async function checkout(
         "La demande de paiement est en cours ou nécessite une vérification. Consultez le suivi ou contactez le club avant de payer à nouveau.",
       );
   }
+  // Validate before creating a new attempt; paid and existing active checkouts keep their original path.
+  const payer={firstName:contactField('first_name',order.first_name),lastName:contactField('last_name',order.last_name),email:contactField('email',order.email)};
+  if(!Number.isSafeInteger(order.total_cents)||order.total_cents<=0||order.total_cents>2147483647)
+    fail('PAYMENT_AMOUNT',409,'Le montant enregistré doit être vérifié par le club avant de lancer le paiement.');
   const attemptId = crypto.randomUUID();
   try {
     await env.ORDERS.prepare(
@@ -552,11 +556,7 @@ export async function checkout(
         backUrl: link,
         returnUrl: link,
         errorUrl: link,
-        payer: {
-          firstName: order.first_name,
-          lastName: order.last_name,
-          email: order.email,
-        },
+        payer,
         metadata: {
           order_id: order.id,
           attempt_id: attemptId,
@@ -588,7 +588,7 @@ export async function checkout(
     )
       .bind(
         rejected ? "failed" : "uncertain",
-        rejected ? "HELLOASSO_REJECTED" : "PAYMENT_UNCERTAIN",
+        rejected ? error instanceof HelloAssoRejection?error.historyCode:error.code : "PAYMENT_UNCERTAIN",
         attemptId,
       )
       .run();
