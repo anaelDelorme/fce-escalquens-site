@@ -36,6 +36,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - uses: actions/upload-artifact@v4
+        id: artifacts
         if: always() && steps.export.outcome != 'skipped'
         with:
           name: preparation-production-${{ github.run_id }}
@@ -61,6 +62,8 @@ jobs:
           PREPARATION_OUTCOME: ${{ steps.export.outcome }}
           PR_OUTCOME: ${{ steps.pr.outcome }}
           PR_URL: ${{ steps.pr.outputs.url }}
+          ARTIFACT_OUTCOME: ${{ steps.artifacts.outcome }}
+          ARTIFACT_URL: ${{ steps.artifacts.outputs.artifact-url }}
         run: node scripts/production-report.mjs
   deploy:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || !inputs.prepare_only)

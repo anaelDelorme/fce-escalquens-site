@@ -141,11 +141,11 @@ test('compte rendu Actions : seul le statut contrôlé est publié, branche main
   const data=join(work,'.production-preparation/preparation-123');mkdirSync(data,{recursive:true});
   writeFileSync(join(data,'source.json'),JSON.stringify({private:'must not be committed'}));
   writeFileSync(join(data,'manifest.json'),JSON.stringify({counts:{articles:4},sql_sha256:{shop:'abc',tournaments:'def'}}));
-  const result=run(process.execPath,[resolve('scripts/production-report.mjs')],work,{...process.env,GITHUB_RUN_ID:'123',GITHUB_SHA:'code-sha',GITHUB_REPOSITORY:'club/site',PREPARATION_OUTCOME:'success',PR_OUTCOME:'success',PR_URL:'https://github.com/club/site/pull/1'});
+  const result=run(process.execPath,[resolve('scripts/production-report.mjs')],work,{...process.env,GITHUB_RUN_ID:'123',GITHUB_SHA:'code-sha',GITHUB_REPOSITORY:'club/site',PREPARATION_OUTCOME:'success',PR_OUTCOME:'success',PR_URL:'https://github.com/club/site/pull/1',ARTIFACT_OUTCOME:'success',ARTIFACT_URL:'https://github.com/club/site/actions/runs/123/artifacts/456'});
   assert.equal(result.status,0,result.stderr);
   const remote=join(folder,'remote.git'),ref='refs/heads/release/production-preparation-report';
   const files=run('git',['ls-tree','--name-only',ref],remote);assert.equal(files.stdout.trim(),'status.json');
-  const status=JSON.parse(run('git',['show',ref+':status.json'],remote).stdout);assert.equal(status.counts.articles,4);assert.equal(status.production_writes,0);assert.doesNotMatch(JSON.stringify(status),/must not be committed/);
+  const status=JSON.parse(run('git',['show',ref+':status.json'],remote).stdout);assert.equal(status.counts.articles,4);assert.equal(status.production_writes,0);assert.equal(status.artifact,'success');assert.match(status.artifact_url,/artifacts\/456$/);assert.doesNotMatch(JSON.stringify(status),/must not be committed/);
   assert.notEqual(run('git',['rev-parse','--verify','refs/heads/main'],remote).status,0);
  }finally{rmSync(folder,{recursive:true,force:true});}
 });

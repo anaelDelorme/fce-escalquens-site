@@ -1,6 +1,7 @@
 import {readFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 const report={commit:process.env.GITHUB_SHA,preparation:process.env.PREPARATION_OUTCOME||'unknown',pr:process.env.PR_OUTCOME||'unknown',pr_url:process.env.PR_URL||null,run_url:`https://github.com/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,production_writes:0};
+report.artifact=process.env.ARTIFACT_OUTCOME||'unknown';report.artifact_url=process.env.ARTIFACT_URL||null;
 try{report.production_databases=JSON.parse(readFileSync('.production-preparation/discovered-bindings.json','utf8'));}catch{}
 try{report.production_secret_presence=JSON.parse(readFileSync('.production-preparation/production-secret-presence.json','utf8'));}catch{}
 if(report.preparation==='failure'){
