@@ -11,7 +11,9 @@ test('archives : chiffrement authentifié, clé absente refusée et aucun conten
  const folder=mkdtempSync(join(tmpdir(),'fce-archive-'));t.after(()=>rmSync(folder,{recursive:true,force:true}));
  const input=join(folder,'input'),output=join(folder,'archive.fce'),decoded=join(folder,'decoded');
  const content='Données privées client@example.org\n'.repeat(100000);writeFileSync(input,content);
- assert.throws(()=>archiveKey('trop-court'),/PRODUCTION_ARCHIVE_PASSWORD/);
+ assert.throws(()=>archiveKey(undefined),/PRODUCTION_ARCHIVE_PASSWORD absent/);
+ assert.throws(()=>archiveKey(''),/PRODUCTION_ARCHIVE_PASSWORD absent/);
+ assert.throws(()=>archiveKey('trop-court'),/PRODUCTION_ARCHIVE_PASSWORD trop court/);
  await encryptFile(input,output,password);assert.equal(readFileSync(output).includes(Buffer.from('client@example.org')),false);
  await decryptFile(output,decoded,password);assert.equal(readFileSync(decoded,'utf8'),content);
  const different=join(folder,'different.fce');await encryptFile(input,different,password);assert.notDeepEqual(readFileSync(output),readFileSync(different));

@@ -160,5 +160,10 @@ test('compte rendu Actions : seul le statut contrôlé est publié, branche main
   const failed=run(process.execPath,[resolve('scripts/production-report.mjs')],work,{...process.env,GITHUB_RUN_ID:'124',GITHUB_SHA:'code-sha',GITHUB_REPOSITORY:'club/site',PRODUCTION_OPERATION:'importer',APPLY_OUTCOME:'failure'});
   assert.equal(failed.status,0,failed.stderr);
   const partial=JSON.parse(run('git',['show',ref+':status.json'],remote).stdout);assert.equal(partial.production_write_step_started,true);assert.equal(partial.operation_outcome,'failure');assert.equal(Object.hasOwn(partial,'production_writes'),false);
+  for(const [message,reason] of [['PRODUCTION_ARCHIVE_PASSWORD absent : accès du workflow à vérifier.','archive_key_missing'],['PRODUCTION_ARCHIVE_PASSWORD trop court : minimum 32 caractères.','archive_key_too_short']]){
+   writeFileSync(join(work,'preparation-error.txt'),message);
+   const checked=run(process.execPath,[resolve('scripts/production-report.mjs')],work,{...process.env,GITHUB_RUN_ID:'125',GITHUB_SHA:'code-sha',GITHUB_REPOSITORY:'club/site',PREPARATION_OUTCOME:'failure'});assert.equal(checked.status,0,checked.stderr);
+   const report=JSON.parse(run('git',['show',ref+':status.json'],remote).stdout);assert.equal(report.preparation_reason,reason);assert.equal(report.production_writes,0);
+  }
  }finally{rmSync(folder,{recursive:true,force:true});}
 });

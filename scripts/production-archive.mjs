@@ -7,7 +7,8 @@ import {pathToFileURL} from 'node:url';
 
 const magic=Buffer.from('FCEARCH1\n'),headerSize=magic.length+16+12;
 export function archiveKey(password){
- if(typeof password!=='string'||password.length<32)throw Error('Secret GitHub Actions PRODUCTION_ARCHIVE_PASSWORD requis (au moins 32 caractères). Aucune archive non chiffrée ne sera publiée.');
+ if(typeof password!=='string'||!password.length)throw Error('PRODUCTION_ARCHIVE_PASSWORD absent : le workflow ne reçoit pas ce secret GitHub Actions. Vérifier son nom et son accès pour ce dépôt.');
+ if(password.length<32)throw Error('PRODUCTION_ARCHIVE_PASSWORD trop court : utiliser une clé aléatoire d’au moins 32 caractères dans le secret GitHub Actions.');
 }
 const derive=(password,salt)=>scryptSync(password,salt,32,{N:32768,r:8,p:1,maxmem:64*1024*1024});
 export async function encryptFile(input,output,password){
