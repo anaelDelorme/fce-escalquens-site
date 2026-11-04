@@ -1,41 +1,35 @@
 {
-  "commit": "d281e73363fa2b357c4a5e4511b62e32eaee41c8",
+  "commit": "97fa0d16ae110910d1536ddc94b782cdaa05a4c6",
   "preparation": "success",
-  "pr": "failure",
+  "pr": "unknown",
   "pr_url": null,
-  "run_url": "https://github.com/anaelDelorme/fce-escalquens-site/actions/runs/41849067721",
-  "production_writes": 0,
+  "run_url": "https://github.com/anaelDelorme/fce-escalquens-site/actions/runs/41858856372",
   "artifact": "success",
-  "artifact_url": "https://github.com/anaelDelorme/fce-escalquens-site/actions/runs/41849067721/artifacts/13334060952",
+  "artifact_url": "https://github.com/anaelDelorme/fce-escalquens-site/actions/runs/41858856372/artifacts/13339131937",
   "archive_encrypted": true,
-  "legacy_artifact_cleanup": "success",
-  "legacy_preparation_artifacts_removed": 0,
-  "production_databases": {
-    "DB": "883401b1-f229-4c0e-9e25-6493f8d01b93",
-    "ORDERS": "d0ce5147-4c85-43ca-83ca-ef84df8b5626",
-    "TOURNAMENTS": "dd0b1d97-3858-4e61-96c9-1e2735d362d0"
-  },
-  "production_secret_presence": {
-    "TRACKING_SECRET": true,
-    "HELLOASSO_CLIENT_ID": true,
-    "HELLOASSO_CLIENT_SECRET": true,
-    "SMTP_PASSWORD": true
-  },
-  "pr_reason": "actions_pr_creation_disabled",
-  "manifest_sha256": "af77723a97217beaab7a9d6fd3921318313c393ec072c58aaee6719c86a9a5e0",
+  "operation": "catalogue",
+  "operation_outcome": "success",
+  "backup_artifact_url": "https://github.com/anaelDelorme/fce-escalquens-site/actions/runs/41858856372/artifacts/13339052147",
+  "backup_encrypted": true,
+  "production_write_step_started": true,
+  "manifest_sha256": "900f86fb8fc663c27a0ae823c46febefe4e49a8defcedcef0c22b9158cb128e3",
   "counts": {
-    "articles": 42,
-    "variants": 414,
+    "articles": 45,
+    "variants": 450,
     "personalizations": 6,
-    "tournaments": 1,
-    "media": 44
+    "tournaments": 0,
+    "media": 47
   },
   "sql_sha256": {
-    "shop": "c988e5dc0f4528ed8c402075dc22595fb57f2eb15a18af13bb9a7a56e0ff72b2",
-    "tournaments": "fcdcf51cce1ba71b2d142da08eb5b38d6aa7e729622fbfabae6746f3052fe7d5",
-    "settings": "2c78fd3f71febfdb1c58c894396d7ac8e0c8c8825a9f4d30eabb2e1923d7804d"
+    "shop": "d24a16eabcda7fdcfc1b66cb48f47b26b4e7e6702503ffd6a378211e0778f7fa",
+    "tournaments": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "settings": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   },
-  "business_contact_present": true,
-  "production_tournaments_initialized": true,
-  "production_tournament_snapshot_from": "TOURNAMENTS"
+  "business_contact_present": false,
+  "production_tournaments_initialized": false,
+  "production_tournament_snapshot_from": null,
+  "imported": true,
+  "scope": "shop",
+  "shop_enabled": 0,
+  "images_verified": 47
 }
