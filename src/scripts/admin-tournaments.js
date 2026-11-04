@@ -20,6 +20,7 @@ const call = (path, options) => api(`/admin-tournois/api/${path}`, options),
   };
 let registrationFilters={q:'',payment:'',registration:'',category:''};
 let selectedTournamentId=new URLSearchParams(location.search).get('tournoi')||'';
+let includeArchived=new URLSearchParams(location.search).get('archives')==='1';
 let tournamentEnvironment='sandbox';
 const field = (name, label, value = "", type = "text") =>
   `<label>${label}<input name="${name}" type="${type}" value="${esc(value)}" required></label>`;
@@ -64,6 +65,7 @@ function registrationExportRows(row, category) {
     nb_equipes:section.quantity,
     team_name:/^\d+\s+équipes?$/i.test(row.team_name||'')?`${section.quantity} équipe${section.quantity>1?'s':''}`:row.team_name,
     registration_total_cents:row.total_cents,
+    retiree_du_suivi:row.archived_at?'Oui':'Non',
     total_cents:Number.isSafeInteger(unit)?unit*section.quantity:'',
   }));
 }
@@ -84,25 +86,27 @@ function categoryOverview(rows) {
 }
 async function registrations(clearDetail=false) {
   const requestedTournament=selectedTournamentId;
-  const { registrations: rows, tournaments, tournament_id } = await call(`registrations${selectedTournamentId?'?tournament_id='+encodeURIComponent(selectedTournamentId):''}`);
+  const query=new URLSearchParams();if(selectedTournamentId)query.set('tournament_id',String(selectedTournamentId));if(includeArchived)query.set('include_archived','1');
+  const { registrations: rows, tournaments, tournament_id } = await call(`registrations${query.toString()?'?'+query:''}`);
   if(requestedTournament&&String(requestedTournament)!==String(selectedTournamentId))return;
   selectedTournamentId=tournament_id;
   const selected=tournaments.find(t=>t.id===tournament_id);
   if(!selected){root.innerHTML='<section class="commerce-card commerce-empty"><h2>Aucun tournoi à suivre</h2><p>Créez un tournoi pour retrouver ici ses inscriptions.</p><a href="/admin-tournois/tournois/">Gérer les tournois →</a></section>';return;}
-  const url=new URL(location.href);url.searchParams.set('tournoi',String(tournament_id));if(clearDetail)url.searchParams.delete('inscription');history.replaceState(null,'',url);
+  const url=new URL(location.href);url.searchParams.set('tournoi',String(tournament_id));if(clearDetail)url.searchParams.delete('inscription');if(includeArchived)url.searchParams.set('archives','1');else url.searchParams.delete('archives');history.replaceState(null,'',url);
   const tournamentDate=t=>t.starts_on?new Date(t.starts_on+'T12:00:00Z').toLocaleDateString('fr-FR',{dateStyle:'medium',timeZone:'Europe/Paris'}):'Archives';
   const categories=[...new Set(rows.flatMap(r=>registrationSections(r).map(s=>s.category)))].sort((a,b)=>a.localeCompare(b,'fr',{numeric:true}));
-  root.innerHTML=`<section class="commerce-card tournament-registration-context"><label for="followed-tournament">Tournoi suivi</label><select id="followed-tournament">${tournaments.map(t=>`<option value="${t.id}" ${t.id===selectedTournamentId?'selected':''}>${esc(t.name)} · ${esc(tournamentDate(t))}</option>`).join('')}</select><h2>${esc(selected.name)}</h2><p class="commerce-help">${esc(tournamentDate(selected))} · Les effectifs, inscriptions et exports ci-dessous concernent uniquement ce tournoi.</p></section><section class="commerce-card"><div class="commerce-result-head"><h2 id="category-overview-title">Équipes par catégorie</h2><button id="export-registrations" class="commerce-secondary" type="button">Exporter la sélection CSV ↓</button></div><details class="registration-filters"><summary>Rechercher ou filtrer les inscriptions</summary><div class="commerce-filters"><label>Rechercher<input id="registration-search" type="search" value="${esc(registrationFilters.q)}" placeholder="Club, équipe, référence…"></label><label>Catégorie<select id="category-filter"><option value="">Toutes les catégories</option>${categories.map(category=>`<option value="${esc(category)}" ${registrationFilters.category===category?'selected':''}>${esc(category)}</option>`).join('')}</select></label><label>Paiement<select id="payment-filter"><option value="">Tous</option>${Object.entries(paymentLabels).map(([k,v])=>`<option value="${k}" ${registrationFilters.payment===k?'selected':''}>${esc(v)}</option>`).join('')}</select></label><label>Inscription<select id="registration-filter"><option value="">Toutes</option>${Object.entries(labels).map(([k,v])=>`<option value="${k}" ${registrationFilters.registration===k?'selected':''}>${esc(v)}</option>`).join('')}</select></label><button id="reset-registration-filters" class="commerce-secondary" type="button">Effacer</button></div></details><p id="registration-count" class="commerce-help" role="status" aria-live="polite"></p><section aria-labelledby="category-overview-title"><p class="commerce-help">Les inscriptions annulées sont exclues des effectifs.</p><div id="registration-categories"></div></section><div class="commerce-overview" aria-label="Résumé des inscriptions chargées"><div>Inscriptions chargées<strong>${rows.length}</strong><small>500 inscriptions au maximum</small></div><div>À valider<strong>${rows.filter(r=>r.registration_status==='pending').length}</strong></div><div>Paiements en attente<strong>${rows.filter(r=>r.payment_status==='pending'&&r.registration_status!=='cancelled').length}</strong></div></div><h2>Liste des inscriptions</h2><div class="tournament-admin-table commerce-mobile-cards" id="registration-table"></div><p class="commerce-help">L’acceptation par le club et le paiement sont deux états distincts. Les remboursements s’effectuent dans HelloAsso.</p></section><section id="registration-detail"></section>`;
+  root.innerHTML=`<section class="commerce-card tournament-registration-context"><label for="followed-tournament">Tournoi suivi</label><select id="followed-tournament">${tournaments.map(t=>`<option value="${t.id}" ${t.id===selectedTournamentId?'selected':''}>${esc(t.name)} · ${esc(tournamentDate(t))}</option>`).join('')}</select><h2>${esc(selected.name)}</h2><p class="commerce-help">${esc(tournamentDate(selected))} · Les effectifs, inscriptions et exports ci-dessous concernent uniquement ce tournoi.</p></section><section class="commerce-card"><div class="commerce-result-head"><h2 id="category-overview-title">Équipes par catégorie</h2><button id="export-registrations" class="commerce-secondary" type="button">Exporter la sélection CSV ↓</button></div><details class="registration-filters"><summary>Rechercher ou filtrer les inscriptions</summary><div class="commerce-filters"><label>Rechercher<input id="registration-search" type="search" value="${esc(registrationFilters.q)}" placeholder="Club, équipe, référence…"></label><label>Catégorie<select id="category-filter"><option value="">Toutes les catégories</option>${categories.map(category=>`<option value="${esc(category)}" ${registrationFilters.category===category?'selected':''}>${esc(category)}</option>`).join('')}</select></label><label>Paiement<select id="payment-filter"><option value="">Tous</option>${Object.entries(paymentLabels).map(([k,v])=>`<option value="${k}" ${registrationFilters.payment===k?'selected':''}>${esc(v)}</option>`).join('')}</select></label><label>Inscription<select id="registration-filter"><option value="">Toutes</option>${Object.entries(labels).map(([k,v])=>`<option value="${k}" ${registrationFilters.registration===k?'selected':''}>${esc(v)}</option>`).join('')}</select></label><label class="commerce-check"><input type="checkbox" id="include-archived" ${includeArchived?'checked':''}><span>Afficher aussi les inscriptions retirées du suivi</span></label><button id="reset-registration-filters" class="commerce-secondary" type="button">Effacer</button></div></details><p id="registration-count" class="commerce-help" role="status" aria-live="polite"></p><section aria-labelledby="category-overview-title"><p class="commerce-help">Les inscriptions annulées sont exclues des effectifs.</p><div id="registration-categories"></div></section><div class="commerce-overview" aria-label="Résumé des inscriptions chargées"><div>Inscriptions chargées<strong>${rows.length}</strong><small>500 inscriptions au maximum</small></div><div>À valider<strong>${rows.filter(r=>r.registration_status==='pending').length}</strong></div><div>Paiements en attente<strong>${rows.filter(r=>r.payment_status==='pending'&&r.registration_status!=='cancelled').length}</strong></div></div><h2>Liste des inscriptions</h2><div class="tournament-admin-table commerce-mobile-cards" id="registration-table"></div><p class="commerce-help">L’acceptation par le club et le paiement sont deux états distincts. Les remboursements s’effectuent dans HelloAsso.</p></section><section id="registration-detail"></section>`;
   root.querySelector('#followed-tournament').onchange=e=>action(e.target,async()=>{
-    const previous=selectedTournamentId,previousFilters=registrationFilters;
+    const previous=selectedTournamentId,previousFilters=registrationFilters,previousArchived=includeArchived;
     const oldContent=[...root.children].slice(1),oldHeading=[...root.querySelector('.tournament-registration-context').querySelectorAll('h2,p')];
     for(const element of [...oldContent,...oldHeading])element.hidden=true;
     root.setAttribute('aria-busy','true');message.textContent='Chargement du suivi…';
-    selectedTournamentId=Number(e.target.value);registrationFilters={q:'',payment:'',registration:'',category:''};
+    selectedTournamentId=Number(e.target.value);includeArchived=false;registrationFilters={q:'',payment:'',registration:'',category:''};
     try { await registrations(true); }
-    catch(error){selectedTournamentId=previous;registrationFilters=previousFilters;e.target.value=String(previous);for(const element of [...oldContent,...oldHeading])element.hidden=false;throw error;}
+    catch(error){selectedTournamentId=previous;includeArchived=previousArchived;registrationFilters=previousFilters;e.target.value=String(previous);for(const element of [...oldContent,...oldHeading])element.hidden=false;throw error;}
     finally {root.removeAttribute('aria-busy');}
   },'');
+  root.querySelector('#include-archived').onchange=e=>action(e.target,async()=>{const previous=includeArchived;includeArchived=e.target.checked;try{await registrations();}catch(error){includeArchived=previous;e.target.checked=previous;throw error;}},'');
   let visible=rows;
   function draw(){
     registrationFilters={q:root.querySelector('#registration-search').value,payment:root.querySelector('#payment-filter').value,registration:root.querySelector('#registration-filter').value,category:root.querySelector('#category-filter').value};
@@ -113,12 +117,12 @@ async function registrations(clearDetail=false) {
     root.querySelector('#export-registrations').disabled=!visible.length;
     root.querySelector('#registration-categories').innerHTML=categoryOverview(visible.map(row=>({...row,sections_json:JSON.stringify(registrationSections(row).filter(s=>!f.category||s.category===f.category).map(s=>({section:s.category,quantity:s.quantity,participating:true})))})));
     root.querySelectorAll('[data-category-order]').forEach(button=>button.onclick=()=>action(button,()=>show(button.dataset.categoryOrder,true)));
-    root.querySelector('#registration-table').innerHTML=visible.length?`<table><thead><tr><th scope="col">Tournoi / équipe</th><th scope="col">Inscription</th><th scope="col">Paiement</th><th scope="col">Action</th></tr></thead><tbody>${visible.map(r=>`<tr><td data-label="Équipe"><div><b>${esc(r.tournament_name)}</b><p>${esc(r.club_name)} · ${esc(r.team_name)} · ${esc(r.category)}</p><small>${esc(r.reference)}</small></div></td><td data-label="Inscription"><div><span class="commerce-badge ${r.registration_status==='pending'?'is-pending':r.registration_status==='accepted'?'is-paid':'is-neutral'}">${esc(labels[r.registration_status]||r.registration_status)}</span></div></td><td data-label="Paiement"><div><strong>${money(r.total_cents)}</strong><br><span class="commerce-badge ${r.payment_status==='paid'?'is-paid':'is-pending'}">${esc(paymentLabels[r.payment_status]||r.payment_status)}</span></div></td><td data-label="Action"><div><button type="button" data-order="${esc(r.order_id)}">Ouvrir la fiche →</button></div></td></tr>`).join('')}</tbody></table>`:'<div class="commerce-empty"><h3>Aucune inscription à afficher</h3><p>Modifiez votre recherche ou effacez les filtres pour retrouver les équipes.</p></div>';
+    root.querySelector('#registration-table').innerHTML=visible.length?`<table><thead><tr><th scope="col">Tournoi / équipe</th><th scope="col">Inscription</th><th scope="col">Paiement</th><th scope="col">Action</th></tr></thead><tbody>${visible.map(r=>`<tr><td data-label="Équipe"><div><b>${esc(r.tournament_name)}</b><p>${esc(r.club_name)} · ${esc(r.team_name)} · ${esc(r.category)}</p><small>${esc(r.reference)}</small></div></td><td data-label="Inscription"><div><span class="commerce-badge ${r.registration_status==='pending'?'is-pending':r.registration_status==='accepted'?'is-paid':'is-neutral'}">${esc(labels[r.registration_status]||r.registration_status)}</span>${r.archived_at?'<span class="commerce-badge is-neutral">Retirée du suivi</span>':''}</div></td><td data-label="Paiement"><div><strong>${money(r.total_cents)}</strong><br><span class="commerce-badge ${r.payment_status==='paid'?'is-paid':'is-pending'}">${esc(paymentLabels[r.payment_status]||r.payment_status)}</span></div></td><td data-label="Action"><div><button type="button" data-order="${esc(r.order_id)}">Ouvrir la fiche →</button></div></td></tr>`).join('')}</tbody></table>`:'<div class="commerce-empty"><h3>Aucune inscription à afficher</h3><p>Modifiez votre recherche ou effacez les filtres pour retrouver les équipes.</p></div>';
     root.querySelectorAll('[data-order]').forEach(button=>button.onclick=()=>action(button,()=>show(button.dataset.order,true)));
   }
   root.querySelector('#registration-search').oninput=draw;
   for(const id of ['payment-filter','registration-filter','category-filter'])root.querySelector(`#${id}`).onchange=draw;
-  root.querySelector('#reset-registration-filters').onclick=()=>{for(const id of ['registration-search','payment-filter','registration-filter','category-filter'])root.querySelector(`#${id}`).value='';draw();};
+  root.querySelector('#reset-registration-filters').onclick=e=>{for(const id of ['registration-search','payment-filter','registration-filter','category-filter'])root.querySelector(`#${id}`).value='';draw();if(includeArchived)action(e.target,async()=>{includeArchived=false;try{await registrations();}catch(error){includeArchived=true;throw error;}},'');};
   draw();
   root.querySelector("#export-registrations").onclick = () => {
     const cell = (value) =>
@@ -140,6 +144,7 @@ async function registrations(clearDetail=false) {
       "total_cents",
       "registration_total_cents",
       "payment_method",
+      "retiree_du_suivi",
     ];
     const questions = new Map();
     for (const r of visible)
@@ -170,9 +175,9 @@ async function registrations(clearDetail=false) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 }
-async function show(id, focus = false) {
+async function show(id, focus = false, provided = null) {
   const context=selectedTournamentId;
-  const data = await call(`registrations/${id}`);
+  const data = provided || await call(`registrations/${id}`);
   if(context!==selectedTournamentId||Number(data.registration.tournament_id)!==Number(selectedTournamentId))return;
   const o = data.order,
     r = data.registration,
@@ -186,7 +191,7 @@ async function show(id, focus = false) {
           )
           .join("")}</dl>`
       : ""
-  }${r.payment_method==='cheque'?`<p class="tournament-cheque-instructions">${esc(r.cheque_snapshot)}</p>${o.payment_status==='pending'&&r.registration_status!=='cancelled'?'<p><button data-cheque-received>Confirmer la réception du chèque et le paiement</button></p>':''}`:''}<p>Paiement : <b>${esc(paymentLabels[o.payment_status] || o.payment_status)}</b> · ${money(o.total_cents)}</p><p><button data-reconcile>Vérifier chez HelloAsso</button> <button data-resend>Renvoyer le suivi</button> <button data-rotate>Révoquer et renvoyer le lien</button></p><form class="commerce-form-grid"><label>Inscription<select name="registration_status">${Object.entries(
+  }${r.payment_method==='cheque'?`<p class="tournament-cheque-instructions">${esc(r.cheque_snapshot)}</p>${o.payment_status==='pending'&&r.registration_status!=='cancelled'?'<p><button data-cheque-received>Confirmer la réception du chèque et le paiement</button></p>':''}`:''}<p>Paiement : <b>${esc(paymentLabels[o.payment_status] || o.payment_status)}</b> · ${money(o.total_cents)}</p><p>${r.payment_method!=='cheque'?'<button data-reconcile>Vérifier chez HelloAsso</button> ':''}<button data-resend>Renvoyer le suivi</button> <button data-rotate>Révoquer et renvoyer le lien</button></p><p id="helloasso-verification-result" class="commerce-message" role="status" hidden></p><form class="commerce-form-grid"><label>Inscription<select name="registration_status">${Object.entries(
     labels,
   )
     .map(
@@ -195,7 +200,7 @@ async function show(id, focus = false) {
     )
     .join(
       "",
-    )}</select></label><label>Message visible par le contact<textarea name="public_note" maxlength="1500">${esc(o.public_note)}</textarea></label><label>Note interne au club<textarea name="internal_note" maxlength="3000">${esc(o.internal_note)}</textarea></label><div><button type="submit">Enregistrer et informer le contact</button></div></form><h3>Suivi des e-mails</h3>${tournamentEnvironment!=="production"?'<p class="commerce-mail-context">En staging, tous les mails clients et club sont redirigés vers MAIL_TEST_TO. Le destinataire effectif est indiqué pour chaque envoi.</p>':""}${mailStatusList(data.mails)}<details><summary>Historique et paiements</summary>${data.events.map((e) => `<p>${date(e.created_at)} · ${esc(e.message)}</p>`).join("")}<h3>Tentatives de paiement</h3>${data.attempts.map((a) => `<p>${esc(a.intent_id || "Sans réponse")} · ${esc(a.state)} · ${esc(a.last_error)}<br><small>Tentative : ${esc(a.id)}</small></p>`).join("")}</details>${
+    )}</select></label><label>Message visible par le contact<textarea name="public_note" maxlength="1500">${esc(o.public_note)}</textarea></label><label>Note interne au club<textarea name="internal_note" maxlength="3000">${esc(o.internal_note)}</textarea></label><div><button type="submit">Enregistrer et informer le contact</button></div></form>${r.registration_status==='cancelled'?`<section class="commerce-mail-context"><p>${r.archived_at?'Cette inscription a été retirée du suivi courant.':'Cette inscription est annulée. Vous pouvez la retirer des listes et exports courants.'}</p><button type="button" class="commerce-secondary" data-archive-registration>${r.archived_at?'Remettre dans le suivi':'Retirer du suivi'}</button></section>`:''}<h3>Suivi des e-mails</h3>${tournamentEnvironment!=="production"?'<p class="commerce-mail-context">En staging, tous les mails clients et club sont redirigés vers MAIL_TEST_TO. Le destinataire effectif est indiqué pour chaque envoi.</p>':""}${mailStatusList(data.mails)}<details><summary>Historique et paiements</summary>${data.events.map((e) => `<p>${date(e.created_at)} · ${esc(e.message)}</p>`).join("")}<h3>Tentatives de paiement</h3>${data.attempts.map((a) => `<p>${esc(a.intent_id || "Sans réponse")} · ${esc(a.state)} · ${esc(a.last_error)}<br><small>Tentative : ${esc(a.id)}</small></p>`).join("")}</details>${
     data.attempts.some(
       (a) => !a.intent_id && ["creating", "uncertain"].includes(a.state),
     )
@@ -223,12 +228,17 @@ async function show(id, focus = false) {
     });
   });
   target.scrollIntoView({ behavior: "smooth", block: "start" });
+  target.querySelector('[data-archive-registration]')?.addEventListener('click',e=>action(e.target,async()=>{await call(`registrations/${id}/archive`,{method:'POST',data:{version:o.version,archived:!r.archived_at}});await registrations(true);},r.archived_at?'Inscription remise dans le suivi.':'Inscription retirée du suivi.'));
   target.querySelector('[data-cheque-received]')?.addEventListener('click',e=>action(e.target,async()=>{await call(`registrations/${id}/cheque-received`,{method:'POST',data:{version:o.version}});await registrations();await show(id);}));
-  target.querySelector("[data-reconcile]").onclick = (e) =>
-    action(e.target, async () => {
-      await call(`registrations/${id}/reconcile`, { method: "POST" });
-      await show(id);
-    });
+  target.querySelector('[data-reconcile]')?.addEventListener('click',e=>action(e.target,async()=>{
+    const context=selectedTournamentId,initial=target.querySelector('#helloasso-verification-result');initial.hidden=false;initial.textContent='Vérification HelloAsso en cours…';
+    try {
+      const result=await call(`registrations/${id}/reconcile`,{method:'POST'});
+      if(context!==selectedTournamentId)return;
+      await registrations();await show(id,false,result);
+      const output=root.querySelector('#helloasso-verification-result');if(output){output.hidden=false;output.textContent=result.verification?.message||`Vérification terminée. Paiement : ${paymentLabels[result.order.payment_status]||result.order.payment_status}.`;}
+    }catch(error){const output=root.querySelector('#helloasso-verification-result');if(output){output.hidden=false;output.textContent=error.message;}throw error;}
+  },''));
   target.querySelector("[data-rotate]").onclick = (e) =>
     action(e.target, () =>
       call(`registrations/${id}/rotate-link`, { method: "POST" }),
@@ -287,7 +297,7 @@ call("status")
         : "SANDBOX — paiements de test, mails réservés au destinataire de test";
     const id=new URLSearchParams(location.search).get('inscription');
     if(root.dataset.page==='registrations'&&/^[a-f0-9-]{36}$/.test(id||'')){
-      const detail=await call(`registrations/${id}`);selectedTournamentId=detail.registration.tournament_id;
+      const detail=await call(`registrations/${id}`);selectedTournamentId=detail.registration.tournament_id;if(detail.registration.archived_at)includeArchived=true;
     }
     return (
       {

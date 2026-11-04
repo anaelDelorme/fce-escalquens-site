@@ -273,7 +273,7 @@ export async function detail(env: ShopEnv, order: Row, admin = false) {
           : { kind: e.kind, message: e.message, created_at: e.created_at },
       ),
     survey: survey.results[0] || null,
-    ...(order.kind === "tournament" ? {registration: await env.ORDERS.prepare(`SELECT ${admin?"tournament_id,":""}tournament_name,club_name,team_name,category,registration_status,payment_deadline,answers_json,form_snapshot,team_count,sections_json,payment_method,cheque_snapshot FROM tournament_registrations WHERE order_id=?`).bind(order.id).first()} : {}),
+    ...(order.kind === "tournament" ? {registration: await env.ORDERS.prepare(`SELECT ${admin?"tournament_id,archived_at,archived_by,":""}tournament_name,club_name,team_name,category,registration_status,payment_deadline,answers_json,form_snapshot,team_count,sections_json,payment_method,cheque_snapshot FROM tournament_registrations WHERE order_id=?`).bind(order.id).first()} : {}),
     ...(admin ? { mails: mails.results, attempts: attempts.results } : {}),
   };
 }
@@ -594,16 +594,21 @@ export async function checkout(
     throw error;
   }
 }
-export async function reconcile(env: ShopEnv, s: Settings, id: string) {
+export type ReconciliationResult = {checked:false;reason:'busy'|'cheque'|'no_reference'} | {checked:true;payment_status:string};
+export async function reconcile(env: ShopEnv, s: Settings, id: string): Promise<ReconciliationResult> {
   // Lease avoids concurrent stale recomputations of payment totals.
   const lock = await env.ORDERS.prepare(
     "UPDATE orders SET last_checked=? WHERE id=? AND last_checked<? RETURNING id",
   )
     .bind(now() + 60, id, now())
     .first();
-  if (!lock) return;
+  if (!lock) return {checked:false,reason:'busy'};
   try {
     const order = await findOrder(env, id);
+    if(order.kind==='tournament') {
+      const registration=await env.ORDERS.prepare('SELECT payment_method FROM tournament_registrations WHERE order_id=?').bind(id).first<Row>();
+      if(registration?.payment_method==='cheque')return {checked:false,reason:'cheque'};
+    }
     const attempts = (
       await env.ORDERS.prepare(
         "SELECT * FROM checkout_attempts WHERE order_id=? AND intent_id IS NOT NULL",
@@ -611,6 +616,7 @@ export async function reconcile(env: ShopEnv, s: Settings, id: string) {
         .bind(id)
         .all<Row>()
     ).results;
+    if(!attempts.length)return {checked:false,reason:'no_reference'};
     for (const attempt of attempts) {
       const verified = await verifiedPayments(
         env,
@@ -695,6 +701,7 @@ export async function reconcile(env: ShopEnv, s: Settings, id: string) {
     await env.ORDERS.prepare("UPDATE orders SET reconcile_after=? WHERE id=?")
       .bind(now() + (order.created_at > now() - 7200 ? 120 : 21600), id)
       .run();
+    return {checked:true,payment_status:summary.status};
   } finally {
     await env.ORDERS.prepare("UPDATE orders SET last_checked=? WHERE id=?")
       .bind(now() + 5, id)

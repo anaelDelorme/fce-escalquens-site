@@ -42,23 +42,39 @@ const paymentLabels: Record<string,string> = {
   refunded: 'Remboursé', partially_refunded: 'Partiellement remboursé', contested: 'Paiement contesté',
 };
 const registrationLabels: Record<string,string> = {
-  pending: 'En attente de validation par le club', accepted: 'Acceptée', cancelled: 'Annulée', attended: 'Équipes accueillies',
+  pending: 'En attente de validation par le club', accepted: 'Confirmée par le club', cancelled: 'Annulée', attended: 'Équipes accueillies',
 };
-function registrationFacts(r: Row): [string,string][] {
+function registrationFacts(r: Row, paymentPending: boolean): [string,string][] {
   const sections = JSON.parse(r.sections_json || '[]').filter((s:Row)=>s.participating && s.quantity>0);
   return [
     ['Tournoi', r.tournament_name || ''], ['Club', r.club_name || ''],
     ...(sections.length ? sections.map((s:Row)=>[s.section,`${s.quantity} équipe${s.quantity>1?'s':''}`]) : [['Équipe', [r.team_name,r.category].filter(Boolean).join(' · ')]]),
     ['Inscription', registrationLabels[r.registration_status] || 'Enregistrée'],
-    ...(r.payment_deadline ? [['Date limite de paiement',new Date(r.payment_deadline*1000).toLocaleDateString('fr-FR',{timeZone:'Europe/Paris',dateStyle:'long'})]] : []),
+    ...(r.payment_deadline&&paymentPending&&r.registration_status!=='cancelled' ? [['Date limite de paiement',new Date(r.payment_deadline*1000).toLocaleDateString('fr-FR',{timeZone:'Europe/Paris',dateStyle:'long'})]] : []),
   ] as [string,string][];
 }
 export async function deliverMail(env: ShopEnv, settings: Settings, job: Row, order: Row) {
   const tournament = order.kind === 'tournament', club = job.audience === 'club';
   const registration = tournament ? await env.ORDERS.prepare('SELECT * FROM tournament_registrations WHERE order_id=?').bind(order.id).first<Row>() : null;
-  const title = club
+  let title = club
     ? job.kind==='survey' ? 'Nouvel avis boutique' : job.kind==='created' ? (tournament?'Nouvelle inscription au tournoi':'Nouvelle commande boutique') : job.kind==='paid' ? 'Nouveau paiement confirmé' : 'Mise à jour du paiement'
     : job.kind==='paid' ? 'Paiement confirmé' : job.kind==='created' ? (tournament?'Votre inscription est enregistrée':'Votre commande est enregistrée') : job.kind==='tracking' ? 'Votre lien de suivi' : job.kind==='payment' ? 'Mise à jour du paiement' : (tournament?'Des nouvelles de votre inscription':'Des nouvelles de votre commande');
+  const registrationStates:Record<string,[string,string]>={
+    accepted:['Votre inscription est confirmée',`Le club a confirmé votre inscription au tournoi « ${registration?.tournament_name} ». Vos équipes sont bien inscrites.`],
+    cancelled:['Votre inscription est annulée',`Votre inscription au tournoi « ${registration?.tournament_name} » a été annulée. Vos équipes ne figurent plus parmi les inscrits.`],
+    pending:['Votre inscription attend la validation du club','Votre inscription est en attente de validation par le club. Consultez son suivi pour retrouver son état.'],
+    attended:['La participation de vos équipes est enregistrée','Le club a enregistré la présence de vos équipes au tournoi. Merci pour votre participation.'],
+  };
+  const shopStates:Record<string,[string,string]>={
+    new:['Votre commande est en préparation','Le club prépare votre commande. Vous serez informé de son avancement.'],
+    ordered:['Votre commande est transmise au fournisseur','Le club a transmis votre commande au fournisseur.'],
+    partial:['Une partie de votre commande est arrivée','Le club a reçu une partie de vos articles. Retrouvez le détail dans votre suivi.'],
+    ready:['Votre commande est disponible','Vos articles sont prêts à être remis. Retrouvez les modalités de remise ci-dessous.'],
+    delivered:['Votre commande a été remise','Le club a enregistré la remise de votre commande. Merci pour votre confiance.'],
+    cancelled:['Votre commande est annulée','Votre commande a été annulée par le club.'],
+  };
+  const stateChange=job.kind==='fulfillment'?(registration?registrationStates[registration.registration_status]:shopStates[order.fulfillment]):null;
+  if(stateChange)title=stateChange[0];
   const content: MailContent = {
     section: `${tournament?'Tournois':'Boutique'}${club?' · Notification au club':''}`,
     title, reference: order.reference, greeting: club ? 'Bonjour,' : `Bonjour ${order.first_name},`,
@@ -71,11 +87,17 @@ export async function deliverMail(env: ShopEnv, settings: Settings, job: Row, or
     contact: email(settings.contact_email), privacyUrl: `${origin(env)}/confidentialite/`,
     paragraphs: [],
   };
+  if(stateChange)content.introduction=stateChange[1];
   if(club) content.facts!.unshift(['Client / contact',`${order.first_name} ${order.last_name}`]);
   if(registration) {
-    content.facts!.push(...registrationFacts(registration));
-    content.paragraphs!.push('Le paiement et l’acceptation de l’inscription par le club sont deux étapes distinctes.');
-    if(registration.payment_method==='cheque') content.paragraphs!.push(`Règlement par chèque : ${registration.cheque_snapshot}`);
+    content.facts!.push(...registrationFacts(registration,order.payment_status==='pending'));
+    if(registration.registration_status==='cancelled') {
+      if(!stateChange)content.introduction=`Votre inscription au tournoi « ${registration.tournament_name} » est annulée. Consultez son suivi pour retrouver les informations de paiement.`;
+      if(['paid','partially_refunded','refunding','contested'].includes(order.payment_status))content.paragraphs!.push('Pour les modalités de remboursement d’un règlement déjà effectué, contactez le club. L’annulation de l’inscription ne déclenche pas de remboursement automatique.');
+    } else {
+      content.paragraphs!.push('La confirmation de l’inscription par le club et le règlement sont deux étapes distinctes.');
+      if(registration.payment_method==='cheque'&&order.payment_status==='pending')content.paragraphs!.push(`Règlement par chèque : ${registration.cheque_snapshot}`);
+    }
     const answers=JSON.parse(registration.answers_json||'{}');
     content.answers=JSON.parse(registration.form_snapshot||'[]').map((f:Row)=>[f.label,typeof answers[f.id]==='boolean'?(answers[f.id]?'Oui':'Non'):String(answers[f.id]??'—')]);
   } else {
@@ -83,7 +105,7 @@ export async function deliverMail(env: ShopEnv, settings: Settings, job: Row, or
     content.items=items.map(i=>({name:i.name,quantity:i.quantity,total:i.unit_cents*i.quantity,details:[i.size,i.color,...JSON.parse(i.options_json||'[]').map((o:Row)=>`${o.label}${o.text?' : '+o.text:''}`)].filter(Boolean).join(' · ')}));
     content.facts!.push(['Préparation',order.fulfillment==='new'&&order.payment_status!=='paid'?'Après confirmation du paiement':statusLabels[order.fulfillment]||'À vérifier par le club']);
     content.facts!.push(['Remise',order.delivery_method==='coach'?`Par le coach${order.team?' · '+order.team:''}`:`Sur rendez-vous au club${settings.collection_address?' · '+settings.collection_address:''}`]);
-    if(order.delivery_method==='club'&&settings.collection_instructions)content.paragraphs!.push(settings.collection_instructions);
+    if(!['cancelled','delivered'].includes(order.fulfillment)&&order.delivery_method==='club'&&settings.collection_instructions)content.paragraphs!.push(settings.collection_instructions);
   }
   if(club) {
     content.action={label:'Ouvrir la fiche dans l’administration',url:`${origin(env)}/${tournament?'admin-tournois/?inscription=':'admin-boutique/?commande='}${order.id}`,help:'Connexion Cloudflare Access requise. Ce mail ne contient aucun lien personnel du client.'};
