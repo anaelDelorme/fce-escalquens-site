@@ -273,7 +273,7 @@ export async function detail(env: ShopEnv, order: Row, admin = false) {
           : { kind: e.kind, message: e.message, created_at: e.created_at },
       ),
     survey: survey.results[0] || null,
-    ...(order.kind === "tournament" ? {registration: await env.ORDERS.prepare("SELECT tournament_name,club_name,team_name,category,registration_status,payment_deadline,answers_json,form_snapshot,team_count,sections_json,payment_method,cheque_snapshot FROM tournament_registrations WHERE order_id=?").bind(order.id).first()} : {}),
+    ...(order.kind === "tournament" ? {registration: await env.ORDERS.prepare(`SELECT ${admin?"tournament_id,":""}tournament_name,club_name,team_name,category,registration_status,payment_deadline,answers_json,form_snapshot,team_count,sections_json,payment_method,cheque_snapshot FROM tournament_registrations WHERE order_id=?`).bind(order.id).first()} : {}),
     ...(admin ? { mails: mails.results, attempts: attempts.results } : {}),
   };
 }

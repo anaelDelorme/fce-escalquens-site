@@ -6,6 +6,9 @@ Les messages client et club utilisent le même gabarit HTML avec une version tex
 
 Dans l’administration des inscriptions, un sélecteur permanent ouvre le suivi d’un seul tournoi. Le tournoi est conservé dans l’URL et le filtrage SQL intervient avant la limite de 500 inscriptions par tournoi. Les liens directs vers une fiche ouvrent son tournoi. Les cartes de catégories affichent le total d’équipes, les équipes validées et à valider, ainsi que les clubs et les noms d’équipes lorsqu’ils sont renseignés. Un clic ouvre la fiche. Les cartes suivent la recherche et les filtres, avec un filtre de catégorie supplémentaire. Les inscriptions annulées sont exclues des effectifs. La vue couvre les 500 inscriptions du tournoi chargé au maximum ; elle ne prétend pas totaliser les éventuelles lignes plus anciennes non chargées.
 
+
+L’export CSV contient une ligne par catégorie pour chaque inscription, avec `nb_equipes`. Par exemple, deux U11 et une U13F donnent deux lignes : U11 / 2 et U13F / 1. Le tournoi et les filtres sélectionnés restent appliqués. Les catégories non participantes sont exclues. `total_cents` correspond au montant de la catégorie, calculé à partir du tarif par équipe de l’inscription ; `registration_total_cents` indique le total de l’inscription et se répète comme information de référence. Si le tarif par équipe ne peut pas être déduit en centimes entiers d’une ancienne inscription, le montant de catégorie reste vide et le total original est conservé.
+
 ## Copie du catalogue staging vers production
 
 Le workflow « Copier la boutique staging vers production » s’exécute uniquement sur la branche `ops/sync-shop-production`, lors d’un push intentionnel vers cette branche ou d’une relance manuelle sur celle-ci. Un push ordinaire sur main, staging ou une branche de PR ne lance pas cette copie.
