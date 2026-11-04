@@ -1,59 +1,152 @@
 {
-	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "fce-escalquens",
-	"main": "src/worker.ts",
-	"compatibility_date": "2026-08-31",
-	"workers_dev": false,
-	"preview_urls": false,
-
-	"assets": {
-		"directory": "./dist",
-		"binding": "ASSETS",
-		"not_found_handling": "404-page",
-		"run_worker_first": [
-			"/api/*",
-			"/admin-api/*",
-			"/admin",
-			"/admin/*",
-			"/internal/*",
-			"/media/*"
-		]
-		},
-	"d1_databases": [
-		{
-			"binding": "DB",
-			"database_name": "fce-escalquens",
-			"database_id": "883401b1-f229-4c0e-9e25-6493f8d01b93"
-		}
-	],
-	"r2_buckets": [
-		{
-			"binding": "MEDIA",
-			"bucket_name": "fce-escalquens-media"
-		}
-	],
-	"env": {
-		"staging": {
-			"name": "fce-escalquens-staging",
-			"workers_dev": true,
-			"vars": {
-				"APP_ENV": "staging",
-				"GITHUB_REPOSITORY": "anaelDelorme/fce-escalquens-site",
-				"STAGING_WORKFLOW_REF": "develop"
-			},
-			"d1_databases": [
-				{
-					"binding": "DB",
-					"database_name": "fce-escalquens-staging",
-					"database_id": "d88cd581-304a-4de5-92ec-d7cb5738ded8"
-				}
-			],
-			"r2_buckets": [
-				{
-					"binding": "MEDIA",
-					"bucket_name": "fce-escalquens-media-staging"
-				}
-			]
-		}
-	}
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "fce-escalquens",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-08-31",
+  "workers_dev": false,
+  "preview_urls": false,
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "404-page",
+    "run_worker_first": [
+      "/api/*",
+      "/admin-api/*",
+      "/admin",
+      "/admin/*",
+      "/internal/*",
+      "/media/*",
+      "/boutique/suivi",
+      "/boutique/suivi/*",
+      "/admin-boutique",
+      "/admin-boutique/*",
+      "/admin-tournois",
+      "/admin-tournois/*",
+      "/tournois/suivi",
+      "/tournois/suivi/*",
+      "/paiements/retour",
+      "/paiements/retour/*"
+    ]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "fce-escalquens",
+      "database_id": "883401b1-f229-4c0e-9e25-6493f8d01b93"
+    },
+    {
+      "binding": "ORDERS",
+      "database_name": "fce-escalquens-orders",
+      "database_id": "d0ce5147-4c85-43ca-83ca-ef84df8b5626",
+      "migrations_dir": "migrations-orders"
+    },
+    {
+      "binding": "TOURNAMENTS",
+      "database_name": "fce-escalquens-tournaments",
+      "database_id": "dd0b1d97-3858-4e61-96c9-1e2735d362d0",
+      "migrations_dir": "migrations-tournaments"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "MEDIA",
+      "bucket_name": "fce-escalquens-media"
+    }
+  ],
+  "env": {
+    "staging": {
+      "name": "fce-escalquens-staging",
+      "workers_dev": true,
+      "vars": {
+        "APP_ENV": "staging",
+        "GITHUB_REPOSITORY": "anaelDelorme/fce-escalquens-site",
+        "STAGING_WORKFLOW_REF": "staging",
+        "CF_ACCESS_ISSUER": "https://cold-flower-98c5.cloudflareaccess.com",
+        "CF_ACCESS_SHOP_AUD": "cbe8e9e32519dc9eb7c136a7e858326480881777f7359720d771e42f34973d7a",
+        "SHOP_ORIGIN": "https://fce-escalquens-staging.fcescalquens.workers.dev",
+        "HELLOASSO_ORGANIZATION_SLUG": "fce",
+        "CF_ACCESS_TOURNAMENT_AUD": "9f8aa0c1de144610ed89e32b49c62f63255632cdd4ba5f83abbce82160db73da",
+        "MAIL_PROVIDER": "ovh",
+        "MAIL_FROM": "contact@fcescalquens.fr",
+        "MAIL_TEST_TO": "contact@fcescalquens.fr",
+        "SMTP_HOST": "ssl0.ovh.net",
+        "SMTP_USER": "contact@fcescalquens.fr"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "fce-escalquens-staging",
+          "database_id": "d88cd581-304a-4de5-92ec-d7cb5738ded8"
+        },
+        {
+          "binding": "ORDERS",
+          "database_name": "fce-escalquens-orders-staging",
+          "database_id": "3149647e-9a2f-403a-9591-b7d161bbc98a",
+          "migrations_dir": "migrations-orders"
+        },
+        {
+          "binding": "TOURNAMENTS",
+          "database_name": "fce-escalquens-tournaments-staging",
+          "database_id": "be2b86a8-41d2-4873-8e3e-52c62bc72db3",
+          "migrations_dir": "migrations-tournaments"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "MEDIA",
+          "bucket_name": "fce-escalquens-media-staging"
+        }
+      ],
+      "triggers": {
+        "crons": [
+          "*/5 * * * *"
+        ]
+      }
+    },
+    "local": {
+      "name": "fce-escalquens-local",
+      "vars": {
+        "APP_ENV": "local",
+        "SHOP_ORIGIN": "http://localhost:8787"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "fce-escalquens-local",
+          "database_id": "11111111-1111-4111-8111-111111111111"
+        },
+        {
+          "binding": "ORDERS",
+          "database_name": "fce-orders-local",
+          "database_id": "22222222-2222-4222-8222-222222222222",
+          "migrations_dir": "migrations-orders"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "MEDIA",
+          "bucket_name": "fce-media-local"
+        }
+      ]
+    }
+  },
+  "vars": {
+    "APP_ENV": "production",
+    "SHOP_ORIGIN": "https://fcescalquens.fr",
+    "MAIL_PROVIDER": "ovh",
+    "MAIL_FROM": "contact@fcescalquens.fr",
+    "SMTP_HOST": "ssl0.ovh.net",
+    "SMTP_USER": "contact@fcescalquens.fr",
+    "HELLOASSO_ORGANIZATION_SLUG": "fce",
+    "CF_ACCESS_ISSUER": "https://cold-flower-98c5.cloudflareaccess.com",
+    "CF_ACCESS_SHOP_AUD": "f827656ccd26fd80b376c4a8fafc9856807e972b8c644c02c37d866dd4775922",
+    "CF_ACCESS_TOURNAMENT_AUD": "6fc024b73f384ce687f21abfe13c663b2b8cf8c0fa9f896b35239db60646eb3f",
+    "CF_ACCESS_SITE_AUD": "acc984b5e50ffc7d1cfa49cc87de1d5198ef3662e693801b26179bf02ae7c3ef",
+    "MAIL_TEST_TO": "contact@fcescalquens.fr"
+  },
+  "triggers": {
+    "crons": [
+      "*/5 * * * *"
+    ]
+  }
 }

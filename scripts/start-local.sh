@@ -6,12 +6,13 @@ cd "$project_dir"
 [[ -d node_modules ]] || npm ci
 npm run build
 npm run db:migrate:local
+npm run db:migrate:orders:local
 if ! grep -q 'seed_applied=true' .dev.vars; then
-  npm run db:seed:local
+  echo "Importez votre catalogue local si nécessaire."
   printf '\nseed_applied=true\n' >> .dev.vars
 fi
 npm run db:seed:shop:local
-echo "Site : http://127.0.0.1:8787"
-echo "Admin : http://127.0.0.1:8787/admin/"
+echo "Site : http://localhost:8787"
+echo "Admin : http://localhost:8787/admin/"
 echo "Jeton local : valeur DEV_ADMIN_TOKEN du fichier .dev.vars"
-npx wrangler dev
+npx wrangler dev --env local

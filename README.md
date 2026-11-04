@@ -1,3 +1,17 @@
+# Annonces sur l’accueil
+
+Depuis l’administration du site, la rubrique **Annonces de l’accueil** permet de publier un titre, une image, un texte et un bouton vers un tournoi, la boutique ou des résultats. Intégration dans le menu commun et bandeau visible dès l’arrivée sur l’accueil : [docs/CORRECTIF-V5.2.20.md](docs/CORRECTIF-V5.2.20.md). Présentation allégée et bouton de mise en attente de la boutique : [docs/CORRECTIF-V5.2.21.md](docs/CORRECTIF-V5.2.21.md).
+
+# Boutique indépendante et paiement HelloAsso
+
+Installation détaillée sans compte HelloAsso : [docs/INSTALLATION-STAGING.md](docs/INSTALLATION-STAGING.md). La préproduction utilise la branche `staging` et la gestion boutique est sous `/admin-boutique/`.
+
+Le parcours d’achat, le backoffice Cloudflare Access, les bases séparées et les mails sont documentés dans [docs/BOUTIQUE.md](docs/BOUTIQUE.md). Les ventes sont fermées par défaut jusqu’à la configuration des bases, des secrets, du catalogue commercial et des mentions légales.
+
+Vérifications : `npm test`, `npm run typecheck:shop`, `npm run build`.
+
+---
+
 # Édition temporaire avant génération des PNG
 
 Ce paquet transforme la page de génération des visuels en deux étapes :

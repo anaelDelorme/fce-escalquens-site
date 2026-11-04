@@ -1,4 +1,10 @@
-interface Env {
+import {newsRoute} from './news/service';
+import {tournamentEnv,tournamentRoute} from './tournaments/service';
+import { shopRoute, maintenance, type ShopEnv } from './shop/service';
+import { staff as shopStaff, sameOrigin as shopSameOrigin, response as shopResponse } from './shop/security';
+import { ShopError } from './shop/domain';
+import { priceLabelStatement } from './shop/catalogue-pricing';
+interface Env extends ShopEnv {
   DB: D1Database;
   MEDIA: R2Bucket;
   ASSETS: Fetcher;
@@ -6,6 +12,7 @@ interface Env {
   TEST_SITE_PASSWORD?: string;
   TEST_SITE_USER?: string;
   FCE_SYNC_TOKEN?: string;
+  CF_ACCESS_SITE_AUD?: string;
   APP_ENV?: string;
   GITHUB_DISPATCH_TOKEN?: string;
   GITHUB_REPOSITORY?: string;
@@ -173,13 +180,20 @@ function testGate(request: Request, env: Env) {
   );
 }
 
-async function api(request: Request, env: Env, url: URL) {
+async function api(request: Request, env: Env, url: URL, trustedShopActor?: string) {
   const parts = url.pathname.split("/").filter(Boolean);
-  const table = parts[1];
-  const id = parts[2];
+  const shopScope = url.pathname.startsWith('/admin-boutique/api/content/');
+  const table = parts[shopScope ? 3 : 1];
+  const id = parts[shopScope ? 4 : 2];
+  if (!table) return json({error:'Ressource inconnue'},404);
+  const shopTables = new Set(['shop_categories','shop_products','shop_settings','site_media']);
+  if (shopScope && (!trustedShopActor || !shopTables.has(table))) return json({error:'Ressource boutique inconnue'},404);
+  if (!shopScope && table.startsWith('shop_')) return json({error:'Gestion déplacée vers /admin-boutique/'},404);
+  if(['tournaments','tournament_teams'].includes(table))return json({error:'Gestion déplacée vers /admin-tournois/'},410);
+  const authorize = async () => shopScope ? trustedShopActor : admin(request,env);
   if (!tables.has(table)) return json({ error: "Ressource inconnue" }, 404);
-  if (!url.pathname.startsWith("/admin-api/")) return json({ error: "Ressource publique inconnue" }, 404);
-  if (!await admin(request, env)) {
+  if (!shopScope && !url.pathname.startsWith("/admin-api/")) return json({ error: "Ressource publique inconnue" }, 404);
+  if (!await authorize()) {
     return json({ error: "Accès administrateur requis" }, 401);
   }
   // Ces tables contiennent des données personnelles (email, téléphone, numéro de
@@ -187,15 +201,24 @@ async function api(request: Request, env: Env, url: URL) {
   // même en lecture seule. Les pages publiques passent par pageData() qui expose
   // uniquement les champs nécessaires (ex. encadrant d'une équipe).
   const restrictedRead = new Set(["admins", "club_members"]);
-  if (restrictedRead.has(table) && request.method === "GET" && !await admin(request, env)) {
+  if (restrictedRead.has(table) && request.method === "GET" && !await authorize()) {
     return json({ error: "Accès administrateur requis" }, 401);
   }
+  if (table === 'site_media') {
+    if (request.method === 'POST') return json({error:'Les emplacements médias ne peuvent pas être créés depuis cette API.'},405);
+    if (id) {
+      const row = await env.DB.prepare('SELECT slot FROM site_media WHERE id=?').bind(id).first<{slot:string}>();
+      if (!row || (row.slot === 'shop_hero') !== shopScope) return json({error:'Emplacement média hors de cet espace de gestion.'},404);
+    }
+    if (request.method === 'DELETE') return json({error:'Un emplacement média ne peut pas être supprimé.'},405);
+  }
+  if (shopScope && table === 'shop_settings' && (request.method === 'DELETE' || request.method === 'POST')) return json({error:'Les réglages doivent être modifiés, pas supprimés ou recréés.'},405);
   if (request.method === "GET") {
     const order = defaultOrder[table] || "id ASC";
-    const rows = await env.DB.prepare(`SELECT * FROM ${table} ORDER BY ${order} LIMIT 1000`).all();
+    const rows = await env.DB.prepare(`SELECT * FROM ${table}${table==='site_media' ? (shopScope ? " WHERE slot='shop_hero'" : " WHERE slot<>'shop_hero'") : ''} ORDER BY ${order} LIMIT 1000`).all();
     return json(rows.results);
   }
-  if (!await admin(request, env)) {
+  if (!await authorize()) {
     return json({ error: "Adresse non autorisée. Vérifiez Cloudflare Access et la liste des administrateurs." }, 401);
   }
   if (request.method === "DELETE" && id) {
@@ -318,6 +341,7 @@ async function api(request: Request, env: Env, url: URL) {
       await env.DB.prepare(
         `UPDATE ${table} SET ${values.map(([key]) => `${key}=?`).join(",")}${timestamp} WHERE id=?`
       ).bind(...bound, id).run();
+      if (table === "shop_products") await priceLabelStatement(env.DB,Number(id),true).run();
       if (table === "team_competitions" && body.team_id !== undefined) {
         await env.DB.prepare("UPDATE matches SET team_id=?,updated_at=CURRENT_TIMESTAMP WHERE competition_team_id=?")
           .bind(body.team_id || null, id).run();
@@ -749,18 +773,15 @@ async function pageData(env: Env, url: URL) {
   }
 
   if (page === "tournaments") {
-    const [tournaments, links, teams, venues] = await env.DB.batch<AnyRow>([
-      env.DB.prepare(`SELECT id,slug,name,summary,starts_on,ends_on,venue,categories,
-        registration_price,registration_url,rules_key,image_key,poster_key,
-        status,season_id,venue_id,tournify_url,organizer
-        FROM tournaments WHERE status IN ('published','open','finished')
-        AND (season_id IS NULL OR season_id=${activeSeason}) ORDER BY starts_on`),
-      env.DB.prepare(`SELECT tt.tournament_id,tt.team_id FROM tournament_teams tt JOIN tournaments t ON t.id=tt.tournament_id
-        WHERE t.season_id IS NULL OR t.season_id=${activeSeason} ORDER BY tt.tournament_id`),
-      env.DB.prepare("SELECT id,name,group_name FROM teams WHERE active=1 ORDER BY name COLLATE NOCASE"),
-      env.DB.prepare("SELECT id,name,address,latitude,longitude,maps_url,active,display_order FROM venues WHERE active=1 ORDER BY display_order,name COLLATE NOCASE")
+    if(!env.TOURNAMENTS)return json({error:'Les tournois sont en cours de configuration.'},503);
+    const [events,refs]=await Promise.all([
+      env.TOURNAMENTS.batch<AnyRow>([
+        env.TOURNAMENTS.prepare("SELECT id,slug,name,summary,starts_on,ends_on,venue,categories,registration_price,rules_key,image_key,poster_key,status,season_id,venue_id,tournify_url,organizer FROM tournaments WHERE status IN ('published','open','finished') ORDER BY starts_on"),
+        env.TOURNAMENTS.prepare('SELECT tournament_id,team_id FROM tournament_teams ORDER BY tournament_id')
+      ]),
+      env.DB.batch<AnyRow>([env.DB.prepare('SELECT id,name,group_name FROM teams WHERE active=1 ORDER BY name'),env.DB.prepare('SELECT id,name,address,latitude,longitude,maps_url,active,display_order FROM venues WHERE active=1 ORDER BY display_order,name')])
     ]);
-    return publicJson({ tournaments: resultRows(tournaments), links: resultRows(links), teams: resultRows(teams), venues: resultRows(venues) });
+    return publicJson({tournaments:resultRows(events[0]),links:resultRows(events[1]),teams:resultRows(refs[0]),venues:resultRows(refs[1])});
   }
 
   if (page === "mecenat") {
@@ -784,6 +805,7 @@ async function pageData(env: Env, url: URL) {
         WHERE
           active=1
           AND TRIM(COALESCE(image_key,''))<>''
+          AND (shop_category_id IS NULL OR EXISTS(SELECT 1 FROM shop_categories c WHERE c.id=shop_products.shop_category_id AND c.active=1))
         ORDER BY featured DESC,display_order,name COLLATE NOCASE`),
       env.DB.prepare(`SELECT shop_enabled,maintenance_image_key,contact_email,catalogue_title,catalogue_key,order_subject,updated_at
         FROM shop_settings WHERE id=1 LIMIT 1`),
@@ -876,6 +898,7 @@ async function cachedPageData(request: Request, env: Env, url: URL, ctx: Executi
     || url.pathname === "/api/page/teams"
     || url.pathname === "/api/page/shop"
     || url.pathname === "/api/page/social-assets"
+    || url.pathname === "/api/page/tournaments"
   ) {
     const response = await pageData(env, url);
     const headers = new Headers(response.headers);
@@ -949,15 +972,16 @@ async function detectUpload(file: File) {
   return null;
 }
 
-async function upload(request: Request, env: Env) {
-  if (!await admin(request, env)) return json({ error: "Non autorisé" }, 401);
+async function upload(request: Request, env: Env, trustedShopActor?: string) {
+  if (!trustedShopActor && !await admin(request, env)) return json({ error: "Non autorisé" }, 401);
   const form = await request.formData();
   const file = form.get("file");
   if (!(file instanceof File)) return json({ error: "Fichier manquant" }, 400);
   if (file.size > 15_000_000) return json({ error: "Fichier trop volumineux (15 Mo maximum)" }, 413);
   const detected = await detectUpload(file);
-  if (!detected || !acceptedUploadTypes.has(detected.contentType)) {
-    return json({ error: "Type de fichier refusé. Utilisez une image JPG, PNG, GIF, WebP, AVIF ou un PDF." }, 415);
+  const newsImage=new URL(request.url).pathname==='/admin/actualites/api/upload';
+  if (!detected || !acceptedUploadTypes.has(detected.contentType) || (newsImage&&!detected.contentType.startsWith('image/'))) {
+    return json({ error: newsImage?'Type de fichier refusé. Utilisez une image JPG, PNG, GIF, WebP ou AVIF.':'Type de fichier refusé. Utilisez une image JPG, PNG, GIF, WebP, AVIF ou un PDF.' }, 415);
   }
   const key = `uploads/${crypto.randomUUID()}.${detected.extension}`;
   await env.MEDIA.put(key, detected.bytes, { httpMetadata: { contentType: detected.contentType } });
@@ -1963,7 +1987,7 @@ async function stagingAction(request: Request, env: Env) {
         "x-github-api-version": "2026-03-10"
       },
       body: JSON.stringify({
-        ref: env.STAGING_WORKFLOW_REF || "develop"
+        ref: env.STAGING_WORKFLOW_REF || "staging"
       })
     }
   );
@@ -1999,6 +2023,7 @@ async function stagingAction(request: Request, env: Env) {
 }
 
 export default {
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) { ctx.waitUntil(Promise.all([maintenance(env),...(env.TOURNAMENTS?[maintenance(tournamentEnv(env))]:[])])); },
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(request.url);
     if (url.pathname === "/internal/sync/matches" && request.method === "POST") {
@@ -2011,8 +2036,38 @@ export default {
     if (url.pathname === "/internal/sync/standings" && request.method === "POST") {
       return ingestStandings(request, env);
     }
+    // Provider callbacks and token-authenticated tracking cannot carry the staging Basic header.
+    // Each tracking request is still authorized by its order-specific bearer token.
+    if (url.pathname === '/api/shop/helloasso/webhook') {
+      const shop=await shopRoute(request.clone(),env,ctx);
+      if(!shop?.ok||!env.TOURNAMENTS)return shop!;
+      return (await shopRoute(request,tournamentEnv(env),ctx))!;
+    }
+    if (url.pathname.startsWith('/api/shop/orders/'))return (await shopRoute(request,env,ctx))!;
+    if (url.pathname.startsWith('/api/tournaments/registrations/') || ['/paiements/retour','/tournois/suivi'].some(p=>url.pathname===p||url.pathname.startsWith(p+'/'))) return (await tournamentRoute(request,env,ctx))!;
     const gate = testGate(request, env);
     if (gate) return gate;
+    if (url.pathname.startsWith('/admin-boutique/api/content/') || url.pathname === '/admin-boutique/api/upload') {
+      try {
+        const actor = await shopStaff(request,env);
+        if (!['GET','HEAD'].includes(request.method)) shopSameOrigin(request,env);
+        if (url.pathname === '/admin-boutique/api/upload') {
+          if (request.method !== 'POST') return shopResponse({error:'Méthode non autorisée'},405);
+          return await upload(request,env,actor);
+        }
+        return await api(request,env,url,actor);
+      } catch(error) {
+        if (error instanceof ShopError) return shopResponse({error:error.message,code:error.code},error.status);
+        return shopResponse({error:'Cette opération sur le catalogue a échoué. Rechargez la page puis réessayez.',code:'CONTENT_ERROR'},500);
+      }
+    }
+    if(url.pathname==='/admin-tournois/api/upload'){try{const scoped=tournamentEnv(env);const actor=await shopStaff(request,scoped,'tournament');shopSameOrigin(request,env);if(request.method!=='POST')return shopResponse({error:'Méthode non autorisée.'},405);return await upload(request,env,actor);}catch(e){return shopResponse({error:e instanceof ShopError?e.message:'Envoi impossible.',code:e instanceof ShopError?e.code:'UPLOAD'},e instanceof ShopError?e.status:500);}}
+    const news = await newsRoute(request,env,actor=>upload(request,env,actor),req=>admin(req,env));
+    if(news)return news;
+    const tournament = await tournamentRoute(request,env,ctx);
+    if (tournament) return tournament;
+    const shop = await shopRoute(request, env, ctx);
+    if (shop) return shop;
     if ((url.pathname === "/admin" || url.pathname.startsWith("/admin/")) &&
       request.headers.get("cf-access-authenticated-user-email") && !await admin(request, env)) {
       return new Response("Cette adresse est authentifiée par Cloudflare, mais elle n’est pas administratrice du site.", {
@@ -2039,6 +2094,8 @@ export default {
     if (url.pathname === "/admin-api/sync/matches" && request.method === "POST") {
       return json({ error: "Lancez l’action « Synchroniser les matchs » dans GitHub. Elle utilise ZenRows uniquement aux six horaires prévus." }, 409);
     }
+    if (url.pathname === '/admin/boutique' || url.pathname.startsWith('/admin/boutique/')) return new Response('La gestion boutique a été déplacée vers /admin-boutique/.',{status:410,headers:{'cache-control':'no-store'}});
+    if (url.pathname.startsWith('/admin-api/shop/')) return json({error:'API boutique déplacée vers /admin-boutique/api/'},410);
     if (url.pathname.startsWith("/admin-api/")) return api(request, env, url);
     // Les routes /api/<table> génériques ne sont pas publiques. L'interface
     // d'administration utilise /admin-api/<table>, ce qui évite qu'un en-tête

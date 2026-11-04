@@ -21,10 +21,10 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
     steps:
-      - name: Récupérer develop
+      - name: Récupérer staging
         uses: actions/checkout@v7
         with:
-          ref: develop
+          ref: staging
 
       - name: Installer Node
         uses: actions/setup-node@v7

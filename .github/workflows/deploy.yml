@@ -1,19 +1,226 @@
 name: Déployer
 on:
   push:
-    branches: [main]
+    branches: [main, release/boutique-tournois-production]
   workflow_dispatch:
+    inputs:
+      operation:
+        description: Préparer en lecture, initialiser les bases production, ou importer une archive relue
+        type: choice
+        options: [preparer, initialiser, importer]
+        default: preparer
+      prepare_only:
+        description: Exporter les contenus staging et préparer la reprise sans écrire en production
+        type: boolean
+        default: true
+      admin_email:
+        description: Initialiser uniquement — adresse du premier responsable boutique ET tournois, autorisée dans Access
+        type: string
+      preparation_run_id:
+        description: Importer uniquement — numéro du run contenant l’archive de préparation relue
+        type: string
+      manifest_sha256:
+        description: Importer uniquement — SHA-256 du manifeste relu, publié dans status.json
+        type: string
+concurrency:
+  group: production-operations
+  cancel-in-progress: false
 jobs:
+  prepare:
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/release/boutique-tournois-production') || (github.event_name == 'workflow_dispatch' && (!inputs.operation || inputs.operation == 'preparer') && inputs.prepare_only)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    env:
+      PRODUCTION_ARCHIVE_PASSWORD: ${{ secrets.PRODUCTION_ARCHIVE_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: {node-version: 24, cache: npm}
+      - run: npm ci
+      - name: Relever les bases production existantes sans les modifier
+        continue-on-error: true
+        run: node scripts/discover-production.mjs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Récupérer les articles, tournois configurés et médias boutique
+        id: export
+        run: |
+          node scripts/production-archive.mjs --action check-key 2>preparation-error.txt
+          node scripts/prepare-production.mjs --release preparation-${{ github.run_id }} 2>>preparation-error.txt
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Chiffrer l’archive avant publication sur GitHub
+        id: encrypt
+        run: node scripts/production-archive.mjs --action encrypt --source .production-preparation --out ".production-encrypted/preparation-$GITHUB_RUN_ID.fce"
+      - uses: actions/upload-artifact@v4
+        id: artifacts
+        if: steps.encrypt.outcome == 'success'
+        with:
+          name: preparation-production-${{ github.run_id }}
+          path: .production-encrypted/preparation-${{ github.run_id }}.fce
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: error
+      - name: Retirer les anciennes archives en clair après remplacement chiffré
+        id: cleanup
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ENCRYPTED_ARTIFACT_OUTCOME: ${{ steps.artifacts.outcome }}
+        run: node scripts/cleanup-preparation-artifacts.mjs
+      - name: Ouvrir la PR brouillon vers main
+        id: pr
+        if: always() && github.ref == 'refs/heads/release/boutique-tournois-production'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pr_url=$(gh pr list --base main --head "$GITHUB_REF_NAME" --json url --jq '.[0].url // empty')
+          if [ -z "$pr_url" ]; then
+            pr_url=$(gh pr create --draft --base main --head "$GITHUB_REF_NAME" --title "Met en production la boutique et les tournois de staging" --body-file docs/PR-PRODUCTION.md 2>pr-error.txt)
+          else
+            gh pr edit "$pr_url" --title "Met en production la boutique et les tournois de staging" --body-file docs/PR-PRODUCTION.md 2>pr-error.txt
+          fi
+          printf 'url=%s\n' "$pr_url" >> "$GITHUB_OUTPUT"
+      - name: Publier le compte rendu de préparation sans données privées
+        if: always()
+        env:
+          PREPARATION_OUTCOME: ${{ steps.export.outcome }}
+          PR_OUTCOME: ${{ steps.pr.outcome }}
+          PR_URL: ${{ steps.pr.outputs.url }}
+          ARTIFACT_OUTCOME: ${{ steps.artifacts.outcome }}
+          ARTIFACT_URL: ${{ steps.artifacts.outputs.artifact-url }}
+          ARCHIVE_ENCRYPTED: ${{ steps.encrypt.outcome == 'success' && steps.artifacts.outcome == 'success' }}
+          CLEANUP_OUTCOME: ${{ steps.cleanup.outcome }}
+        run: node scripts/production-report.mjs
+  maintenance:
+    if: github.event_name == 'workflow_dispatch' && (inputs.operation == 'initialiser' || inputs.operation == 'importer') && (github.ref == 'refs/heads/release/boutique-tournois-production' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      PRODUCTION_OPERATION: ${{ inputs.operation }}
+      ADMIN_EMAIL: ${{ inputs.admin_email }}
+      PREPARATION_RUN_ID: ${{ inputs.preparation_run_id }}
+      REVIEWED_MANIFEST_SHA256: ${{ inputs.manifest_sha256 }}
+      PRODUCTION_ARCHIVE_PASSWORD: ${{ secrets.PRODUCTION_ARCHIVE_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: {node-version: 24, cache: npm}
+      - run: npm ci
+      - run: npm test
+      - name: Vérifier la configuration et les paramètres de l’opération
+        run: |
+          node scripts/check-production.mjs
+          node scripts/production-archive.mjs --action check-key
+          node --input-type=module -e 'const e=process.env; if(e.PRODUCTION_OPERATION==="initialiser"&&!/^[^\s@\x27"<>]+@[^\s@\x27"<>]+\.[^\s@\x27"<>]+$/.test(e.ADMIN_EMAIL||""))throw Error("Adresse du premier responsable requise."); if(e.PRODUCTION_OPERATION==="importer"&&(!/^[0-9]+$/.test(e.PREPARATION_RUN_ID||"")||!/^[a-f0-9]{64}$/.test(e.REVIEWED_MANIFEST_SHA256||"")))throw Error("Run et empreinte de manifeste requis.");'
+      - name: Vérifier la présence des secrets sans lire leurs valeurs
+        run: node scripts/discover-production.mjs --require-secrets
+      - name: Télécharger l’archive de préparation relue
+        if: inputs.operation == 'importer'
+        uses: actions/download-artifact@v4
+        with:
+          name: preparation-production-${{ inputs.preparation_run_id }}
+          run-id: ${{ inputs.preparation_run_id }}
+          github-token: ${{ github.token }}
+          path: .production-import
+      - name: Déchiffrer l’archive relue dans le runner uniquement
+        if: inputs.operation == 'importer'
+        run: node scripts/production-archive.mjs --action decrypt --file ".production-import/preparation-$PREPARATION_RUN_ID.fce" --out .production-import/plain
+      - name: Vérifier le manifeste et l’absence de changement depuis l’export
+        if: inputs.operation == 'importer'
+        run: node scripts/manage-production.mjs --action check-import --folder ".production-import/plain/preparation-$PREPARATION_RUN_ID" --manifest-sha256 "$REVIEWED_MANIFEST_SHA256" --backup ".production-maintenance/$GITHUB_RUN_ID"
+      - name: Sauvegarder les trois bases production avant toute modification
+        run: node scripts/manage-production.mjs --action backup --backup ".production-maintenance/$GITHUB_RUN_ID"
+      - name: Chiffrer les sauvegardes des données réelles
+        run: node scripts/production-archive.mjs --action encrypt --source ".production-maintenance/$GITHUB_RUN_ID" --out ".production-encrypted/backup-$GITHUB_RUN_ID.fce"
+      - name: Conserver les sauvegardes privées avant d’autoriser les écritures
+        id: backups
+        uses: actions/upload-artifact@v4
+        with:
+          name: sauvegarde-production-${{ github.run_id }}
+          path: .production-encrypted/backup-${{ github.run_id }}.fce
+          include-hidden-files: true
+          retention-days: 30
+          if-no-files-found: error
+      - name: Exécuter uniquement l’opération demandée
+        id: apply
+        run: |
+          if [ "$PRODUCTION_OPERATION" = "initialiser" ]; then
+            node scripts/manage-production.mjs --action initialize --backup ".production-maintenance/$GITHUB_RUN_ID" --admin-email "$ADMIN_EMAIL"
+          else
+            node scripts/manage-production.mjs --action import --backup ".production-maintenance/$GITHUB_RUN_ID" --folder ".production-import/plain/preparation-$PREPARATION_RUN_ID" --manifest-sha256 "$REVIEWED_MANIFEST_SHA256"
+          fi
+      - name: Refaire la préparation avec les bases initialisées
+        id: export
+        if: inputs.operation == 'initialiser'
+        run: node scripts/prepare-production.mjs --release preparation-${{ github.run_id }} 2>preparation-error.txt
+      - name: Chiffrer la nouvelle préparation
+        id: encrypt
+        if: inputs.operation == 'initialiser'
+        run: node scripts/production-archive.mjs --action encrypt --source .production-preparation --out ".production-encrypted/preparation-$GITHUB_RUN_ID.fce"
+      - uses: actions/upload-artifact@v4
+        id: artifacts
+        if: steps.encrypt.outcome == 'success'
+        with:
+          name: preparation-production-${{ github.run_id }}
+          path: .production-encrypted/preparation-${{ github.run_id }}.fce
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: error
+      - name: Publier le résultat sans sauvegardes ni données privées
+        if: always()
+        env:
+          PREPARATION_OUTCOME: ${{ steps.export.outcome }}
+          APPLY_OUTCOME: ${{ steps.apply.outcome }}
+          BACKUP_ARTIFACT_URL: ${{ steps.backups.outputs.artifact-url }}
+          BACKUP_ARCHIVE_ENCRYPTED: ${{ steps.backups.outcome == 'success' }}
+          ARTIFACT_OUTCOME: ${{ steps.artifacts.outcome }}
+          ARTIFACT_URL: ${{ steps.artifacts.outputs.artifact-url }}
+          ARCHIVE_ENCRYPTED: ${{ steps.encrypt.outcome == 'success' && steps.artifacts.outcome == 'success' }}
+        run: node scripts/production-report.mjs
   deploy:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (!inputs.operation || inputs.operation == 'preparer') && !inputs.prepare_only))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with: {node-version: 24, cache: npm}
       - run: npm ci
+      - run: npm test
+      - run: npm run typecheck:shop
       - run: npm run build
+      - name: Vérifier les prérequis de production
+        run: node scripts/check-production.mjs
+      - name: Vérifier la configuration des bases commandes
+        run: node scripts/configure-orders.mjs --check production
+
       - name: Appliquer les migrations D1
         run: npx wrangler d1 migrations apply DB --remote --env=""
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Appliquer les migrations des commandes
+        run: npx wrangler d1 migrations apply ORDERS --remote --env=""
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Vérifier la base dédiée aux tournois
+        run: node scripts/configure-tournaments.mjs --env production --check
+
+      - name: Appliquer les migrations des tournois et vérifier la copie initiale
+        run: npx wrangler d1 migrations apply TOURNAMENTS --remote --env="" && node scripts/copy-tournaments.mjs --env production --check
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

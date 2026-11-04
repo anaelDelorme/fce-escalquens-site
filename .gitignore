@@ -36,3 +36,18 @@ backups/prod-20260923-191114.sql
 backups/prod-20260923-191114.sql.sha256
 correctif_ordre_equipes_v2.py
 ordre_affichage_equipes.py
+
+# Secrets propres à chaque environnement local
+.dev.vars.*
+!.dev.vars.example
+
+# Sauvegardes locales des imports catalogue
+backups/boutique-*/
+
+# Copies temporaires de la migration tournois (données privées)
+.tournaments-copy-*/
+backups-tournois/
+.production-preparation/
+.production-maintenance/
+.production-import/
+.production-encrypted/
