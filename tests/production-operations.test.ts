@@ -52,14 +52,14 @@ function fixture(t:any,{freshTournaments=false}={}){
 function order(db:DatabaseSync,id:string,kind='shop'){
  db.prepare("INSERT INTO orders(id,reference,request_hash,token_hash,token_expires,email,first_name,last_name,phone,delivery_method,total_cents,terms_version,terms_snapshot,terms_accepted_at,created_at,updated_at,kind) VALUES(?,?,?,?,1,'real@example.org','A','B','0102030405','club',3500,'v1','CGV',1,1,1,?)").run(id,'FCE-'+id,'hash-'+id,'token-'+id,kind);
 }
-function archive(t:any,target:any){
+function archive(t:any,target:any,scope='all'){
  const stage=fixture(t);
  stage.databases.DB.exec("INSERT INTO shop_categories(id,slug,name) VALUES(1,'tenues','Tenues');INSERT INTO shop_products(id,slug,name,shop_category_id,image_key) VALUES(5,'maillot','Maillot',1,'uploads/maillot.webp');INSERT INTO shop_suppliers(id,name) VALUES('supplier','Kappa');INSERT INTO shop_variants(id,product_id,label,size,sku,supplier_id,price_cents,catalogue_price_cents,coach_price_cents) VALUES('v',5,'M','M','M-1','supplier',3500,4000,3000);INSERT INTO shop_personalizations(id,label,price_cents,required) VALUES('badge','Écusson',250,1);INSERT INTO shop_options(id,product_id,personalization_id) VALUES('option',5,'badge');UPDATE shop_settings SET shop_enabled=1;");
  stage.databases.TOURNAMENTS.exec("INSERT INTO tournaments(id,slug,name,starts_on,image_key) VALUES(10,'coupe','Coupe FCE','2027-06-01','tournoi.webp');INSERT INTO tournament_sales(tournament_id,fee_cents,enabled,form_json) VALUES(10,6000,1,'[{\"id\":\"club\",\"label\":\"Club\",\"type\":\"text\",\"required\":true}]');INSERT INTO tournament_teams(tournament_id,team_id,notes) VALUES(10,99,'U11');");
  const snapshot=stage.operations.snapshot(),source={...snapshot,business_settings:{contact_email:'club@example.org'}};
- const planned=productionPlan(source,target.operations.snapshot(),'reviewed-release',{organizationSlug:config().vars.HELLOASSO_ORGANIZATION_SLUG}),folder=join(target.folder,'archive');mkdirSync(join(folder,'media'),{recursive:true});
+ const planned=productionPlan(source,target.operations.snapshot(),'reviewed-release',{organizationSlug:config().vars.HELLOASSO_ORGANIZATION_SLUG,scope}),folder=join(target.folder,'archive');mkdirSync(join(folder,'media'),{recursive:true});
  const settings=config(),ids=Object.fromEntries(settings.d1_databases.map((b:any)=>[b.binding,b.database_id]));
- const manifest:any={release:'reviewed-release',counts:planned.counts,source_bucket:settings.env.staging.r2_buckets[0].bucket_name,target_bucket:settings.r2_buckets[0].bucket_name,target_site_db:ids.DB,target_orders_db:ids.ORDERS,target_tournaments_db:ids.TOURNAMENTS,production_tournaments_initialized:true,production_tournament_snapshot_from:'TOURNAMENTS',sales_closed:true,sql_sha256:{},media:planned.media};
+ const manifest:any={release:'reviewed-release',...(scope==='shop'?{scope}:{}),counts:planned.counts,source_bucket:settings.env.staging.r2_buckets[0].bucket_name,target_bucket:settings.r2_buckets[0].bucket_name,target_site_db:ids.DB,target_orders_db:ids.ORDERS,target_tournaments_db:ids.TOURNAMENTS,production_tournaments_initialized:true,production_tournament_snapshot_from:'TOURNAMENTS',sales_closed:true,sql_sha256:{},media:planned.media};
  for(const [name,sql] of [['shop',planned.shop_sql],['tournaments',planned.tournaments_sql],['settings',planned.settings_sql]]){writeFileSync(join(folder,name+'.sql'),sql);manifest.sql_sha256[name]=hash(sql);}
  for(const object of manifest.media){const bytes=Buffer.from('image de test');writeFileSync(join(folder,object.file),bytes);object.sha256=hash(bytes);object.bytes=bytes.length;object.content_type='image/webp';}
  writeFileSync(join(folder,'source.json'),JSON.stringify(source));writeFileSync(join(folder,'target.json'),JSON.stringify(target.operations.snapshot()));
@@ -122,6 +122,48 @@ test('import production : changement concurrent ou média R2 corrompu laisse le 
  assert.equal(f.calls.some(c=>c.includes('--file')&&c[0]==='d1'&&c[1]==='execute'),false);
 });
 
+test('copie boutique seule : catalogue exact, images vérifiées, tarifs coach retirés, tournois et transactions intacts',t=>{
+ const f=fixture(t),backup=join(f.folder,'backup');
+ f.databases.DB.exec("UPDATE shop_settings SET shop_enabled=1,contact_email='production@example.org';INSERT INTO shop_products(slug,name) VALUES('ancien','Ancien');INSERT INTO tournaments(slug,name,starts_on,image_key) VALUES('legacy','Tournoi historique','2027-01-01','photo-originale.webp')");
+ f.databases.TOURNAMENTS.exec("INSERT INTO tournaments(slug,name,starts_on,image_key) VALUES('live','Tournoi en ligne','2027-01-01','affiche.webp');INSERT INTO tournament_sales(tournament_id,enabled,fee_cents) VALUES(1,1,5000)");
+ f.databases.ORDERS.exec("UPDATE settings SET data='{\"checkout_enabled\":true,\"organization_slug\":\"fc-escalquens\",\"contact_email\":\"production@example.org\"}'");
+ order(f.databases.ORDERS,'real');order(f.databases.TOURNAMENTS,'real-tournament','tournament');
+ const a=archive(t,f,'shop'),transactions=f.operations.transactions(),tournaments=JSON.stringify(f.query('TOURNAMENTS','SELECT * FROM tournaments')),settings=JSON.stringify(f.query('ORDERS','SELECT * FROM settings'));
+ f.operations.backup(backup);f.calls.length=0;
+ const result=f.operations.importShop(a.folder,a.digest,backup);
+ assert.equal(result.scope,'shop');assert.equal(result.imported,true);assert.equal(result.shop_enabled,1);assert.equal(result.images_verified,a.manifest.media.length);
+ assert.deepEqual(f.operations.transactions(),transactions);assert.equal(JSON.stringify(f.query('TOURNAMENTS','SELECT * FROM tournaments')),tournaments);assert.equal(JSON.stringify(f.query('ORDERS','SELECT * FROM settings')),settings);
+ assert.equal(f.query('DB','SELECT image_key FROM tournaments')[0].image_key,'photo-originale.webp');assert.equal(f.query('TOURNAMENTS','SELECT enabled FROM tournament_sales')[0].enabled,1);
+ assert.equal(f.query('DB','SELECT slug FROM shop_products')[0].slug,'maillot');assert.equal(f.query('DB','SELECT COUNT(*) n FROM shop_products')[0].n,1);
+ assert.equal(f.query('DB','SELECT coach_price_cents FROM shop_variants')[0].coach_price_cents,null);assert.equal(f.query('DB','SELECT required FROM shop_personalizations')[0].required,1);assert.equal(f.query('DB','SELECT contact_email FROM shop_settings')[0].contact_email,'production@example.org');
+ const writes=f.calls.filter(c=>c[0]==='d1'&&c[1]==='execute'&&(c.includes('--file')||/^UPDATE/.test(c[c.indexOf('--command')+1]||'')));
+ assert.ok(writes.length>=3);assert.ok(writes.every(c=>c[2]==='DB'));
+});
+
+test('copie boutique seule : mauvais périmètre et image corrompue bloquent toute modification du catalogue',t=>{
+ const f=fixture(t),backup=join(f.folder,'backup');f.databases.DB.exec('UPDATE shop_settings SET shop_enabled=1');
+ const all=archive(t,f),a=archive(t,{...f,folder:join(f.folder,'shop')},'shop');
+ f.operations.backup(backup);
+ assert.throws(()=>f.operations.importShop(all.folder,all.digest,backup),/Périmètre/);
+ assert.throws(()=>reviewedPlan(config(),a.folder,a.digest),/Périmètre/);
+ const before=JSON.stringify(f.operations.shopSnapshot());f.state.corruptMedia=true;f.calls.length=0;
+ assert.throws(()=>f.operations.importShop(a.folder,a.digest,backup),/R2 du média/);
+ assert.equal(JSON.stringify(f.operations.shopSnapshot()),before);assert.equal(f.query('DB','SELECT shop_enabled FROM shop_settings')[0].shop_enabled,1);
+ assert.equal(f.calls.some(c=>c[0]==='d1'&&c.includes('--file')),false);
+});
+
+test('copie boutique seule : modification concurrente et échec de vérification empêchent la réouverture',t=>{
+ const f=fixture(t),backup=join(f.folder,'backup');f.databases.DB.exec('UPDATE shop_settings SET shop_enabled=1');
+ const a=archive(t,f,'shop');f.operations.backup(backup);
+ const run=f.operations.run;
+ f.operations.run=(args:any[])=>{const result=run(args);if(args[0]==='r2'&&args[2]==='put')f.databases.DB.exec("UPDATE shop_settings SET catalogue_title='Autre modification'");return result;};
+ assert.throws(()=>f.operations.importShop(a.folder,a.digest,backup),/a changé/);assert.equal(f.query('DB','SELECT shop_enabled FROM shop_settings')[0].shop_enabled,1);
+ f.operations.run=run;f.databases.DB.prepare('UPDATE shop_settings SET catalogue_title=?').run(JSON.parse(readFileSync(join(a.folder,'target.json'),'utf8')).shop.shop_settings[0].catalogue_title);
+ f.databases.DB.exec("CREATE TRIGGER wrong_import AFTER INSERT ON shop_variants BEGIN UPDATE shop_variants SET price_cents=1 WHERE id=NEW.id;END");
+ assert.throws(()=>f.operations.importShop(a.folder,a.digest,backup),/différent du staging/);assert.equal(f.query('DB','SELECT shop_enabled FROM shop_settings')[0].shop_enabled,0);
+ assert.equal(f.calls.filter(c=>c[0]==='d1'&&c.includes('--file')).every(c=>c[2]==='DB'),true);
+});
+
 test('workflow production : seuls les lancements manuels explicites initialisent/importent, aucun push de préparation ne déploie',()=>{
  const yaml=readFileSync('.github/workflows/deploy.yml','utf8');
  const selected=(event:string,branch:string,operation:string,prepare_only=true)=>{
@@ -140,4 +182,13 @@ test('workflow production : seuls les lancements manuels explicites initialisent
  assert.ok(yaml.indexOf('name: Conserver les sauvegardes privées')<yaml.indexOf('name: Exécuter uniquement l’opération demandée'));
  const uploads=[...yaml.matchAll(/uses: actions\/upload-artifact@v4[\s\S]*?path: ([^\n]+)/g)].map(m=>m[1]);
  assert.equal(uploads.length,3);assert.ok(uploads.every(path=>path.startsWith('.production-encrypted/')&&path.endsWith('.fce')),'Les artefacts du dépôt public doivent être chiffrés avant publication.');
+});
+
+test('workflow de copie boutique : branche dédiée, sauvegarde chiffrée avant import et aucun déploiement',()=>{
+ const yaml=readFileSync('.github/workflows/sync-shop-to-production.yml','utf8');
+ assert.match(yaml,/branches: \[ops\/sync-shop-production\]/);assert.match(yaml,/if: github.ref == 'refs\/heads\/ops\/sync-shop-production'/);
+ assert.match(yaml,/group: production-operations/);assert.match(yaml,/--scope shop/);assert.match(yaml,/--action import-shop/);assert.doesNotMatch(yaml,/wrangler deploy|--action initialize|--action import /);
+ assert.ok(yaml.indexOf('id: backups')<yaml.indexOf('id: apply'));
+ const uploads=[...yaml.matchAll(/uses: actions\/upload-artifact@v4[\s\S]*?path: ([^\n]+)/g)].map(m=>m[1]);
+ assert.equal(uploads.length,2);assert.ok(uploads.every(path=>path.startsWith('.production-encrypted/')&&path.endsWith('.fce')));
 });

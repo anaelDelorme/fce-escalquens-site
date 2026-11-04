@@ -1,9 +1,8 @@
 import { sendSmtp, type MailMessage } from "./smtp";
 import { mailTransportReady } from "./mail-config";
+import { renderMail, type MailContent } from "./mail-template";
 import {
   email,
-  escapeHtml,
-  euros,
   now,
   trackingToken,
   type Row,
@@ -37,75 +36,73 @@ export function mailRecipient(env: ShopEnv, settings: Settings, job: Row, order:
   if(env.APP_ENV==='production')return target;
   return email(env.MAIL_TEST_TO);
 }
-async function deliverClubMail(env: ShopEnv, settings: Settings, job: Row, order: Row) {
-  const tournament=order.kind==='tournament';
-  const title=job.kind==='survey'?'Nouvel avis boutique':job.kind==='created'?(tournament?'Nouvelle inscription au tournoi':'Nouvelle commande boutique'):job.kind==='paid'?'Nouveau paiement confirmé':'Mise à jour du paiement';
-  const link=`${origin(env)}/${tournament?'admin-tournois/?inscription=':'admin-boutique/?commande='}${order.id}`;
-  let context='';
-  if(tournament){const r=await env.ORDERS.prepare('SELECT tournament_name,club_name,team_name FROM tournament_registrations WHERE order_id=?').bind(order.id).first<Row>();context=`Tournoi : ${r?.tournament_name||''}\nClub : ${r?.club_name||''}\nÉquipe : ${r?.team_name||''}\n`;}
-  if(job.kind==='survey'){const survey=await env.ORDERS.prepare('SELECT ease,catalogue,overall,comment FROM surveys WHERE order_id=?').bind(order.id).first<Row>();context=`Facilité de commande : ${survey?.ease}/5\nCatalogue : ${survey?.catalogue}/5\nEnsemble : ${survey?.overall}/5\nCommentaire : ${survey?.comment||'Aucun commentaire'}\n`;}
-  const content=`${title}\n\nRéférence : ${order.reference}\nClient / contact : ${order.first_name} ${order.last_name}\n${context}Montant : ${euros(order.total_cents)}\nÉtat du paiement : ${order.payment_status}\n\nOuvrir la fiche dans l’administration sécurisée : ${link}\nConnexion Cloudflare Access requise. Ce mail ne contient aucun lien personnel du client.`;
-  return sendMessage(env,{id:job.id,from:email(env.MAIL_FROM),to:mailRecipient(env,settings,job,order),replyTo:email(settings.contact_email),subject:`${env.APP_ENV==='production'?'':'[TEST] '}[CLUB] ${title} — ${order.reference}`,text:content,html:`<h1>${escapeHtml(title)}</h1><pre style="white-space:pre-wrap;font:inherit">${escapeHtml(content)}</pre>`});
+const paymentLabels: Record<string,string> = {
+  pending: 'En attente de confirmation', paid: 'Payé', refused: 'Paiement refusé',
+  review: 'À vérifier par le club', refunding: 'Remboursement en cours',
+  refunded: 'Remboursé', partially_refunded: 'Partiellement remboursé', contested: 'Paiement contesté',
+};
+const registrationLabels: Record<string,string> = {
+  pending: 'En attente de validation par le club', accepted: 'Acceptée', cancelled: 'Annulée', attended: 'Équipes accueillies',
+};
+function registrationFacts(r: Row): [string,string][] {
+  const sections = JSON.parse(r.sections_json || '[]').filter((s:Row)=>s.participating && s.quantity>0);
+  return [
+    ['Tournoi', r.tournament_name || ''], ['Club', r.club_name || ''],
+    ...(sections.length ? sections.map((s:Row)=>[s.section,`${s.quantity} équipe${s.quantity>1?'s':''}`]) : [['Équipe', [r.team_name,r.category].filter(Boolean).join(' · ')]]),
+    ['Inscription', registrationLabels[r.registration_status] || 'Enregistrée'],
+    ...(r.payment_deadline ? [['Date limite de paiement',new Date(r.payment_deadline*1000).toLocaleDateString('fr-FR',{timeZone:'Europe/Paris',dateStyle:'long'})]] : []),
+  ] as [string,string][];
 }
-export async function deliverMail(
-  env: ShopEnv,
-  settings: Settings,
-  job: Row,
-  order: Row,
-) {
-  if(job.audience==='club')return deliverClubMail(env,settings,job,order);
-  const token = await trackingToken(
-    env.TRACKING_SECRET || "",
-    order.id,
-    order.token_version,
-  );
-  const link = `${origin(env)}/${order.kind === "tournament" ? "tournois" : "boutique"}/suivi/#${order.id}.${token}`;
-  const items = (
-    await env.ORDERS.prepare(
-      "SELECT * FROM order_items WHERE order_id=? ORDER BY id",
-    )
-      .bind(order.id)
-      .all<Row>()
-  ).results;
-  const title = order.kind === 'tournament'
-    ? ({paid:'Paiement confirmé',created:'Votre inscription est enregistrée',tracking:'Votre lien de suivi',payment:'Mise à jour du paiement'} as Record<string,string>)[job.kind] || 'Des nouvelles de votre inscription'
-    : job.kind === "paid"
-      ? "Paiement confirmé"
-      : job.kind === "created"
-        ? "Votre commande est enregistrée"
-        : job.kind === "tracking"
-          ? "Votre lien de suivi"
-          : job.kind === "payment"
-            ? "Mise à jour du paiement"
-            : "Des nouvelles de votre commande";
-  const state =
-    order.payment_status === "paid"
-      ? "Votre paiement est confirmé."
-      : `État du paiement : ${order.payment_status === "pending" ? "en attente de confirmation" : order.payment_status}.`;
-  const details = items
-    .map(
-      (i) =>
-        `${i.quantity} × ${i.name} — ${i.size || "taille unique"} — ${i.color}\n${JSON.parse(
-          i.options_json,
-        )
-          .map((o: Row) => `${o.label}${o.text ? ` : ${o.text}` : ""}`)
-          .join(", ")}\n${euros(i.unit_cents * i.quantity)}`,
-    )
-    .join("\n\n");
-  let content = `${title}\n\nBonjour ${order.first_name},\n\nCommande ${order.reference}\n${state}\nPréparation : ${statusLabels[order.fulfillment] || order.fulfillment}.\n${order.public_note}\n\n${details}\n\nTotal boutique : ${euros(order.total_cents)}\nRemise : ${order.delivery_method === "coach" ? `par le coach — ${order.team}` : `sur rendez-vous au club — ${settings.collection_address}`}.\n\nSuivre ma commande : ${link}\nCe lien est personnel : ne le transférez pas. Il permet aussi de donner votre avis sur la boutique. Aucun compte ni mot de passe n’est nécessaire.\n\nUne question ? ${settings.contact_email}\nInformations sur vos données : ${origin(env)}/confidentialite/\n\n${order.terms_snapshot}`;
-  if(order.kind === "tournament") {
-    const registration=await env.ORDERS.prepare("SELECT * FROM tournament_registrations WHERE order_id=?").bind(order.id).first<Row>();
-    const labels:Record<string,string>={pending:"en attente de validation par le club",accepted:"acceptée",cancelled:"annulée",attended:"équipe accueillie"};
-    const answers=JSON.parse(registration?.answers_json||'{}');
-    const responses=JSON.parse(registration?.form_snapshot||'[]').map((f:Row)=>`${f.label} : ${typeof answers[f.id]==='boolean'?(answers[f.id]?'Oui':'Non'):answers[f.id]||'—'}`).join('\n');
-    content=`Bonjour ${order.first_name},\n\nInscription ${order.reference} — ${registration?.tournament_name}\nClub : ${registration?.club_name}\nÉquipe : ${registration?.team_name} — ${registration?.category}\nInscription : ${labels[registration?.registration_status] || 'enregistrée'}.\n${state}\n${order.public_note}\nMontant : ${euros(order.total_cents)}\nDate limite de paiement : ${new Date((registration?.payment_deadline||0)*1000).toLocaleDateString('fr-FR',{timeZone:'Europe/Paris'})}\nLe paiement et l’acceptation par le club sont deux étapes distinctes.\n${responses}\n\n${registration?.payment_method==='cheque'?`Paiement par chèque : ${registration.cheque_snapshot}\nSuivre mon inscription`:'Suivre mon inscription et payer avec HelloAsso'} : ${link}\nCe lien personnel ne doit pas être transmis. Aucun compte n’est nécessaire.\n\nContact : ${settings.contact_email}\nVos données : ${origin(env)}/confidentialite/\n\n${order.terms_snapshot}`;
+export async function deliverMail(env: ShopEnv, settings: Settings, job: Row, order: Row) {
+  const tournament = order.kind === 'tournament', club = job.audience === 'club';
+  const registration = tournament ? await env.ORDERS.prepare('SELECT * FROM tournament_registrations WHERE order_id=?').bind(order.id).first<Row>() : null;
+  const title = club
+    ? job.kind==='survey' ? 'Nouvel avis boutique' : job.kind==='created' ? (tournament?'Nouvelle inscription au tournoi':'Nouvelle commande boutique') : job.kind==='paid' ? 'Nouveau paiement confirmé' : 'Mise à jour du paiement'
+    : job.kind==='paid' ? 'Paiement confirmé' : job.kind==='created' ? (tournament?'Votre inscription est enregistrée':'Votre commande est enregistrée') : job.kind==='tracking' ? 'Votre lien de suivi' : job.kind==='payment' ? 'Mise à jour du paiement' : (tournament?'Des nouvelles de votre inscription':'Des nouvelles de votre commande');
+  const content: MailContent = {
+    section: `${tournament?'Tournois':'Boutique'}${club?' · Notification au club':''}`,
+    title, reference: order.reference, greeting: club ? 'Bonjour,' : `Bonjour ${order.first_name},`,
+    introduction: club ? 'Retrouvez le récapitulatif ci-dessous et ouvrez la fiche pour consulter les détails.'
+      : order.payment_status==='paid' ? (tournament?'Nous avons bien reçu votre règlement. Retrouvez le récapitulatif de votre inscription ci-dessous.':'Nous avons bien reçu votre règlement. Le club vous informera de l’avancement de votre commande.')
+      : tournament ? 'Votre inscription est bien enregistrée. Consultez son suivi pour retrouver les équipes inscrites et les modalités de règlement.'
+      : 'Votre commande est bien enregistrée. Consultez son suivi pour terminer le paiement ou retrouver son avancement.',
+    facts: [['Paiement',paymentLabels[order.payment_status] || 'À vérifier par le club']],
+    total: order.total_cents, note: order.public_note || '',
+    contact: email(settings.contact_email), privacyUrl: `${origin(env)}/confidentialite/`,
+    paragraphs: [],
+  };
+  if(club) content.facts!.unshift(['Client / contact',`${order.first_name} ${order.last_name}`]);
+  if(registration) {
+    content.facts!.push(...registrationFacts(registration));
+    content.paragraphs!.push('Le paiement et l’acceptation de l’inscription par le club sont deux étapes distinctes.');
+    if(registration.payment_method==='cheque') content.paragraphs!.push(`Règlement par chèque : ${registration.cheque_snapshot}`);
+    const answers=JSON.parse(registration.answers_json||'{}');
+    content.answers=JSON.parse(registration.form_snapshot||'[]').map((f:Row)=>[f.label,typeof answers[f.id]==='boolean'?(answers[f.id]?'Oui':'Non'):String(answers[f.id]??'—')]);
+  } else {
+    const items=(await env.ORDERS.prepare('SELECT * FROM order_items WHERE order_id=? ORDER BY id').bind(order.id).all<Row>()).results;
+    content.items=items.map(i=>({name:i.name,quantity:i.quantity,total:i.unit_cents*i.quantity,details:[i.size,i.color,...JSON.parse(i.options_json||'[]').map((o:Row)=>`${o.label}${o.text?' : '+o.text:''}`)].filter(Boolean).join(' · ')}));
+    content.facts!.push(['Préparation',order.fulfillment==='new'&&order.payment_status!=='paid'?'Après confirmation du paiement':statusLabels[order.fulfillment]||'À vérifier par le club']);
+    content.facts!.push(['Remise',order.delivery_method==='coach'?`Par le coach${order.team?' · '+order.team:''}`:`Sur rendez-vous au club${settings.collection_address?' · '+settings.collection_address:''}`]);
+    if(order.delivery_method==='club'&&settings.collection_instructions)content.paragraphs!.push(settings.collection_instructions);
   }
-  // In staging no customer address is used: all messages go to the configured tester.
-  const to =
-    mailRecipient(env,settings,job,order);
-  const from = email(env.MAIL_FROM);
-  const subject = `${env.APP_ENV === "production" ? "" : "[TEST] "}${title} — ${order.reference}`;
-  return sendMessage(env, { from, to, replyTo: settings.contact_email, subject, text: content, html: `<div style="font-family:Arial,sans-serif;max-width:650px;margin:auto;color:#291d1d"><h1 style="color:#9f1a1a">${escapeHtml(order.kind === "tournament" ? "Suivi de votre inscription" : title)}</h1><p>${order.kind === "tournament" ? "Inscription" : "Commande"} <strong>${escapeHtml(order.reference)}</strong></p><p>${escapeHtml(state)}</p><p><a style="display:inline-block;background:#9f1a1a;color:white;padding:16px" href="${escapeHtml(link)}">Ouvrir mon suivi</a></p><pre style="white-space:pre-wrap;font:inherit">${escapeHtml(content)}</pre></div>`, id: job.id });
+  if(club) {
+    content.action={label:'Ouvrir la fiche dans l’administration',url:`${origin(env)}/${tournament?'admin-tournois/?inscription=':'admin-boutique/?commande='}${order.id}`,help:'Connexion Cloudflare Access requise. Ce mail ne contient aucun lien personnel du client.'};
+    if(job.kind==='survey') {
+      const survey=await env.ORDERS.prepare('SELECT ease,catalogue,overall,comment FROM surveys WHERE order_id=?').bind(order.id).first<Row>();
+      content.introduction='Un client a partagé son avis sur la boutique.';
+      content.answers=[['Facilité de commande',`${survey?.ease}/5`],['Catalogue',`${survey?.catalogue}/5`],['Ensemble',`${survey?.overall}/5`]];
+      content.note=survey?.comment||'Aucun commentaire';
+    }
+  } else {
+    const token=await trackingToken(env.TRACKING_SECRET||'',order.id,order.token_version);
+    content.action={label:tournament?'Suivre mon inscription':'Suivre ma commande',url:`${origin(env)}/${tournament?'tournois':'boutique'}/suivi/#${order.id}.${token}`,help:'Ce lien est personnel : ne le transférez pas. Aucun compte ni mot de passe n’est nécessaire.'};
+    if(['created','paid'].includes(job.kind))content.terms=order.terms_snapshot;
+  }
+  return sendMessage(env,{
+    id:job.id,from:email(env.MAIL_FROM),to:mailRecipient(env,settings,job,order),replyTo:email(settings.contact_email),
+    subject:`${env.APP_ENV==='production'?'':'[TEST] '}${club?'[CLUB] ':''}${title} — ${order.reference}`,
+    ...renderMail(content),
+  });
 }
 async function sendMessage(env: ShopEnv, message: MailMessage) {
   const { from, to, replyTo, subject, text: content, html, id } = message;
@@ -133,8 +130,7 @@ export async function testMail(env: ShopEnv, settings: Settings) {
   return sendMessage(env, {
     id: `test-${crypto.randomUUID()}`, from: email(env.MAIL_FROM), to: email(env.MAIL_TEST_TO),
     replyTo: email(settings.contact_email), subject: '[TEST] FC Escalquens — vérification des e-mails',
-    text: 'Le transport mail du FC Escalquens fonctionne. Ce message de test ne correspond à aucune commande ni inscription.',
-    html: '<p>Le transport mail du <strong>FC Escalquens</strong> fonctionne.</p><p>Ce message de test ne correspond à aucune commande ni inscription.</p>',
+    ...renderMail({section:'Test des e-mails',title:'Les e-mails du club sont prêts',introduction:'Le transport mail du FC Escalquens fonctionne. Ce message de test ne correspond à aucune commande ni inscription.',contact:email(settings.contact_email),privacyUrl:'https://fcescalquens.fr/confidentialite/'}),
   });
 }
 

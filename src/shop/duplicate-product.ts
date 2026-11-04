@@ -14,7 +14,7 @@ export async function duplicateProduct(request:Request,env:ShopEnv,sourceId:numb
  const prior=await existing();if(prior)return response({...prior,reused:true});
  if(!await env.DB.prepare('SELECT id FROM shop_products WHERE id=?').bind(sourceId).first())fail('PRODUCT_MISSING',404,'Cet article n’existe plus. Rechargez la liste.');
  const productFields=['shop_category_id','short_description','description','price_label','price_details','sizes','options','delivery_delay','image_key','display_order'];
- const variantFields=['label','size','color','sku','supplier','supplier_id','price_cents','catalogue_price_cents','coach_price_cents','active','display_order'];
+ const variantFields=['label','size','color','sku','supplier','supplier_id','price_cents','catalogue_price_cents','active','display_order'];
  const optionFields=['personalization_id','active'];
  try{
   await env.DB.batch([

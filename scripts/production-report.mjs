@@ -40,7 +40,7 @@ try{
 }catch{ /* Missing manifest means exports did not complete. No rows are logged. */ }
 if(process.env.PRODUCTION_OPERATION){try{
  const result=JSON.parse(readFileSync(`.production-maintenance/${process.env.GITHUB_RUN_ID}/result.json`,'utf8'));
- for(const field of ['initialized','imported','sales_closed','counts','manifest_sha256'])if(Object.hasOwn(result,field))report[field]=result[field];
+ for(const field of ['initialized','imported','sales_closed','counts','manifest_sha256','scope','shop_enabled','images_verified'])if(Object.hasOwn(result,field))report[field]=result[field];
 }catch{}}
 if(!report.counts){try{
  const source=JSON.parse(readFileSync(`.production-preparation/preparation-${process.env.GITHUB_RUN_ID}/source.json`,'utf8'));

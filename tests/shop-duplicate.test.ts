@@ -34,7 +34,7 @@ test('dupliquer : fiche complète masquée, nouveaux identifiants et tailles ind
  for(const key of ['shop_category_id','short_description','description','price_label','price_details','sizes','options','delivery_delay','image_key','display_order'])assert.equal(copy[key],source[key],key);
  for(const table of ['shop_variants','shop_options']){
   const original=await rows(table,1),clones=await rows(table,copy.id);assert.equal(clones.length,original.length);
-  for(const clone of clones){uuid(clone.id);assert.ok(!original.some(v=>v.id===clone.id));const row=original.find(v=>v.label===clone.label)!;for(const key of Object.keys(row).filter(k=>!['id','product_id'].includes(k)))assert.equal(clone[key],row[key],key);}
+  for(const clone of clones){if(table==='shop_variants')assert.equal(clone.coach_price_cents,null);uuid(clone.id);assert.ok(!original.some(v=>v.id===clone.id));const row=original.find(v=>v.label===clone.label)!;for(const key of Object.keys(row).filter(k=>!['id','product_id','coach_price_cents'].includes(k)))assert.equal(clone[key],row[key],key);}
  }
  await DB.prepare('UPDATE shop_variants SET price_cents=1700 WHERE product_id=?').bind(copy.id).run();assert.equal(JSON.stringify(await rows('shop_variants',1)),before);
  await DB.prepare('UPDATE shop_personalizations SET price_cents=450 WHERE id=(SELECT personalization_id FROM shop_options WHERE product_id=? AND active=1)').bind(copy.id).run();assert.equal((await rows('shop_options',1)).find(v=>v.label==='Initiales').price_cents,450);assert.equal((await rows('shop_options',copy.id)).find(v=>v.label==='Initiales').price_cents,450);

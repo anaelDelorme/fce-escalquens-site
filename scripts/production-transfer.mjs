@@ -14,6 +14,7 @@ const columns={
  tournaments:['slug','name','summary','starts_on','ends_on','venue','categories','status','tournify_url','organizer','registration_price'],
  tournament_sales:['fee_cents','allow_pay_later','capacity','registration_deadline','payment_deadline','terms','form_json','allow_cheque','cheque_payee','cheque_address','cheque_deadline'],
 };
+export {columns as transferColumns};
 const rows=(bundle,table)=>bundle?.[table]||[];
 const pick=(row,table)=>Object.fromEntries(columns[table].filter(k=>Object.hasOwn(row,k)).map(k=>[k,row[k]]));
 const ref=(table,key,value)=>`(SELECT id FROM ${table} WHERE ${key}=${quote(value)})`;
@@ -24,7 +25,8 @@ function insert(table,row,key,expressions={}){
 function checkBundle(bundle,allowed){
  for(const [table,value] of Object.entries(bundle||{}))if(!allowed.includes(table)||!Array.isArray(value))throw Error('Table hors périmètre : '+table);
 }
-export function productionPlan(source,target,release,{organizationSlug}={}){
+export function productionPlan(source,target,release,{organizationSlug,scope='all'}={}){
+ if(!['all','shop'].includes(scope))throw Error('Périmètre de reprise invalide.');
  if(!/^[a-z0-9][a-z0-9-]{0,70}$/.test(release))throw Error('Identifiant de reprise invalide.');
  checkBundle(source.shop,shopTables);checkBundle(source.tournaments,tournamentTables);
  const media=new Map(),shop=['UPDATE shop_settings SET shop_enabled=0 WHERE id=1;','DELETE FROM shop_options;','DELETE FROM shop_variants;'],tournaments=['DELETE FROM tournament_sales;'];
@@ -44,7 +46,7 @@ export function productionPlan(source,target,release,{organizationSlug}={}){
  for(const table of ['shop_variants','shop_options'])for(const row of rows(source.shop,table)){
   if(!products.has(row.product_id))throw Error('Choix sans article source.');
   const collision=rows(target.shop,table).find(p=>p.id===row.id);
-  if(collision&&targetProducts.get(collision.product_id)?.slug!==products.get(row.product_id).slug)throw Error('Identifiant de choix déjà utilisé par un autre article en production.');
+  if(scope!=='shop'&&collision&&targetProducts.get(collision.product_id)?.slug!==products.get(row.product_id).slug)throw Error('Identifiant de choix déjà utilisé par un autre article en production.');
  }
  const removeOthers=(table,key,values)=>`DELETE FROM ${table}${values.length?` WHERE ${key} NOT IN (${values.map(quote).join(',')})`:''};`;
  for(const c of categories.values())shop.push(insert('shop_categories',pick(c,'shop_categories'),'slug'));
@@ -69,7 +71,7 @@ export function productionPlan(source,target,release,{organizationSlug}={}){
  }
  for(const v of rows(source.shop,'shop_variants')){
   const supplier=suppliers.get(v.supplier_id);if(!supplier)throw Error('Fournisseur source absent.');
-  shop.push(insert('shop_variants',{...pick(v,'shop_variants'),product_id:null,supplier_id:null},'id',{product_id:ref('shop_products','slug',products.get(v.product_id).slug),supplier_id:ref('shop_suppliers','name',supplier.name)}));
+  shop.push(insert('shop_variants',{...pick(v,'shop_variants'),...(scope==='shop'?{coach_price_cents:null}:{}),product_id:null,supplier_id:null},'id',{product_id:ref('shop_products','slug',products.get(v.product_id).slug),supplier_id:ref('shop_suppliers','name',supplier.name)}));
  }
  for(const o of rows(source.shop,'shop_options')){
   if(!definitions.has(o.personalization_id))throw Error('Personnalisation source absente.');
@@ -84,8 +86,9 @@ export function productionPlan(source,target,release,{organizationSlug}={}){
  shop.push(removeOthers('shop_personalizations','id',[...definitions.keys()]));
  shop.push(removeOthers('shop_suppliers','id',[...suppliers.values()].map(s=>rows(target.shop,'shop_suppliers').find(p=>p.name.toLowerCase()===s.name.toLowerCase())?.id||s.id)));
  const settings=rows(source.shop,'shop_settings')[0];
- if(settings)shop.push(`UPDATE shop_settings SET catalogue_title=${quote(settings.catalogue_title||'Catalogue')},catalogue_key=${quote(mediaKey(settings.catalogue_key))},maintenance_image_key=${quote(mediaKey(settings.maintenance_image_key))},contact_email=${quote(settings.contact_email||'')},order_subject=${quote(settings.order_subject||'')},shop_enabled=0 WHERE id=1;`);
+ if(settings)shop.push(`UPDATE shop_settings SET catalogue_title=${quote(settings.catalogue_title||'Catalogue')},catalogue_key=${quote(mediaKey(settings.catalogue_key))},maintenance_image_key=${quote(mediaKey(settings.maintenance_image_key))}${scope==='all'?`,contact_email=${quote(settings.contact_email||'')},order_subject=${quote(settings.order_subject||'')}`:''},shop_enabled=0 WHERE id=1;`);
  for(const hero of rows(source.shop,'site_media').filter(p=>p.slot==='shop_hero'))shop.push(`UPDATE site_media SET object_key=${quote(mediaKey(hero.object_key))},alt_text=${quote(hero.alt_text||'')} WHERE slot='shop_hero';`);
+ if(scope==='shop')return {release,scope,shop_sql:shop.join('\n')+'\n',tournaments_sql:'',settings_sql:'',media:[...media.values()],counts:{articles:products.size,variants:rows(source.shop,'shop_variants').length,personalizations:definitions.size,tournaments:0,media:media.size},desired_shop_enabled:rows(target.shop,'shop_settings')[0]?.shop_enabled??0,desired_tournament_sales:[],sales_closed:true};
  const events=new Map(rows(source.tournaments,'tournaments').map(t=>[t.id,t]));
  if(events.size)tournaments.push(`UPDATE tournament_sales SET enabled=0 WHERE tournament_id IN (SELECT id FROM tournaments WHERE slug IN (${[...events.values()].map(t=>quote(t.slug)).join(',')}));`);
  for(const t of events.values()){

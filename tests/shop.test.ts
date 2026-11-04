@@ -1581,53 +1581,32 @@ test('mails : l’échec club ne bloque pas le client et les deux reprises sont 
  }
 });
 
-test('tarifs coach : code hashé, cookie privé, prix caché, révocation et total serveur', async()=>{
+test('tarifs coach supprimés : ancien cookie ignoré, endpoints retirés et nouvelle remise impossible', async()=>{
  await ORDERS.prepare('DELETE FROM rate_limits').run();
  await ORDERS.prepare('UPDATE settings SET data=? WHERE id=1').bind(JSON.stringify(settingsValue)).run();
  await DB.prepare('UPDATE shop_settings SET shop_enabled=1').run();
- await DB.prepare('UPDATE shop_products SET active=1,image_key=\'test.webp\' WHERE id=1').run();
+ await DB.prepare("UPDATE shop_products SET active=1,image_key='test.webp' WHERE id=1").run();
  await DB.prepare('UPDATE shop_categories SET active=1 WHERE id=1').run();
  await DB.prepare('UPDATE shop_variants SET active=1,price_cents=2300,catalogue_price_cents=3500,coach_price_cents=1700 WHERE id=?').bind(ids.variant).run();
- await DB.prepare('UPDATE shop_options SET active=1 WHERE id=?').bind(ids.option).run();
- await DB.prepare('UPDATE shop_personalizations SET active=1,price_cents=150 WHERE id=?').bind(ids.option).run();
- paymentAuthorized=false;providerDown=false;refund=0;
- const raw=async(path:string,data?:any,cookie='',admin=false,origin='http://localhost:8787')=>{
-   const req=request(path,data,{admin,origin});if(cookie)req.headers.set('cookie',cookie);
-   const result=await shopRoute(req,env,ctx);assert.ok(result);return {status:result.status,headers:result.headers,body:await result.json() as any};
- };
- assert.ok([401,403,503].includes((await raw('/admin-boutique/api/coach-code',{action:'generate'})).status));
- const generated=await raw('/admin-boutique/api/coach-code',{action:'generate'},'',true);assert.equal(generated.status,200,JSON.stringify(generated.body));
- const conf=await ORDERS.prepare('SELECT * FROM coach_access').first<any>();assert.equal(conf.code_hash.length,64);assert.ok(!JSON.stringify(conf).includes(generated.body.code));
- const publicCat=await raw('/api/shop/catalogue');let variant=publicCat.body.variants.find((v:any)=>v.id===ids.variant);assert.equal(variant.price_cents,2300);assert.equal(variant.catalogue_price_cents,3500);assert.equal(variant.coach_price_cents,undefined);assert.equal(publicCat.body.pricing_mode,'fce');assert.match(publicCat.headers.get('cache-control')!,/no-store/);
- assert.equal((await raw('/api/shop/coach/session',{code:generated.body.code},'',false,'https://attacker.example')).status,403);
- assert.equal((await raw('/api/shop/coach/session',{code:'wrong'})).body.code,'COACH_CODE');
- const login=await raw('/api/shop/coach/session',{code:generated.body.code});assert.equal(login.status,200);
- const cookie=login.headers.get('set-cookie')!;assert.match(cookie,/HttpOnly/);assert.match(cookie,/SameSite=Strict/);assert.match(cookie,/Max-Age=34560000/);assert.match(generated.body.code,/^FCE-[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}$/);assert.ok(!cookie.includes(generated.body.code));assert.deepEqual(login.body,{ok:true});
- const session=cookie.split(';')[0],cat=await raw('/api/shop/catalogue',undefined,session);variant=cat.body.variants.find((v:any)=>v.id===ids.variant);assert.equal(cat.body.pricing_mode,'coach');assert.equal(variant.price_cents,1700);assert.equal(variant.price_kind,'coach');
- assert.ok([401,403,503].includes((await raw('/admin-boutique/api/catalogue',undefined,session)).status));
- const tampered=session.slice(0,-1)+(session.endsWith('a')?'b':'a');assert.equal((await raw('/api/shop/catalogue',undefined,tampered)).body.pricing_mode,'fce');
- const altered=session.replace('=v2.','=1000000000.');assert.equal((await raw('/api/shop/catalogue',undefined,altered)).body.pricing_mode,'fce');
- const clock=Date.now;try{Date.now=()=>clock()+90*86400000;const retained=await raw('/api/shop/catalogue',undefined,session);assert.equal(retained.body.pricing_mode,'coach');assert.match(retained.headers.get('set-cookie')!,/Max-Age=34560000/);}finally{Date.now=clock;}
- assert.equal((await raw('/api/shop/checkout',{...payload(),pricing_mode:'coach',expected_total:3700})).body.code,'COACH_SESSION');
- assert.equal((await raw('/api/shop/checkout',{...payload(),pricing_mode:'coach',expected_total:1},session)).body.code,'PRICE_CHANGED');
- const coachOrderPayload={...payload(),pricing_mode:'coach',expected_total:3700};
- const order=await raw('/api/shop/checkout',coachOrderPayload,session);assert.equal(order.status,200,JSON.stringify(order.body));
- const saved=await ORDERS.prepare('SELECT total_cents FROM orders WHERE id=?').bind(order.body.order_id).first<any>();assert.equal(saved.total_cents,3700);assert.equal(checkoutBodies.at(-1).totalAmount,3700);
- await DB.prepare('UPDATE shop_variants SET coach_price_cents=NULL WHERE id=?').bind(ids.variant).run();
- const fallback=(await raw('/api/shop/catalogue',undefined,session)).body.variants.find((v:any)=>v.id===ids.variant);assert.equal(fallback.price_cents,2300);assert.equal(fallback.price_kind,'fce');
- const settingsResult=await raw('/admin-boutique/api/settings',undefined,'',true);assert.ok(!JSON.stringify(settingsResult.body).includes(conf.code_hash));assert.ok(!JSON.stringify(settingsResult.body).includes(generated.body.code));
- const renewed=await raw('/admin-boutique/api/coach-code',{action:'generate'},'',true);assert.equal(renewed.status,200);assert.equal((await raw('/api/shop/catalogue',undefined,session)).body.pricing_mode,'fce');
- assert.equal((await raw('/api/shop/coach/session',{code:generated.body.code})).body.code,'COACH_CODE');
- // Existing intent remains idempotent after expiry/rotation; its amount cannot be changed.
- assert.equal((await raw('/api/shop/checkout',coachOrderPayload)).body.order_id,order.body.order_id);
- const secureReq=new Request('https://boutique.example/api/shop/coach/session',{method:'POST',headers:{origin:'https://boutique.example','content-type':'application/json'},body:JSON.stringify({code:renewed.body.code})});
- const secure=await shopRoute(secureReq,{...env,APP_ENV:'staging',SHOP_ORIGIN:'https://boutique.example'},ctx);assert.equal(secure!.status,200);assert.match(secure!.headers.get('set-cookie')!,/^__Host-fce-coach=/);assert.match(secure!.headers.get('set-cookie')!,/; Secure/);assert.doesNotMatch(secure!.headers.get('set-cookie')!,/Domain=/i);
- await raw('/admin-boutique/api/coach-code',{action:'disable'},'',true);
- assert.equal((await raw('/api/shop/catalogue')).body.coach_access_enabled,false);
- await ORDERS.prepare('DELETE FROM rate_limits').run();
- for(let i=0;i<5;i++)assert.equal((await raw('/api/shop/coach/session',{code:'invalid'})).status,403);
- assert.equal((await raw('/api/shop/coach/session',{code:'invalid'})).status,429);
- await ORDERS.prepare('DELETE FROM rate_limits').run();
+ const version=crypto.randomUUID(),value=`v2.${version}`;
+ await ORDERS.prepare('UPDATE coach_access SET enabled=1,version=? WHERE id=1').bind(version).run();
+ const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(env.TRACKING_SECRET),{name:'HMAC',hash:'SHA-256'},false,['sign']);
+ const mac=Array.from(new Uint8Array(await crypto.subtle.sign('HMAC',key,new TextEncoder().encode('fce-coach-session:'+value))),v=>v.toString(16).padStart(2,'0')).join('');
+ const req=request('/api/shop/catalogue');req.headers.set('cookie',`fce-coach-local=${value}.${mac}`);
+ const result=await shopRoute(req,env,ctx),cat=await result!.json() as any;
+ assert.equal(cat.pricing_mode,'fce');assert.equal(cat.coach_access_enabled,undefined);assert.equal(result!.headers.get('set-cookie'),null);
+ const variant=cat.variants.find((v:any)=>v.id===ids.variant);assert.equal(variant.price_cents,2300);assert.equal(variant.coach_price_cents,undefined);
+ assert.equal((await route(request('/api/shop/coach/session',{code:'old-code'}))).status,404);
+ assert.equal((await route(request('/admin-boutique/api/coach-code',{action:'generate'},{admin:true}))).status,404);
+ const before=JSON.stringify((await ORDERS.prepare('SELECT * FROM orders ORDER BY id').all()).results);
+ const removed=await route(request('/api/shop/checkout',{...payload(),pricing_mode:'coach',expected_total:3700}));
+ assert.equal(removed.status,409);assert.equal(removed.body.code,'PRICING_MODE_REMOVED');
+ assert.equal(JSON.stringify((await ORDERS.prepare('SELECT * FROM orders ORDER BY id').all()).results),before);
+ await ORDERS.exec(readFileSync(new URL('../migrations-orders/0006_disable_coach_access.sql',import.meta.url),'utf8'));
+ assert.equal((await ORDERS.prepare('SELECT enabled FROM coach_access').first<any>()).enabled,0);
+ await DB.exec(readFileSync(new URL('../migrations/0037_remove_coach_prices.sql',import.meta.url),'utf8'));
+ assert.equal((await DB.prepare('SELECT coach_price_cents FROM shop_variants WHERE id=?').bind(ids.variant).first<any>()).coach_price_cents,null);
+ assert.equal(JSON.stringify((await ORDERS.prepare('SELECT * FROM orders ORDER BY id').all()).results),before);
 });
 
 test('prix facultatifs : validation, effacement et compatibilité des anciennes écritures',async()=>{
@@ -1637,8 +1616,8 @@ test('prix facultatifs : validation, effacement et compatibilité des anciennes 
  const added=await put({...base,catalogue_price_cents:3000,coach_price_cents:1600});assert.equal(added.status,200,JSON.stringify(added.body));
  const id=added.body.id;
  assert.equal((await put({...base,id})).status,200);
- let row=await DB.prepare('SELECT * FROM shop_variants WHERE id=?').bind(id).first<any>();assert.equal(row.catalogue_price_cents,3000);assert.equal(row.coach_price_cents,1600);
- for(const key of ['catalogue_price_cents','coach_price_cents'])for(const value of [-1,0,1.5,1000001,'bad'])assert.equal((await put({...base,id,[key]:value})).status,400);
+ let row=await DB.prepare('SELECT * FROM shop_variants WHERE id=?').bind(id).first<any>();assert.equal(row.catalogue_price_cents,3000);assert.equal(row.coach_price_cents,null);
+ for(const key of ['catalogue_price_cents'])for(const value of [-1,0,1.5,1000001,'bad'])assert.equal((await put({...base,id,[key]:value})).status,400);
  assert.equal((await put({...base,id,catalogue_price_cents:null,coach_price_cents:''})).status,200);
  row=await DB.prepare('SELECT * FROM shop_variants WHERE id=?').bind(id).first<any>();assert.equal(row.catalogue_price_cents,null);assert.equal(row.coach_price_cents,null);
 });
@@ -1664,7 +1643,7 @@ test('tarifs groupés et tri : isolation des articles, validation complète et c
  assert.equal((await put('prices',data)).status,200);
  let rows=(await DB.prepare('SELECT * FROM shop_variants WHERE product_id=995').all<any>()).results;
  for(const row of rows){const selected=data.variant_ids.includes(row.id);assert.equal(row.price_cents,selected?2300:2500);assert.equal(row.catalogue_price_cents,selected?3200:3500);assert.equal(row.coach_price_cents,1900);}
- assert.equal((await put('prices',{...data,prices:{catalogue_price_cents:null,coach_price_cents:1700}})).status,200);
+ assert.equal((await put('prices',{...data,prices:{catalogue_price_cents:null}})).status,200);
  rows=(await DB.prepare('SELECT * FROM shop_variants WHERE product_id=995').all<any>()).results;
  assert.equal(rows.find(v=>v.id===keys[0])!.catalogue_price_cents,null);assert.equal(rows.find(v=>v.id===keys[1])!.catalogue_price_cents,3500);
  const catalogue=()=>route(request('/api/shop/catalogue'));
@@ -1675,19 +1654,6 @@ test('tarifs groupés et tri : isolation des articles, validation complète et c
  assert.equal((await put('order',{product_id:995,action:'automatic'})).status,200);
  assert.deepEqual((await catalogue()).body.variants.filter((v:any)=>v.product_id===995).map((v:any)=>v.size),['6 ans','10 ans','XS','M']);
  assert.equal(JSON.stringify((await ORDERS.prepare('SELECT id,total_cents FROM orders ORDER BY id').all()).results),snapshot);
-});
-
-test('code coach court : saisie tolérante, anciens codes conservés et ancienne session mise à niveau',async()=>{
- const {normalizeCode}=await import('../src/shop/coach-access');
- assert.equal(normalizeCode('fce-7k3m-9r2a'),'7K3M9R2A');assert.equal(normalizeCode('7k3m 9r2a'),'7K3M9R2A');assert.equal(normalizeCode('FCE23456'),'FCE23456');
- const legacy='abcdef0123456789abcdef0123456789';assert.equal(normalizeCode(legacy),legacy);
- await ORDERS.prepare('DELETE FROM rate_limits').run();
- const version=crypto.randomUUID();await ORDERS.prepare('UPDATE coach_access SET enabled=1,code_hash=?,version=? WHERE id=1').bind(await sha256(`${env.TRACKING_SECRET}:coach-code:7K3M9R2A`),version).run();
- const login=await route(request('/api/shop/coach/session',{code:'fce 7k3m-9r2a'}));assert.equal(login.status,200);
- await ORDERS.prepare('UPDATE coach_access SET code_hash=? WHERE id=1').bind(await sha256(`${env.TRACKING_SECRET}:coach-code:${legacy}`)).run();assert.equal((await route(request('/api/shop/coach/session',{code:legacy}))).status,200);
- const value=`1000000000.${version}`,key=await crypto.subtle.importKey('raw',new TextEncoder().encode(env.TRACKING_SECRET),{name:'HMAC',hash:'SHA-256'},false,['sign']);
- const mac=Array.from(new Uint8Array(await crypto.subtle.sign('HMAC',key,new TextEncoder().encode('fce-coach-session:'+value))),v=>v.toString(16).padStart(2,'0')).join('');
- const req=request('/api/shop/catalogue');req.headers.set('cookie',`fce-coach-local=${value}.${mac}`);const upgraded=await shopRoute(req,env,ctx);assert.equal((await upgraded!.json() as any).pricing_mode,'coach');assert.match(upgraded!.headers.get('set-cookie')!,/^fce-coach-local=v2\./);
 });
 
 test('boutique masquée : nouvelle commande refusée sans supprimer le catalogue ni les commandes',async()=>{

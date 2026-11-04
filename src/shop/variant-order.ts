@@ -34,7 +34,7 @@ export async function changeVariants(request:Request,env:ShopEnv,reorder=false){
   await env.DB.batch(ids.map((id,index)=>env.DB.prepare('UPDATE shop_variants SET display_order=? WHERE id=? AND product_id=?').bind(index,id,product)));
  } else {
   const prices=data.prices;if(!prices||typeof prices!=='object'||Array.isArray(prices))fail('PRICES',400,'Choisissez au moins un prix à modifier.');
-  const allowed=['price_cents','catalogue_price_cents','coach_price_cents'];
+  const allowed=['price_cents','catalogue_price_cents'];
   const keys=Object.keys(prices);if(!keys.length||keys.some(k=>!allowed.includes(k)))fail('PRICES',400,'Choisissez uniquement les tarifs à modifier.');
   const values=keys.map(key=>prices[key]===null&&key!=='price_cents'?null:integer(prices[key],1,1000000));
   await env.DB.batch([...ids.map(id=>env.DB.prepare(`UPDATE shop_variants SET ${keys.map(k=>k+'=?').join(',')} WHERE id=? AND product_id=?`).bind(...values,id,product)),priceLabelStatement(env.DB,product)]);

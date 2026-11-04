@@ -1,7 +1,6 @@
 import {optionQuery,listPersonalizations,savePersonalization,assignPersonalizations} from './personalizations';
 import {duplicateProduct} from "./duplicate-product";
 import {sortVariants,changeVariants} from "./variant-order";
-import {coachConfiguration,coachSession,coachLogin,coachLogout,changeCoachCode,refreshCoachCookie} from "./coach-access";
 import {
   fail,
   ShopError,
@@ -85,13 +84,13 @@ export async function settings(
     version: row?.version || 0,
   };
 }
-async function catalogue(env: ShopEnv, coach=false) {
+async function catalogue(env: ShopEnv) {
   const result = await env.DB.batch<Row>([
     env.DB.prepare(
       "SELECT p.id,p.shop_category_id,p.display_order,p.name,p.short_description,p.description,p.price_label,p.price_details,p.sizes,p.options,p.delivery_delay,p.image_key,p.active FROM shop_products p WHERE p.active=1 AND p.image_key<>'' AND (p.shop_category_id IS NULL OR EXISTS(SELECT 1 FROM shop_categories c WHERE c.id=p.shop_category_id AND c.active=1)) ORDER BY p.display_order,p.name",
     ),
     env.DB.prepare(
-      `SELECT id,product_id,label,size,color,sku,supplier,display_order,price_cents AS fce_price_cents,catalogue_price_cents,${coach?'COALESCE(coach_price_cents,price_cents)':'price_cents'} AS price_cents,${coach?"CASE WHEN coach_price_cents IS NOT NULL THEN 'coach' ELSE 'fce' END":"'fce'"} AS price_kind,active FROM shop_variants WHERE active=1 ORDER BY product_id,label`,
+      "SELECT id,product_id,label,size,color,sku,supplier,display_order,price_cents,catalogue_price_cents,active FROM shop_variants WHERE active=1 ORDER BY product_id,label",
     ),
     env.DB.prepare(
       optionQuery(true),
@@ -100,7 +99,7 @@ async function catalogue(env: ShopEnv, coach=false) {
   ]);
   const ids = new Set(result[0].results.map((p) => p.id));
   return {
-    pricing_mode: coach?"coach":"fce",
+    pricing_mode: "fce",
     products: result[0].results,
     categories: result[3].results,
     variants: sortVariants(result[1].results.filter((v) => ids.has(v.product_id))),
@@ -328,9 +327,8 @@ async function createOrder(request: Request, env: ShopEnv, s: Settings) {
       "Ce panier a été modifié après sa validation. Retrouvez d’abord la commande déjà enregistrée.",
     );
   if (!order) {
-    const coach=data.pricing_mode==='coach';
-    if(coach&&!await coachSession(request,env))fail('COACH_SESSION',403,'Votre accès coach n’est plus actif sur ce navigateur. Renseignez le code à nouveau avant de commander.');
-    const cat = await catalogue(env,coach);
+    if(data.pricing_mode==='coach')fail('PRICING_MODE_REMOVED',409,'Les tarifs coach ont été supprimés. Rechargez la boutique pour retrouver les tarifs FCE.');
+    const cat = await catalogue(env);
     const priced = priceCart(
       data.items,
       cat.variants,
@@ -397,7 +395,7 @@ async function createOrder(request: Request, env: ShopEnv, s: Settings) {
     statements.push(
       env.ORDERS.prepare(
         "INSERT OR IGNORE INTO order_events(id,order_id,kind,actor,message,created_at) SELECT ?,?,'created','client',?,? WHERE (SELECT request_hash FROM orders WHERE id=?)=?",
-      ).bind(`created:${id}`, id, coach?'Commande enregistrée avec accès coach. Tarif FCE conservé pour les articles sans tarif coach.':'Commande enregistrée, en attente de paiement.', stamp, id, requestHash),
+      ).bind(`created:${id}`, id, 'Commande enregistrée, en attente de paiement.', stamp, id, requestHash),
     );
     statements.push(
       env.ORDERS.prepare(
@@ -986,11 +984,11 @@ async function saveVariant(request: Request, env: ShopEnv) {
       1000000,
     ),
     active = data.active === true ? 1 : 0;
-  const existing=await env.DB.prepare('SELECT product_id,color,sku,catalogue_price_cents,coach_price_cents FROM shop_variants WHERE id=?').bind(id).first<Row>();
+  const existing=await env.DB.prepare('SELECT product_id,color,sku,catalogue_price_cents FROM shop_variants WHERE id=?').bind(id).first<Row>();
   if(existing && existing.product_id!==productId)fail('VARIANT_PRODUCT',409,'Ce choix appartient à un autre article.');
   {
     const optionalPrice=(key:string)=>data[key]===undefined?existing?.[key]??null:data[key]===null||data[key]===''?null:integer(data[key],1,1000000);
-    const cataloguePrice=optionalPrice('catalogue_price_cents'),coachPrice=optionalPrice('coach_price_cents');
+    const cataloguePrice=optionalPrice('catalogue_price_cents');
     const supplierId=text(data.supplier_id,64,true);
     const supplier=await env.DB.prepare('SELECT id,name,active FROM shop_suppliers WHERE id=?').bind(supplierId).first<Row>();
     if(!supplier)fail('SUPPLIER',400,'Choisissez un fournisseur enregistré dans la boutique.');
@@ -1006,7 +1004,7 @@ async function saveVariant(request: Request, env: ShopEnv) {
       statements.push(env.DB.prepare('UPDATE shop_products SET personalizations_version=personalizations_version+1 WHERE id=?').bind(productId));
     }
     statements.push(env.DB.prepare(`INSERT INTO shop_variants(id,product_id,label,size,color,sku,supplier,supplier_id,price_cents,active,catalogue_price_cents,coach_price_cents) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET label=excluded.label,size=excluded.size,color=excluded.color,sku=excluded.sku,supplier=excluded.supplier,supplier_id=excluded.supplier_id,price_cents=excluded.price_cents,active=excluded.active,catalogue_price_cents=excluded.catalogue_price_cents,coach_price_cents=excluded.coach_price_cents WHERE shop_variants.product_id=excluded.product_id`)
-      .bind(id,productId,simple?'Taille unique':label,simple?'':text(data.size||'',40),text(data.color===undefined?(existing?.color??''):data.color,60),text(data.sku===undefined?(existing?.sku??''):data.sku,100),supplier.name,supplierId,price,active,cataloguePrice,coachPrice));
+      .bind(id,productId,simple?'Taille unique':label,simple?'':text(data.size||'',40),text(data.color===undefined?(existing?.color??''):data.color,60),text(data.sku===undefined?(existing?.sku??''):data.sku,100),supplier.name,supplierId,price,active,cataloguePrice,null));
     statements.push(priceLabelStatement(env.DB,productId));
     await env.DB.batch(statements);
   }
@@ -1122,7 +1120,6 @@ export async function shopRoute(
       if(assignments && request.method==='PUT')return await assignPersonalizations(request,env,integer(Number(assignments[1]),1,Number.MAX_SAFE_INTEGER));
       const duplicate=path.match(/^\/admin-boutique\/api\/products\/(\d+)\/duplicate$/);
       if(duplicate){if(request.method!=='POST')fail('METHOD',405,'Utilisez le bouton Dupliquer de la fiche article.');return await duplicateProduct(request,env,integer(Number(duplicate[1]),1,Number.MAX_SAFE_INTEGER),actor);}
-      if(path==='/admin-boutique/api/coach-code'&&request.method==='POST')return await changeCoachCode(request,env,actor);
       if(path==='/admin-boutique/api/suppliers') {
         if(request.method==='GET')return response({suppliers:(await env.DB.prepare('SELECT * FROM shop_suppliers ORDER BY active DESC,name COLLATE NOCASE').all<Row>()).results});
         if(request.method==='PUT'){
@@ -1180,7 +1177,6 @@ export async function shopRoute(
             origin: env.SHOP_ORIGIN || "",
             availability: await adminShopAvailability(env,s),
             mail_queue: await mailQueueStatus(env),
-            coach_access: await coachConfiguration(env),
             configuration: {
               credentials:
                 !!env.HELLOASSO_CLIENT_ID && !!env.HELLOASSO_CLIENT_SECRET,
@@ -1415,11 +1411,8 @@ export async function shopRoute(
     if (path === "/api/shop/catalogue.pdf" && request.method === "GET") {
       return new Response(null,{status:302,headers:{...secureHeaders(),location:'/boutique/catalogue/'}});
     }
-    if(path==='/api/shop/coach/session'&&request.method==='POST')return await coachLogin(request,env);
-    if(path==='/api/shop/coach/session'&&request.method==='DELETE')return coachLogout(env);
     if (path === "/api/shop/catalogue" && request.method === "GET") {
-      const coach=await coachSession(request,env);
-      const cat = await catalogue(env,coach);
+      const cat = await catalogue(env);
       let available = true, unavailable: Row | null = null;
       try {
         await openForSales(env, s);
@@ -1429,7 +1422,6 @@ export async function shopRoute(
       }
       const result=response({
         ...cat,
-        coach_access_enabled:!!(await coachConfiguration(env)).enabled,
         checkout_available: available,
         checkout_unavailable: unavailable,
         environment: environment(env),
@@ -1438,7 +1430,6 @@ export async function shopRoute(
         collection_address: s.collection_address,
         contact_email: s.contact_email,
       });
-      if(coach)await refreshCoachCookie(result,env);
       return result;
     }
     if (path === "/api/shop/checkout" && request.method === "POST") {

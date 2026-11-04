@@ -4,7 +4,7 @@ import {readFileSync,writeFileSync,mkdirSync,lstatSync,realpathSync,chmodSync,rm
 import {resolve,join,dirname,sep} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {productionIssues} from './check-production.mjs';
-import {productionPlan,shopTables,tournamentTables} from './production-transfer.mjs';
+import {productionPlan,shopTables,tournamentTables,transferColumns} from './production-transfer.mjs';
 import {quote} from './tournaments-transfer.mjs';
 
 const bindings=['DB','ORDERS','TOURNAMENTS'];
@@ -24,16 +24,17 @@ function targets(config){return Object.fromEntries(bindings.map(name=>[name,conf
 function requireConfig(config){
  const issues=productionIssues(config);if(issues.length)throw Error('Configuration production incomplète : '+issues.join(', '));
 }
-export function reviewedPlan(config,folder,expectedHash){
+export function reviewedPlan(config,folder,expectedHash,{scope='all'}={}){
  requireConfig(config);
  if(!/^[a-f0-9]{64}$/.test(expectedHash||''))throw Error('Empreinte SHA-256 du manifeste relu requise.');
  const bytes=regularFile(folder,'manifest.json');
  if(sha(bytes)!==expectedHash)throw Error('Le manifeste ne correspond pas à l’empreinte validée.');
  const manifest=JSON.parse(bytes),source=JSON.parse(regularFile(folder,'source.json')),target=JSON.parse(regularFile(folder,'target.json'));
+ if((manifest.scope||'all')!==scope)throw Error('Périmètre du manifeste différent de l’opération demandée.');
  const expected=targets(config),bucket=config.r2_buckets.find(b=>b.binding==='MEDIA').bucket_name;
  if(manifest.target_site_db!==expected.DB||manifest.target_orders_db!==expected.ORDERS||manifest.target_tournaments_db!==expected.TOURNAMENTS||manifest.target_bucket!==bucket||manifest.source_bucket!==config.env.staging.r2_buckets.find(b=>b.binding==='MEDIA').bucket_name)throw Error('Destinations de reprise différentes de la configuration production.');
- if(manifest.production_tournaments_initialized!==true||manifest.production_tournament_snapshot_from!=='TOURNAMENTS'||manifest.sales_closed!==true)throw Error('Refaire une préparation après l’initialisation des bases production.');
- const plan=productionPlan(source,target,manifest.release,{organizationSlug:config.vars.HELLOASSO_ORGANIZATION_SLUG});
+ if((scope==='all'&&(manifest.production_tournaments_initialized!==true||manifest.production_tournament_snapshot_from!=='TOURNAMENTS'))||manifest.sales_closed!==true)throw Error('Refaire une préparation après l’initialisation des bases production.');
+ const plan=productionPlan(source,target,manifest.release,{organizationSlug:config.vars.HELLOASSO_ORGANIZATION_SLUG,scope});
  for(const [name,sql] of [['shop',plan.shop_sql],['tournaments',plan.tournaments_sql],['settings',plan.settings_sql]]){
   const saved=regularFile(folder,name+'.sql');
   if(saved.toString()!==sql||sha(saved)!==manifest.sql_sha256?.[name])throw Error('SQL modifié ou non conforme au périmètre validé.');
@@ -122,6 +123,53 @@ export class ProductionOperations {
   for(const db of ['ORDERS','TOURNAMENTS'])for(const table of ['orders','order_items','checkout_attempts','payments','order_events','outbox','surveys','tournament_registrations'])result[db+':'+table]=sha(canonical(this.query(db,'SELECT * FROM '+table)));
   return result;
  }
+ shopSnapshot(){return Object.fromEntries(shopTables.map(name=>[name,this.query('DB',`SELECT * FROM ${name}${name==='site_media'?" WHERE slot='shop_hero'":''}`)]));}
+ checkShopImport(folder,expectedHash){
+  const reviewed=reviewedPlan(this.config,folder,expectedHash,{scope:'shop'});
+  if(!reviewed.source.shop.shop_products.length)throw Error('Catalogue staging vide : copie boutique refusée.');
+  if(canonical(this.shopSnapshot())!==canonical(reviewed.target.shop))throw Error('La boutique production a changé depuis l’export. Refaire la préparation.');
+  return reviewed;
+ }
+ copyMedia(manifest,folder,backupFolder){
+  const verification=join(backupFolder,'media-verification.bin');
+  try{for(const object of manifest.media){
+   const key=manifest.target_bucket+'/'+object.target_key;
+   this.run(['r2','object','put',key,'--remote','--env','','--file',join(folder,object.file),'--content-type',object.content_type,'--force']);
+   this.run(['r2','object','get',key,'--remote','--env','','--file',verification]);
+   if(sha(regularFile(backupFolder,'media-verification.bin'))!==object.sha256)throw Error('Vérification R2 du média transféré en échec.');
+  }}finally{rmSync(verification,{force:true});}
+ }
+ importShop(folder,expectedHash,backupFolder){
+  this.requireBackup(backupFolder);
+  const {manifest,source,target}=this.checkShopImport(folder,expectedHash);
+  const enabled=target.shop.shop_settings[0]?.shop_enabled;
+  if(![0,1].includes(enabled))throw Error('État d’ouverture boutique invalide.');
+  this.copyMedia(manifest,folder,backupFolder);
+  this.checkShopImport(folder,expectedHash);
+  // All catalogue writes use DB only. ORDERS and TOURNAMENTS are never updated.
+  this.query('DB','UPDATE shop_settings SET shop_enabled=0 WHERE id=1');
+  this.executeFile('DB',join(folder,'shop.sql'));
+  if(this.query('DB','PRAGMA foreign_key_check').length)throw Error('Référence catalogue incohérente : garder la boutique fermée.');
+  this.verifyShopContents(source,target,manifest);
+  this.query('DB',`UPDATE shop_settings SET shop_enabled=${enabled} WHERE id=1`);
+  if(this.query('DB','SELECT shop_enabled FROM shop_settings WHERE id=1')[0]?.shop_enabled!==enabled)throw Error('État d’ouverture boutique non restauré.');
+  return {imported:true,scope:'shop',shop_enabled:enabled,images_verified:manifest.media.length,counts:manifest.counts,manifest_sha256:expectedHash};
+ }
+ verifyShopContents(source,target,manifest){
+  const current=this.shopSnapshot(),same=(a,b)=>{if(canonical(a)!==canonical(b))throw Error('Contenu boutique différent du staging : garder la boutique fermée.');};
+  const mediaKey=key=>key?`releases/${manifest.release}/shop/${key}`:'';
+  const fields=(row,table)=>Object.fromEntries(transferColumns[table].map(k=>[k,row[k]??null]));
+  for(const table of ['shop_categories','shop_personalizations'])same(current[table].map(r=>fields(r,table)),source.shop[table].map(r=>fields(r,table)));
+  const suppliers=b=>b.shop_suppliers.map(r=>{const v=fields(r,'shop_suppliers');delete v.id;return v;});same(suppliers(current),suppliers(source.shop));
+  const products=b=>b.shop_products.map(r=>({...fields(r,'shop_products'),category:b.shop_categories.find(c=>c.id===r.shop_category_id)?.slug??null}));
+  same(products(current),products(source.shop).map(r=>({...r,image_key:mediaKey(r.image_key)})));
+  const variants=b=>b.shop_variants.map(r=>({...fields(r,'shop_variants'),product:b.shop_products.find(p=>p.id===r.product_id)?.slug,supplier:b.shop_suppliers.find(s=>s.id===r.supplier_id)?.name}));
+  same(variants(current),variants(source.shop).map(r=>({...r,coach_price_cents:null})));
+  const options=b=>b.shop_options.map(r=>({product:b.shop_products.find(p=>p.id===r.product_id)?.slug,personalization_id:r.personalization_id,active:r.active}));same(options(current),options(source.shop));
+  same(current.site_media.map(r=>({slot:r.slot,object_key:r.object_key,alt_text:r.alt_text})),source.shop.site_media.map(r=>({slot:r.slot,object_key:mediaKey(r.object_key),alt_text:r.alt_text||''})));
+  const expected={...target.shop.shop_settings[0],catalogue_title:source.shop.shop_settings[0].catalogue_title||'Catalogue',catalogue_key:mediaKey(source.shop.shop_settings[0].catalogue_key),maintenance_image_key:mediaKey(source.shop.shop_settings[0].maintenance_image_key),shop_enabled:0};
+  same(current.shop_settings,[expected]);
+ }
  checkImport(folder,expectedHash){
   const reviewed=reviewedPlan(this.config,folder,expectedHash);
   if(!this.query('TOURNAMENTS',"SELECT id FROM module_imports WHERE id='v5.2'").length)throw Error('Copie initiale des tournois non validée.');
@@ -132,13 +180,7 @@ export class ProductionOperations {
  import(folder,expectedHash,backupFolder){
   this.requireBackup(backupFolder);
   const {manifest,source}=this.checkImport(folder,expectedHash),before=this.transactions();
-  const verification=join(backupFolder,'media-verification.bin');
-  try{for(const object of manifest.media){
-   const key=manifest.target_bucket+'/'+object.target_key;
-   this.run(['r2','object','put',key,'--remote','--env','','--file',join(folder,object.file),'--content-type',object.content_type,'--force']);
-   this.run(['r2','object','get',key,'--remote','--env','','--file',verification]);
-   if(sha(regularFile(backupFolder,'media-verification.bin'))!==object.sha256)throw Error('Vérification R2 du média transféré en échec.');
-  }}finally{rmSync(verification,{force:true});}
+  this.copyMedia(manifest,folder,backupFolder);
   // Detect concurrent catalogue changes again after the media transfer.
   this.checkImport(folder,expectedHash);
   for(const [db,file] of [['DB','shop.sql'],['TOURNAMENTS','tournaments.sql'],['ORDERS','settings.sql']])this.executeFile(db,join(folder,file));
@@ -169,7 +211,7 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
   const args=process.argv.slice(2),known=['--action','--folder','--backup','--admin-email','--manifest-sha256'];
   for(let i=0;i<args.length;i+=2)if(!known.includes(args[i])||!args[i+1]||args[i+1].startsWith('--'))throw Error('Arguments de préparation production invalides.');
   const get=key=>args.includes(key)?args[args.indexOf(key)+1]:undefined,action=get('--action');
-  if(!['backup','initialize','check-import','import'].includes(action))throw Error('Action production invalide.');
+  if(!['backup','initialize','check-import','import','check-shop-import','import-shop'].includes(action))throw Error('Action production invalide.');
   const config=JSON.parse(readFileSync('wrangler.jsonc','utf8'));
   const run=argv=>{
    const result=spawnSync(process.execPath,['node_modules/wrangler/bin/wrangler.js',...argv,'--config',resolve('wrangler.jsonc')],{encoding:'utf8',maxBuffer:128*1024*1024});
@@ -180,9 +222,9 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
   const operations=new ProductionOperations(config,run,copyInitial);
   const backup=get('--backup')&&resolve(get('--backup')),folder=get('--folder')&&resolve(get('--folder'));
   if(!backup)throw Error('Dossier de sauvegarde requis.');
-  if(['check-import','import'].includes(action)&&!folder)throw Error('Dossier de préparation requis.');
-  const result=action==='backup'?operations.backup(backup):action==='initialize'?operations.initialize(backup,get('--admin-email')):action==='check-import'?(operations.checkImport(folder,get('--manifest-sha256')),{reviewed:true}):operations.import(folder,get('--manifest-sha256'),backup);
-  if(['initialize','import'].includes(action))writeFileSync(join(backup,'result.json'),JSON.stringify(result,null,2)+'\n',{mode:0o600});
+  if(['check-import','import','check-shop-import','import-shop'].includes(action)&&!folder)throw Error('Dossier de préparation requis.');
+  const result=action==='import-shop'?operations.importShop(folder,get('--manifest-sha256'),backup):action==='check-shop-import'?(operations.checkShopImport(folder,get('--manifest-sha256')),{reviewed:true,scope:'shop'}):action==='backup'?operations.backup(backup):action==='initialize'?operations.initialize(backup,get('--admin-email')):action==='check-import'?(operations.checkImport(folder,get('--manifest-sha256')),{reviewed:true}):operations.import(folder,get('--manifest-sha256'),backup);
+  if(['initialize','import','import-shop'].includes(action))writeFileSync(join(backup,'result.json'),JSON.stringify(result,null,2)+'\n',{mode:0o600});
   console.log(JSON.stringify(result));
  }catch(error){console.error(error.message);process.exitCode=1;}
 }
