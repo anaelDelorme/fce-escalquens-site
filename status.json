@@ -1,12 +1,12 @@
 {
-  "commit": "ebcaa2837c95eb7c7fc9b7da189b881591e963e9",
+  "commit": "d281e73363fa2b357c4a5e4511b62e32eaee41c8",
   "preparation": "success",
   "pr": "failure",
   "pr_url": null,
-  "run_url": "https://github.com/anaelDelorme/fce-escalquens-site/actions/runs/41845070866",
+  "run_url": "https://github.com/anaelDelorme/fce-escalquens-site/actions/runs/41849067721",
   "production_writes": 0,
   "artifact": "success",
-  "artifact_url": "https://github.com/anaelDelorme/fce-escalquens-site/actions/runs/41845070866/artifacts/13331515681",
+  "artifact_url": "https://github.com/anaelDelorme/fce-escalquens-site/actions/runs/41849067721/artifacts/13334060952",
   "archive_encrypted": true,
   "legacy_artifact_cleanup": "success",
   "legacy_preparation_artifacts_removed": 0,
@@ -22,16 +22,16 @@
     "SMTP_PASSWORD": true
   },
   "pr_reason": "actions_pr_creation_disabled",
-  "manifest_sha256": "43b9728e8f2cf8528e0442b16c94e64c04871c2947a2a7a0b4cdbeca0ef3fb85",
+  "manifest_sha256": "af77723a97217beaab7a9d6fd3921318313c393ec072c58aaee6719c86a9a5e0",
   "counts": {
-    "articles": 38,
-    "variants": 365,
+    "articles": 42,
+    "variants": 414,
     "personalizations": 6,
     "tournaments": 1,
-    "media": 40
+    "media": 44
   },
   "sql_sha256": {
-    "shop": "1ffed31ad3a21b2160a0f78d472d397848ce89ca8b32a35af3543d223e35b37a",
+    "shop": "c988e5dc0f4528ed8c402075dc22595fb57f2eb15a18af13bb9a7a56e0ff72b2",
     "tournaments": "fcdcf51cce1ba71b2d142da08eb5b38d6aa7e729622fbfabae6746f3052fe7d5",
     "settings": "2c78fd3f71febfdb1c58c894396d7ac8e0c8c8825a9f4d30eabb2e1923d7804d"
   },
