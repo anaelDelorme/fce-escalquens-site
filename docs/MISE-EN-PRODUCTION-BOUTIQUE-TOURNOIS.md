@@ -138,20 +138,29 @@ est aussi exécuté avant les migrations du workflow de déploiement.
    [run de préparation 41802970302](https://github.com/anaelDelorme/fce-escalquens-site/actions/runs/41802970302).
    Ce contrôle ne vérifie ni la validité des identifiants HelloAsso ni le mot
    de passe SMTP ; ces diagnostics restent à effectuer sur le Worker déployé.
-5. Le slug réel HelloAsso confirmé par le club est `fce` :
+5. L'URL publique HelloAsso du club est
+   `https://www.helloasso.com/associations/fc-escalquens` : le slug de production
+   est donc `fc-escalquens`. Le staging utilise son association Sandbox `fce`.
 
 ```bash
-node scripts/configure-helloasso.mjs --env production --slug fce --origin https://fcescalquens.fr
+node scripts/configure-helloasso.mjs --env production --slug fc-escalquens --origin https://fcescalquens.fr
 node scripts/configure-ovh-mail.mjs --env production
 node scripts/check-production.mjs
 ```
 
 Ne pas copier intégralement `ORDERS.settings` de staging. `settings.sql` reprend
 uniquement vendeur, contact du club, lieu/consignes et délais de retrait, via une
-liste explicite de champs. Il impose le slug production confirmé `fce` et laisse
+liste explicite de champs. Il impose le slug production configuré et laisse
 paiement et validation juridique fermés pour revue. Aucun jeton, secret ou réglage
 Sandbox n’est repris. Les deux modules utilisent ces paramètres communs de
 ORDERS production.
+
+Si les paramètres boutique sont déjà enregistrés, leur `organization_slug` en
+D1 est prioritaire sur la valeur par défaut du Worker. Dans
+`/admin-boutique/parametres/`, renseigner `fc-escalquens` dans **Identifiant de
+l'association HelloAsso**, enregistrer, puis utiliser **Tester HelloAsso sans
+paiement**. Ce réglage commun sert aussi aux tournois et prend effet sans
+redéploiement.
 
 ## Opérations manuelles dans GitHub Actions
 

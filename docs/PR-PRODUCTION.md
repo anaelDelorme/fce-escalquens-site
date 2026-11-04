@@ -1,17 +1,9 @@
-Cette PR déploie la boutique et les tournois configurés en staging. Le catalogue et les médias ont déjà été repris dans les bases et le stockage de production ; les ventes et inscriptions restent fermées pendant les vérifications après déploiement.
+Le test HelloAsso de production cherchait l’association `fce`. L’URL publique confirmée par le club est https://www.helloasso.com/associations/fc-escalquens : son identifiant réel est `fc-escalquens`.
 
-- Boutique : affichage mobile/ordinateur, prix harmonisés, catalogue de personnalisations partagé entre articles et écussons obligatoires. Les anciens articles propres à la production ont été retirés.
-- Tournois : événements, formulaires, tarifs et équipes repris dans la base dédiée, sans leurs médias. Les anciens tournois absents de staging ont été retirés.
-- Commandes, inscriptions et paiements réels conservés et contrôlés pendant l'import. Aucune transaction ni authentification Sandbox importée.
-- Accès Cloudflare distincts pour le site, la boutique et les tournois. HelloAsso utilise l'association de production `fce` ; les mails de commande gardent leurs destinataires client/club. Le bouton de test mail est configuré vers `contact@fcescalquens.fr`.
-- Le diff reprend également les annonces et autres correctifs déjà présents sur staging.
+La valeur par défaut de production est corrigée dans `wrangler.jsonc`. Le staging utilise toujours son association Sandbox `fce`. La préparation des prochaines archives utilise également cet identifiant de production pour ses paramètres métier.
 
-Reprise vérifiée : **38 articles, 365 déclinaisons, 6 personnalisations, 1 tournoi et 40 médias**. Les médias ont été relus dans R2 et comparés par SHA-256 avant les imports SQL. Les sauvegardes sont chiffrées, y compris dans les artefacts du dépôt public.
+Pour une base déjà configurée, le champ enregistré dans D1 a priorité sur cette valeur par défaut : dans **Boutique → Paramètres**, renseigner `fc-escalquens` dans **Identifiant de l’association HelloAsso**, enregistrer puis relancer **Tester HelloAsso sans paiement**. Ce réglage commun sert aussi aux tournois et prend effet immédiatement.
 
-Exécutions validées : [initialisation et migrations](https://github.com/anaelDelorme/fce-escalquens-site/actions/runs/41818523633), puis [import et contrôle des données](https://github.com/anaelDelorme/fce-escalquens-site/actions/runs/41833330766).
+Le contrôle réel du rattachement à l’association se fait avec ce bouton après sauvegarde du paramètre. Le diagnostic obtient un jeton OAuth et effectue uniquement des lectures d’associations.
 
-La fusion dans `main` déploie le Worker avec les bindings et paramètres de production. Les déploiements suivants conservent les contenus de production : aucun import de catalogue n'est lancé automatiquement.
-
-Après déploiement, vérifier les accès admin, utiliser **Tester HelloAsso sans paiement** (OAuth et lectures uniquement), puis **Tester l'envoi d'un e-mail** et contrôler la réception effective dans la boîte du club. Vérifier les coordonnées vendeur/contact et l'affichage avant de rétablir les ouvertures. La présence des secrets a été contrôlée ; la connexion HelloAsso et la réception SMTP réelles restent à confirmer sur le Worker déployé.
-
-Validation : 184 tests locaux, TypeScript, compilation et workflow vérifiés ; migrations et import distants réussis. Procédure complète : `docs/MISE-EN-PRODUCTION-BOUTIQUE-TOURNOIS.md`.
+Validation : tests des paramètres et transferts de production, sélection d’environnement HelloAsso et diagnostic limité à OAuth/GET ; configuration statique et workflow vérifiés.
