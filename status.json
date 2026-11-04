@@ -1,17 +1,15 @@
 {
-  "commit": "9f67e9ed604ce4bc610a2b1b56df49837688214c",
-  "preparation": "skipped",
-  "pr": "unknown",
-  "pr_url": null,
-  "run_url": "https://github.com/anaelDelorme/fce-escalquens-site/actions/runs/41833330766",
-  "artifact": "skipped",
-  "artifact_url": null,
-  "archive_encrypted": false,
-  "operation": "importer",
-  "operation_outcome": "success",
-  "backup_artifact_url": "https://github.com/anaelDelorme/fce-escalquens-site/actions/runs/41833330766/artifacts/13324965390",
-  "backup_encrypted": true,
-  "production_write_step_started": true,
+  "commit": "5b2bdbfd1d44a458cf43aa5f4a453bab78fce1bd",
+  "preparation": "success",
+  "pr": "success",
+  "pr_url": "https://github.com/anaelDelorme/fce-escalquens-site/pull/35",
+  "run_url": "https://github.com/anaelDelorme/fce-escalquens-site/actions/runs/41835858657",
+  "production_writes": 0,
+  "artifact": "success",
+  "artifact_url": "https://github.com/anaelDelorme/fce-escalquens-site/actions/runs/41835858657/artifacts/13324779403",
+  "archive_encrypted": true,
+  "legacy_artifact_cleanup": "success",
+  "legacy_preparation_artifacts_removed": 0,
   "production_databases": {
     "DB": "883401b1-f229-4c0e-9e25-6493f8d01b93",
     "ORDERS": "d0ce5147-4c85-43ca-83ca-ef84df8b5626",
@@ -23,8 +21,7 @@
     "HELLOASSO_CLIENT_SECRET": true,
     "SMTP_PASSWORD": true
   },
-  "imported": true,
-  "sales_closed": true,
+  "manifest_sha256": "8ab385a966f237021ea5cd82e1662b1142df97fc13e704180d9cea033579c49c",
   "counts": {
     "articles": 38,
     "variants": 365,
@@ -32,5 +29,12 @@
     "tournaments": 1,
     "media": 40
   },
-  "manifest_sha256": "5f4920cf453423f51e6ac1494533f6ed8066f4655f673cde65401dd76fc441e6"
+  "sql_sha256": {
+    "shop": "45f5a9b6d6b8455e95585890362dd4f2d1e8190b5e6331713fb92e5c030ede3c",
+    "tournaments": "fcdcf51cce1ba71b2d142da08eb5b38d6aa7e729622fbfabae6746f3052fe7d5",
+    "settings": "7efdeebb50a7f09624541ded7edfaf28681c4d84073d80dd30764078a7ae1433"
+  },
+  "business_contact_present": true,
+  "production_tournaments_initialized": true,
+  "production_tournament_snapshot_from": "TOURNAMENTS"
 }
