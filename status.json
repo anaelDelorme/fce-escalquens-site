@@ -1,16 +1,16 @@
 {
-  "commit": "29de0763c9536386caf4d076d910c1d071d9e5da",
+  "commit": "1afd3d82a510c0db974014919f82740cc6acc779",
   "preparation": "success",
   "pr": "failure",
   "pr_url": null,
-  "run_url": "https://github.com/anaelDelorme/fce-escalquens-site/actions/runs/41790304385",
+  "run_url": "https://github.com/anaelDelorme/fce-escalquens-site/actions/runs/41800251364",
   "production_writes": 0,
   "artifact": "success",
-  "artifact_url": "https://github.com/anaelDelorme/fce-escalquens-site/actions/runs/41790304385/artifacts/13302089572",
+  "artifact_url": "https://github.com/anaelDelorme/fce-escalquens-site/actions/runs/41800251364/artifacts/13307875621",
   "production_databases": {
     "DB": "883401b1-f229-4c0e-9e25-6493f8d01b93",
-    "ORDERS": null,
-    "TOURNAMENTS": null
+    "ORDERS": "d0ce5147-4c85-43ca-83ca-ef84df8b5626",
+    "TOURNAMENTS": "dd0b1d97-3858-4e61-96c9-1e2735d362d0"
   },
   "production_secret_presence": {
     "TRACKING_SECRET": false,
@@ -27,9 +27,11 @@
     "media": 40
   },
   "sql_sha256": {
-    "shop": "6689b85fb978ba06fda3f96d044f56656e5cb935fbdf47f7f7f6d1ba9499f5f7",
+    "shop": "6aa1458dfa42147695501f88e28ae913cd6ef353c604be8b32a969e7e2c6f74f",
     "tournaments": "fcdcf51cce1ba71b2d142da08eb5b38d6aa7e729622fbfabae6746f3052fe7d5",
     "settings": "7efdeebb50a7f09624541ded7edfaf28681c4d84073d80dd30764078a7ae1433"
   },
-  "business_contact_present": true
+  "business_contact_present": true,
+  "production_tournaments_initialized": false,
+  "production_tournament_snapshot_from": "DB"
 }
