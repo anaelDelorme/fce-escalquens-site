@@ -3,14 +3,16 @@ import {mkdirSync,readFileSync,writeFileSync} from 'node:fs';
 import {resolve,join,dirname} from 'node:path';
 import {createHash} from 'node:crypto';
 import {productionPlan,shopTables,tournamentTables} from './production-transfer.mjs';
+import {publicMedia} from './public-media.mjs';
 
-const args=process.argv.slice(2),known=['--config','--out','--release'];
+const args=process.argv.slice(2),known=['--config','--out','--release','--media-source'];
 for(let i=0;i<args.length;i+=2)if(!known.includes(args[i])||!args[i+1]||args[i+1].startsWith('--'))throw Error('Usage: node scripts/prepare-production.mjs [--config fichier] [--out dossier] [--release identifiant]');
 const get=(key,fallback)=>args.includes(key)?args[args.indexOf(key)+1]:fallback;
 const config=JSON.parse(readFileSync(get('--config','wrangler.jsonc'),'utf8'));
 const release=get('--release','fce-'+new Date().toISOString().replace(/[:.TZ]/g,'-').replace(/-+$/,''));
 const folder=resolve(get('--out','.production-preparation/'+release));
 const stage=config.env?.staging;
+let mediaSource=get('--media-source','auto');if(!['auto','r2','public'].includes(mediaSource))throw Error('Source média invalide.');
 const binding=(section,name)=>section?.d1_databases?.find(b=>b.binding===name);
 const valid=id=>typeof id==='string'&&/^[a-f0-9-]{36}$/i.test(id)&&!/^0+-0+-0+-0+-0+$/.test(id);
 if(!valid(binding(stage,'DB')?.database_id)||!valid(binding(stage,'TOURNAMENTS')?.database_id)||!valid(binding(config,'DB')?.database_id))throw Error('Bindings source staging et DB production nécessaires.');
@@ -53,7 +55,17 @@ const plan=productionPlan(source,target,release);
 writeFileSync(join(folder,'shop.sql'),plan.shop_sql,{mode:0o600});
 writeFileSync(join(folder,'tournaments.sql'),plan.tournaments_sql,{mode:0o600});
 for(const object of plan.media){
- wrangler(['r2','object','get',stageBucket+'/'+object.source_key,'--remote','--file',join(folder,object.file)]);
+ let needPublic=mediaSource==='public';
+ if(!needPublic){try{
+  wrangler(['r2','object','get',stageBucket+'/'+object.source_key,'--remote','--file',join(folder,object.file)]);object.retrieved_via='r2';
+ }catch(error){
+  if(mediaSource==='r2')throw error;
+  needPublic=true;if(/hint=(authentication|permission)/.test(error.message))mediaSource='public';
+ }}
+ if(needPublic){
+  const media=await publicMedia(stage.vars.SHOP_ORIGIN,object.source_key);
+  writeFileSync(join(folder,object.file),media.bytes,{mode:0o600});object.content_type=media.content_type;object.retrieved_via='public-worker';
+ }
  const bytes=readFileSync(join(folder,object.file));object.sha256=createHash('sha256').update(bytes).digest('hex');object.bytes=bytes.length;
 }
 const checksum=file=>createHash('sha256').update(readFileSync(join(folder,file))).digest('hex');

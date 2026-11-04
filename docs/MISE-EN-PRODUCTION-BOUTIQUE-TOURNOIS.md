@@ -51,7 +51,11 @@ Le dossier privé ignoré `.production-preparation/<reprise>/` contient :
 - `target.json` : état de référence des contenus production ;
 - `shop.sql`, `tournaments.sql` : imports proposés, à relire ;
 - `media/` et `manifest.json` : fichiers téléchargés, clés R2 source/destination,
-  sommes SHA-256, tailles, bases cibles et nombres d'articles/tournois.
+  sommes SHA-256, tailles, bases cibles et nombres d’articles/tournois.
+  Si la lecture directe R2 est refusée, la préparation essaie uniquement les
+  URLs publiques des médias du Worker staging, avec HTTPS vérifié et refus
+  des redirections/pages de connexion. `retrieved_via` précise la méthode.
+  `--media-source r2` interdit ce repli ; `--media-source public` le force.
 
 Un téléchargement incomplet ne produit pas de manifeste final. Les artefacts
 Actions expirent après 7 jours. Les garder dans un espace privé du club,
@@ -83,10 +87,10 @@ est aussi exécuté avant les migrations du workflow de déploiement.
    `HELLOASSO_CLIENT_ID`, `HELLOASSO_CLIENT_SECRET`, `SMTP_PASSWORD`.
    Les identifiants HelloAsso doivent être ceux du compte de production.
    Ne pas remplacer une clé TRACKING_SECRET déjà utilisée en production.
-5. Configurer le slug réel HelloAsso, après vérification dans le compte :
+5. Le slug réel HelloAsso confirmé par le club est `fce` :
 
 ```bash
-node scripts/configure-helloasso.mjs --env production --slug SLUG_VERIFIE --origin https://fcescalquens.fr
+node scripts/configure-helloasso.mjs --env production --slug fce --origin https://fcescalquens.fr
 node scripts/configure-ovh-mail.mjs --env production
 node scripts/check-production.mjs
 ```

@@ -5,7 +5,7 @@ try{report.production_databases=JSON.parse(readFileSync('.production-preparation
 try{report.production_secret_presence=JSON.parse(readFileSync('.production-preparation/production-secret-presence.json','utf8'));}catch{}
 if(report.preparation==='failure'){
  const error=(()=>{try{return readFileSync('preparation-error.txt','utf8');}catch{return '';}})();
- const known=['Lecture Cloudflare impossible','Migration source absente','Clé média invalide','Fournisseur source absent','Catégorie source absente','Personnalisation source absente','Équipe de tournoi sans correspondance production','Identifiant de choix déjà utilisé','Nom de base production ambigu','La migration des personnalisations obligatoires manque'];
+ const known=['Lecture Cloudflare impossible','Média public staging inaccessible','Migration source absente','Clé média invalide','Fournisseur source absent','Catégorie source absente','Personnalisation source absente','Équipe de tournoi sans correspondance production','Identifiant de choix déjà utilisé','Nom de base production ambigu','La migration des personnalisations obligatoires manque'];
  report.preparation_reason=known.find(message=>error.includes(message))||'preparation_command_failed';
  const operation=error.match(/operation=([a-z0-9-]+),env=([a-z-]+),resource=([A-Z-]+)/);
  if(operation)report.failed_operation={operation:operation[1],environment:operation[2],resource:operation[3]};
@@ -20,6 +20,10 @@ try{
  const manifest=JSON.parse(readFileSync(`.production-preparation/preparation-${process.env.GITHUB_RUN_ID}/manifest.json`,'utf8'));
  report.counts=manifest.counts;report.sql_sha256=manifest.sql_sha256;
 }catch{ /* Missing manifest means exports did not complete. No rows are logged. */ }
+if(!report.counts){try{
+ const source=JSON.parse(readFileSync(`.production-preparation/preparation-${process.env.GITHUB_RUN_ID}/source.json`,'utf8'));
+ report.database_exports={articles:source.shop.shop_products.length,tournaments:source.tournaments.tournaments.length};
+}catch{}}
 function git(args,input){
  const result=spawnSync('git',args,{encoding:'utf8',input,env:{...process.env,GIT_AUTHOR_NAME:'github-actions[bot]',GIT_AUTHOR_EMAIL:'41898282+github-actions[bot]@users.noreply.github.com',GIT_COMMITTER_NAME:'github-actions[bot]',GIT_COMMITTER_EMAIL:'41898282+github-actions[bot]@users.noreply.github.com'}});
  if(result.status!==0)throw Error('Impossible de publier le compte rendu de préparation.');

@@ -6,8 +6,10 @@ La production utilise encore l’ancien catalogue. Cette PR reprend le code stag
 - L’export et le téléchargement des médias utilisent les secrets Cloudflare existants de GitHub Actions. Le push de cette branche ne déploie pas en production. Le diff reprend aussi les annonces et correctifs du site déjà présents dans staging.
 - En production, les mails gardent leurs destinataires client/club ; le test HelloAsso effectue OAuth et des lectures sans créer de paiement.
 
-Avant fusion : compléter les UUID ORDERS/TOURNAMENTS production, le slug HelloAsso réel et les paramètres Cloudflare Access ; contrôler l’artefact de reprise et les réglages de mail. La fusion dans main déclenche le déploiement réel, l’import de contenus reste une opération distincte après validation.
+Le slug HelloAsso de production est confirmé : `fce`.
+
+Avant fusion : compléter les UUID ORDERS/TOURNAMENTS production, les paramètres Cloudflare Access et les secrets Worker de production ; contrôler l’artefact de reprise et les réglages de mail. La fusion dans main déclenche le déploiement réel, l’import de contenus reste une opération distincte après validation.
 
 Procédure et limites : `docs/MISE-EN-PRODUCTION-BOUTIQUE-TOURNOIS.md`.
 
-Validation locale : 173 tests réussis, dont les transferts exécutés sur SQLite réel, les destinataires mail et l’absence de création de paiement par le diagnostic HelloAsso ; TypeScript et compilation validés.
+Validation locale : 174 tests réussis, dont les transferts exécutés sur SQLite réel, les destinataires mail et l’absence de création de paiement par le diagnostic HelloAsso ; TypeScript et compilation validés.

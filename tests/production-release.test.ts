@@ -9,6 +9,7 @@ import {productionPlan} from '../scripts/production-transfer.mjs';
 import {productionIssues} from '../scripts/check-production.mjs';
 import {connectionStatus,apiBase} from '../src/shop/helloasso';
 import {mailRecipient} from '../src/shop/mail';
+import {publicMedia} from '../scripts/public-media.mjs';
 
 test('reprise production : remappage des articles et tournois, médias boutique isolés et commandes conservées',async t=>{
  const DB=new TestDatabase(),TOURNAMENTS=new TestDatabase();t.after(()=>{DB.close();TOURNAMENTS.close();});
@@ -116,8 +117,16 @@ console.log(JSON.stringify([{success:true,results:rows}]));
   const manifest=JSON.parse(readFileSync(join(base,'manifest.json'),'utf8'));assert.equal(manifest.counts.articles,1);assert.equal(manifest.media.length,1);assert.equal(manifest.media[0].bytes,10);
   assert.equal(readFileSync(join(base,manifest.media[0].file),'utf8'),'test-image');
   assert.ok(readFileSync(join(folder,'calls.jsonl'),'utf8').trim().split('\n').map(s=>JSON.parse(s)).every(a=>a[0]==='d1'?(a.includes('--command')&&/^(SELECT|PRAGMA)/.test(a[a.indexOf('--command')+1])):a[2]==='get'));
-  const failed=spawnSync(process.execPath,[cli,'--release','failed-release'],{cwd:folder,encoding:'utf8',env:{...process.env,FAIL_MEDIA:'1'}});assert.notEqual(failed.status,0);assert.equal(existsSync(join(folder,'.production-preparation/failed-release/manifest.json')),false);
+  const failed=spawnSync(process.execPath,[cli,'--release','failed-release','--media-source','r2'],{cwd:folder,encoding:'utf8',env:{...process.env,FAIL_MEDIA:'1'}});assert.notEqual(failed.status,0);assert.equal(existsSync(join(folder,'.production-preparation/failed-release/manifest.json')),false);
  }finally{rmSync(folder,{recursive:true,force:true});}
+});
+
+test('médias publics : GET HTTPS sans redirection et refus des pages de connexion',async()=>{
+ const calls:any[]=[];
+ const result=await publicMedia('https://staging.example.org','uploads/photo club.webp',async(url:any,options:any)=>{calls.push([String(url),options]);return new Response('bytes',{headers:{'content-type':'image/webp'}});});
+ assert.equal(result.bytes.toString(),'bytes');assert.equal(result.content_type,'image/webp');assert.equal(calls[0][0],'https://staging.example.org/media/uploads/photo%20club.webp');assert.equal(calls[0][1].redirect,'error');
+ await assert.rejects(()=>publicMedia('https://staging.example.org','photo.webp',async()=>new Response('<html>Login</html>',{headers:{'content-type':'text/html'}})),/non média/);
+ await assert.rejects(()=>publicMedia('http://staging.example.org','photo.webp'),/HTTPS/);
 });
 
 test('compte rendu Actions : seul le statut contrôlé est publié, branche main inchangée',()=>{

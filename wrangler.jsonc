@@ -136,7 +136,8 @@
     "MAIL_PROVIDER": "ovh",
     "MAIL_FROM": "contact@fcescalquens.fr",
     "SMTP_HOST": "ssl0.ovh.net",
-    "SMTP_USER": "contact@fcescalquens.fr"
+    "SMTP_USER": "contact@fcescalquens.fr",
+    "HELLOASSO_ORGANIZATION_SLUG": "fce"
   },
   "triggers": {
     "crons": [
