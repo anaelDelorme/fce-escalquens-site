@@ -50,3 +50,21 @@ test('mail club et test transport : même mise en page, destinataires conservés
   await deliverMail({...f.env,APP_ENV:'staging',SHOP_ORIGIN:'https://staging.example.org'},f.settings,{id:'stage',kind:'created',audience:'club'},f.order);
   assert.equal(f.messages[2].to,'test@example.org');assert.match(f.messages[2].subject,/^\[TEST\]/);
 });
+
+test('changement d’état tournoi : confirmation distincte du paiement, annulation claire sans demander de chèque',async t=>{
+  const f=await fixture(t,true),order={...f.order,kind:'tournament'};
+  await f.db.prepare("INSERT INTO tournament_registrations(order_id,tournament_id,tournament_name,club_name,team_name,category,payment_choice,payment_deadline,created_at,registration_status,payment_method,cheque_snapshot) VALUES(?,1,'Coupe du club','Club exemple','Équipe A','U11','later',1900000000,1,'accepted','cheque','Envoyer le chèque au club')").bind(order.id).run();
+  await deliverMail(f.env,f.settings,{id:'accepted',kind:'fulfillment',audience:'customer'},order);
+  const accepted=f.messages[0];assert.match(accepted.subject,/inscription est confirmée/);assert.match(accepted.text,/Le club a confirmé votre inscription/);assert.match(accepted.text,/Paiement : En attente de confirmation/);assert.doesNotMatch(accepted.text,/Nous avons bien reçu votre règlement/);assert.equal(accepted.to,'client@example.org');
+  await f.db.exec("UPDATE tournament_registrations SET registration_status='cancelled'");
+  await deliverMail(f.env,f.settings,{id:'cancelled',kind:'fulfillment',audience:'customer'},{...order,payment_status:'paid',fulfillment:'cancelled'});
+  const cancelled=f.messages[1];assert.match(cancelled.subject,/inscription est annulée/);assert.match(cancelled.text,/Vos équipes ne figurent plus parmi les inscrits/);assert.match(cancelled.text,/Paiement : Payé/);assert.match(cancelled.text,/ne déclenche pas de remboursement automatique/);assert.doesNotMatch(cancelled.text,/Envoyer le chèque|Règlement par chèque|Date limite de paiement|Nous avons bien reçu votre règlement/);
+});
+
+test('changement d’état boutique : disponible ou annulée annoncé dans l’objet et le message',async t=>{
+  const f=await fixture(t);
+  await deliverMail(f.env,f.settings,{id:'ready',kind:'fulfillment',audience:'customer'},{...f.order,payment_status:'paid',fulfillment:'ready'});
+  assert.match(f.messages[0].subject,/commande est disponible/);assert.match(f.messages[0].text,/Vos articles sont prêts à être remis/);
+  await deliverMail(f.env,f.settings,{id:'cancelled',kind:'fulfillment',audience:'customer'},{...f.order,payment_status:'paid',fulfillment:'cancelled'});
+  assert.match(f.messages[1].subject,/commande est annulée/);assert.match(f.messages[1].text,/Votre commande a été annulée par le club/);assert.doesNotMatch(f.messages[1].text,/Contactez le club pour votre rendez-vous|Le club vous informera de l’avancement/);
+});

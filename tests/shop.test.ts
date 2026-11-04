@@ -196,6 +196,7 @@ before(async () => {
   await TOURNEYS.exec(readFileSync(new URL("../migrations-tournaments/0002_registration_sections.sql",import.meta.url),"utf8"));
   await TOURNEYS.exec(readFileSync(new URL("../migrations-tournaments/0003_cheque_payments.sql",import.meta.url),"utf8"));
   await TOURNEYS.exec(readFileSync(new URL("../migrations-tournaments/0004_mail_audiences.sql",import.meta.url),"utf8"));
+  await TOURNEYS.exec(readFileSync(new URL("../migrations-tournaments/0005_registration_archive.sql",import.meta.url),"utf8"));
   await TOURNEYS.exec("INSERT INTO module_imports(id,imported_at) VALUES('v5.2',0)");
   await TOURNEYS.exec(`INSERT INTO tournaments(id,slug,name,starts_on,categories,status) VALUES(1,'tournoi-u11','Tournoi U11','2027-06-10','["U11"]','open');`);
   await DB.exec(

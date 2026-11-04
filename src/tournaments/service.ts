@@ -421,6 +421,7 @@ export async function tournamentRoute(
           "SELECT id,name,starts_on,status FROM tournaments UNION ALL SELECT r.tournament_id AS id,MAX(r.tournament_name) AS name,'' AS starts_on,'finished' AS status FROM tournament_registrations r WHERE NOT EXISTS(SELECT 1 FROM tournaments t WHERE t.id=r.tournament_id) GROUP BY r.tournament_id ORDER BY starts_on DESC,id DESC",
         ).all<Row>()).results;
         const requested = new URL(request.url).searchParams.get('tournament_id');
+        const includeArchived=new URL(request.url).searchParams.get('include_archived')==='1';
         if(requested!==null&&!/^[1-9]\d{0,9}$/.test(requested))fail('TOURNAMENT',400,'Choisissez un tournoi valide.');
         const selected = requested!==null ? integer(Number(requested),1,2147483647)
           : (tournaments.find(t=>t.status==='open')||tournaments.find(t=>t.status==='published')||tournaments[0])?.id??null;
@@ -430,13 +431,13 @@ export async function tournamentRoute(
           tournament_id: selected,
           registrations: selected===null ? [] : (
             await env.ORDERS.prepare(
-              "SELECT o.id,o.reference,o.email,o.first_name,o.last_name,o.total_cents,o.payment_status,o.version,r.* FROM orders o JOIN tournament_registrations r ON r.order_id=o.id WHERE o.kind='tournament' AND r.tournament_id=? ORDER BY o.created_at DESC LIMIT 500",
-            ).bind(selected).all()
+              "SELECT o.id,o.reference,o.email,o.first_name,o.last_name,o.total_cents,o.payment_status,o.version,r.* FROM orders o JOIN tournament_registrations r ON r.order_id=o.id WHERE o.kind='tournament' AND r.tournament_id=? AND (?=1 OR r.archived_at IS NULL) ORDER BY o.created_at DESC LIMIT 500",
+            ).bind(selected,includeArchived?1:0).all()
           ).results,
         });
       }
       const match = path.match(
-        /^\/admin-tournois\/api\/registrations\/([a-f0-9-]{36})(?:\/(reconcile|resend|rotate-link|resolve-attempt|cheque-received))?$/,
+        /^\/admin-tournois\/api\/registrations\/([a-f0-9-]{36})(?:\/(reconcile|resend|rotate-link|resolve-attempt|cheque-received|archive))?$/,
       );
       if (match) {
         const order = await findOrder(env, match[1]);
@@ -444,6 +445,20 @@ export async function tournamentRoute(
           fail("NOT_FOUND", 404, "Inscription introuvable.");
         if (request.method === "GET" && !match[2])
           return response(await detail(env, order, true));
+        if(request.method==='POST'&&match[2]==='archive') {
+          const d=await body(request),version=integer(d.version,0,2147483647);
+          if(typeof d.archived!=='boolean')fail('ARCHIVE',400,'Choisissez le retrait ou la remise dans le suivi.');
+          const registration=await env.ORDERS.prepare('SELECT registration_status FROM tournament_registrations WHERE order_id=?').bind(order.id).first<Row>();
+          if(registration?.registration_status!=='cancelled')fail('ARCHIVE',409,'Seule une inscription annulée peut être retirée du suivi.');
+          const mutation=crypto.randomUUID(),stamp=now();
+          const result=await env.ORDERS.batch([
+            env.ORDERS.prepare("UPDATE orders SET version=version+1,mutation_id=?,updated_at=? WHERE id=? AND version=? AND kind='tournament' AND EXISTS(SELECT 1 FROM tournament_registrations r WHERE r.order_id=orders.id AND r.registration_status='cancelled' AND ((?=1 AND r.archived_at IS NULL) OR (?=0 AND r.archived_at IS NOT NULL))) RETURNING id").bind(mutation,stamp,order.id,version,d.archived?1:0,d.archived?1:0),
+            env.ORDERS.prepare('UPDATE tournament_registrations SET archived_at=?,archived_by=? WHERE order_id=? AND EXISTS(SELECT 1 FROM orders WHERE id=? AND mutation_id=?)').bind(d.archived?stamp:null,d.archived?actor:'',order.id,order.id,mutation),
+            env.ORDERS.prepare("INSERT INTO order_events(id,order_id,kind,actor,message,created_at) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM orders WHERE id=? AND mutation_id=?)").bind(mutation,order.id,d.archived?'archived':'restored',actor,d.archived?'Inscription retirée du suivi.':'Inscription remise dans le suivi.',stamp,order.id,mutation),
+          ]);
+          if(!result[0].results.length)fail('VERSION',409,'Cette inscription a changé. Rechargez-la avant de modifier son suivi.');
+          return response({ok:true,archived:d.archived});
+        }
         const s = await settings(env);
         if(request.method==='POST'&&match[2]==='cheque-received'){
           const d=await body(request),version=integer(d.version,0,2147483647);
@@ -459,10 +474,13 @@ export async function tournamentRoute(
           ctx.waitUntil(drainMail(env,s));return response({ok:true});
         }
         if (request.method === "POST" && match[2] === "reconcile") {
-          await reconcile(env, s, order.id);
+          const verification=await reconcile(env, s, order.id);
           ctx.waitUntil(drainMail(env, s));
+          const reasons={busy:'Une vérification vient d’être effectuée ou est en cours. Réessayez dans quelques instants.',cheque:'Ce règlement est prévu par chèque. Sa réception se confirme dans la fiche, sans vérification HelloAsso.',no_reference:'Aucune référence de paiement HelloAsso n’est disponible pour cette inscription. Si une demande est restée sans réponse, utilisez la récupération de paiement dans cette fiche.'};
+          const statusMessages:Record<string,string>={paid:'HelloAsso confirme le paiement de cette inscription.',pending:'HelloAsso ne confirme pas encore de paiement pour cette inscription.',refused:'HelloAsso indique que le paiement a été refusé.',refunded:'HelloAsso confirme le remboursement du paiement.',partially_refunded:'HelloAsso confirme un remboursement partiel.',refunding:'Le remboursement est en cours chez HelloAsso.',contested:'Le paiement est contesté et doit être vérifié par le club.',review:'Les informations de paiement doivent être vérifiées par le club.'};
+          const message=verification.checked?statusMessages[verification.payment_status]||'La vérification HelloAsso est terminée. Consultez l’état du paiement.':reasons[verification.reason];
           return response(
-            await detail(env, await findOrder(env, order.id), true),
+            {...await detail(env, await findOrder(env, order.id), true),verification:{...verification,message}},
           );
         }
         if (request.method === "POST" && match[2] === "rotate-link") {
