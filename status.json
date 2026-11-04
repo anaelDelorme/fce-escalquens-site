@@ -1,9 +1,9 @@
 {
-  "commit": "a927c7f4cc3805aabf2e83ebdcabf233de0a4069",
+  "commit": "83dd7b3eb038ce336a4d55e9051c2c31caa6875e",
   "preparation": "success",
   "pr": "failure",
   "pr_url": null,
-  "run_url": "https://github.com/anaelDelorme/fce-escalquens-site/actions/runs/41788535133",
+  "run_url": "https://github.com/anaelDelorme/fce-escalquens-site/actions/runs/41789205179",
   "production_writes": 0,
   "production_databases": {
     "DB": "883401b1-f229-4c0e-9e25-6493f8d01b93",
@@ -25,7 +25,9 @@
     "media": 40
   },
   "sql_sha256": {
-    "shop": "63bac73e5e26f07c60b8ee7339da83e87ca5b15889b874bd3d44be0679434c06",
-    "tournaments": "0cfbb6827541a3eae38a79c85e898b524a1e03bb5e730c849249703af51ae104"
-  }
+    "shop": "331ba9764176a962a0229df60c6fc24bd392d754f86cc942a6500227e3109ff1",
+    "tournaments": "0cfbb6827541a3eae38a79c85e898b524a1e03bb5e730c849249703af51ae104",
+    "settings": "7efdeebb50a7f09624541ded7edfaf28681c4d84073d80dd30764078a7ae1433"
+  },
+  "business_contact_present": true
 }
