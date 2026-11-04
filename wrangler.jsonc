@@ -137,7 +137,7 @@
     "MAIL_FROM": "contact@fcescalquens.fr",
     "SMTP_HOST": "ssl0.ovh.net",
     "SMTP_USER": "contact@fcescalquens.fr",
-    "HELLOASSO_ORGANIZATION_SLUG": "fce",
+    "HELLOASSO_ORGANIZATION_SLUG": "fc-escalquens",
     "CF_ACCESS_ISSUER": "https://cold-flower-98c5.cloudflareaccess.com",
     "CF_ACCESS_SHOP_AUD": "f827656ccd26fd80b376c4a8fafc9856807e972b8c644c02c37d866dd4775922",
     "CF_ACCESS_TOURNAMENT_AUD": "6fc024b73f384ce687f21abfe13c663b2b8cf8c0fa9f896b35239db60646eb3f",
