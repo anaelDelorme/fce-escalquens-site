@@ -53,6 +53,20 @@ function registrationSections(row) {
   // Older registrations contain one category and a team count.
   return row.category ? [{category:row.category,quantity:Number.isSafeInteger(row.team_count)&&row.team_count>0?row.team_count:1}] : [];
 }
+function registrationExportRows(row, category) {
+  const configured=registrationSections(row);
+  const sections=configured.length?configured:[{category:row.category||'',quantity:Number.isSafeInteger(row.team_count)&&row.team_count>0?row.team_count:1}];
+  const count=sections.reduce((total,section)=>total+section.quantity,0);
+  const unit=row.total_cents/count;
+  return sections.filter(section=>!category||section.category===category).map(section=>({
+    ...row,
+    category:section.category,
+    nb_equipes:section.quantity,
+    team_name:/^\d+\s+équipes?$/i.test(row.team_name||'')?`${section.quantity} équipe${section.quantity>1?'s':''}`:row.team_name,
+    registration_total_cents:row.total_cents,
+    total_cents:Number.isSafeInteger(unit)?unit*section.quantity:'',
+  }));
+}
 function categoryOverview(rows) {
   const groups=new Map();
   for(const row of rows) {
@@ -117,14 +131,14 @@ async function registrations(clearDetail=false) {
       "reference",
       "tournament_name",
       "club_name",
-      "team_name",
       "category",
+      "nb_equipes",
+      "team_name",
       "email",
       "payment_status",
       "registration_status",
       "total_cents",
-      "team_count",
-      "sections_json",
+      "registration_total_cents",
       "payment_method",
     ];
     const questions = new Map();
@@ -136,11 +150,11 @@ async function registrations(clearDetail=false) {
       "\uFEFF" +
       [
         [...columns, ...custom.map((id) => questions.get(id))],
-        ...visible.map((r) => [
+        ...visible.flatMap(r=>registrationExportRows(r,registrationFilters.category)).map((r) => [
           ...columns.map((k) => r[k]),
           ...custom.map((id) => {
             const v = JSON.parse(r.answers_json || "{}")[id];
-            return typeof v === "boolean" ? (v ? "Oui" : "Non") : v || "";
+            return typeof v === "boolean" ? (v ? "Oui" : "Non") : v ?? "";
           }),
         ]),
       ]
