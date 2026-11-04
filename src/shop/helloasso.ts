@@ -8,6 +8,20 @@ export function apiBase(env: ShopEnv) {
     ? "https://api.helloasso.com"
     : "https://api.helloasso-sandbox.com";
 }
+function rejectedRequestMessage(status: number, checkout: boolean) {
+  const code = `HTTP ${status}`;
+  if (status === 403 && checkout)
+    return `HelloAsso refuse la création du paiement (${code}). Le club doit vérifier l’autorisation Checkout de son application API pour cette association.`;
+  if (status === 401)
+    return `HelloAsso refuse l’authentification de la demande (${code}). Le club doit vérifier les identifiants API de cet environnement.`;
+  if (status === 404)
+    return `HelloAsso ne trouve pas l’association ou le service demandé (${code}). Le club doit vérifier l’identifiant de l’association configuré.`;
+  if (status === 400 || status === 422)
+    return `HelloAsso refuse les informations de la demande (${code}). Le club doit vérifier le montant et les coordonnées du payeur.`;
+  if (status === 409)
+    return `HelloAsso signale un conflit sur la demande (${code}). Contactez le club pour vérifier son état avant une nouvelle tentative.`;
+  return `HelloAsso n’a pas accepté la demande (${code}). Le club doit vérifier les droits de son application pour cette association.`;
+}
 export async function api(
   env: ShopEnv,
   path: string,
@@ -41,7 +55,7 @@ export async function api(
       fail(
         "HELLOASSO_REJECTED",
         502,
-        "HelloAsso n’a pas accepté la demande. Le club doit vérifier sa configuration et la validation de son association.",
+        rejectedRequestMessage(result.status, /\/checkout-intents$/.test(path)),
       );
     fail(
       "HELLOASSO_UNAVAILABLE",

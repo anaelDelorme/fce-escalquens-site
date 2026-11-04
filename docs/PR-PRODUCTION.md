@@ -1,9 +1,9 @@
-Le test HelloAsso de production cherchait l’association `fce`. L’URL publique confirmée par le club est https://www.helloasso.com/associations/fc-escalquens : son identifiant réel est `fc-escalquens`.
+Le test de connexion HelloAsso réussit pour `fc-escalquens`, mais la création du paiement d’une inscription est refusée avec un message générique. Le test effectue seulement OAuth et des lectures d’associations : son succès ne démontre pas l’autorisation Checkout de l’application API.
 
-La valeur par défaut de production est corrigée dans `wrangler.jsonc`. Le staging utilise toujours son association Sandbox `fce`. La préparation des prochaines archives utilise également cet identifiant de production pour ses paramètres métier.
+Les refus de création affichent désormais leur statut HTTP avec une indication adaptée : droits Checkout pour un 403, authentification pour un 401, informations de la demande pour un 400/422, association ou service pour un 404 et conflit pour un 409. Les messages sont fixes et ne reprennent aucune réponse brute du prestataire. Les deux administrations précisent la portée du test de connexion.
 
-Pour une base déjà configurée, le champ enregistré dans D1 a priorité sur cette valeur par défaut : dans **Boutique → Paramètres**, renseigner `fc-escalquens` dans **Identifiant de l’association HelloAsso**, enregistrer puis relancer **Tester HelloAsso sans paiement**. Ce réglage commun sert aussi aux tournois et prend effet immédiatement.
+Les paramètres partagés boutique/tournois et le traitement des paiements sont conservés : une réponse explicitement refusée marque la tentative en échec ; une expiration réseau reste incertaine et bloque une seconde création automatique. Ce changement permet d’identifier le refus réel ; il ne modifie pas les autorisations du compte HelloAsso.
 
-Le contrôle réel du rattachement à l’association se fait avec ce bouton après sauvegarde du paramètre. Le diagnostic obtient un jeton OAuth et effectue uniquement des lectures d’associations.
+Validation : tests simulant le compte commun, une connexion réussie suivie d’un refus Checkout 403, les refus 400/422 et l’absence de seconde création après expiration réseau ; suite complète, TypeScript, build et workflow vérifiés. Aucun appel réel de création de paiement.
 
-Validation : tests des paramètres et transferts de production, sélection d’environnement HelloAsso et diagnostic limité à OAuth/GET ; configuration statique et workflow vérifiés.
+Après déploiement, reprendre le paiement depuis le suivi de l’inscription existante et relever le nouveau statut si le refus persiste. Ne pas finaliser le règlement pour ce simple contrôle.

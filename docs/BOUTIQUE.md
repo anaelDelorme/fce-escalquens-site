@@ -85,6 +85,8 @@ Si l’interface et l’API utilisent deux applications Access, séparer les deu
 
 Les paramètres du backoffice contiennent le slug de l’association et l’état de configuration, pas les secrets. Créer un client HelloAsso Sandbox distinct du client réel. L’association doit être vérifiée et le client autorisé pour Checkout et AccessTransactions.
 
+Le bouton **Tester HelloAsso sans paiement** effectue uniquement l’authentification OAuth et des lectures d’associations. Un résultat « Association validée pour l’encaissement » indique le statut de l’association, sans prouver que l’application API possède le droit **Checkout**. Boutique et tournois partagent le même compte et le paramètre d’association enregistré dans la base boutique. Lors d’un refus de création, le message affiche le statut HTTP : un **403** invite à vérifier l’autorisation Checkout ; un **400/422** invite à vérifier les informations envoyées. Les réponses brutes du prestataire restent privées. Pour poursuivre un essai, utiliser le bouton de paiement du suivi existant ; il n’est pas nécessaire de recréer une inscription. Ouvrir la page de paiement ne débite pas d’argent : ne pas finaliser le règlement pour un simple essai d’ouverture.
+
 ```bash
 npx wrangler secret put HELLOASSO_CLIENT_ID --env staging
 npx wrangler secret put HELLOASSO_CLIENT_SECRET --env staging
