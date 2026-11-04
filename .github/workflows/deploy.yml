@@ -82,9 +82,9 @@ jobs:
         run: |
           pr_url=$(gh pr list --base main --head "$GITHUB_REF_NAME" --json url --jq '.[0].url // empty')
           if [ -z "$pr_url" ]; then
-            pr_url=$(gh pr create --draft --base main --head "$GITHUB_REF_NAME" --title "Corrige l’association HelloAsso de production" --body-file docs/PR-PRODUCTION.md 2>pr-error.txt)
+            pr_url=$(gh pr create --draft --base main --head "$GITHUB_REF_NAME" --title "Précise les refus de paiement HelloAsso et le test de connexion" --body-file docs/PR-PRODUCTION.md 2>pr-error.txt)
           else
-            gh pr edit "$pr_url" --title "Corrige l’association HelloAsso de production" --body-file docs/PR-PRODUCTION.md 2>pr-error.txt
+            gh pr edit "$pr_url" --title "Précise les refus de paiement HelloAsso et le test de connexion" --body-file docs/PR-PRODUCTION.md 2>pr-error.txt
           fi
           printf 'url=%s\n' "$pr_url" >> "$GITHUB_OUTPUT"
       - name: Publier le compte rendu de préparation sans données privées
