@@ -7,12 +7,13 @@ import {contactField,payerContact} from '../src/shop/contact';
 import {rejectedFields,HelloAssoRejection} from '../src/shop/helloasso-errors';
 import {paymentAttemptMessage} from '../public/shop-common.js';
 
-test('coordonnées : noms internationaux et ponctuation conservés, aucune interdiction inventée des parenthèses',()=>{
-  for(const value of ['Kévin','Anne-Marie',"O’Neill",'D\u0301umont','王小明','Μαρία','محمد‌حسین','Camille (coach U11)']){
+test('coordonnées : noms internationaux conservés, annotations et chiffres refusés dans le nom et le prénom',()=>{
+  for(const value of ['Kévin','Anne-Marie',"O’Neill",'D\u0301umont','王小明','Μαρία','محمد‌حسین']){
     assert.equal(contactIssue('first_name',value),'');assert.equal(contactField('first_name',' '+value+' '),value);
   }
   assert.equal(contactIssue('first_name','A'.repeat(80)),'');assert.match(contactIssue('first_name','A'.repeat(81)),/80 caractères/);
   for(const value of ['', '  ', '123', '----', 'Camille\nExemple', 'Camille\u200b', 'Camille\u202e', 'client@example.org'])assert.ok(contactIssue('first_name',value),JSON.stringify(value));
+  for(const value of ['Camille (coach u10)','Camille (coach)','Camille U10','Exemple [U11]','Camille（coach）','Camille ١٠'])for(const field of ['first_name','last_name'])assert.match(contactIssue(field,value),/sans parenthèses, chiffres ni précision/);
   assert.throws(()=>contactField('last_name','\tExemple'),(e:any)=>e.code==='CONTACT_LAST_NAME');
   assert.ok(contactLimits.first_name<=255&&contactLimits.last_name<=255&&contactLimits.email<=255);
 });

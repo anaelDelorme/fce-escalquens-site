@@ -1,15 +1,16 @@
 // Application limits stay below CheckoutPayer's documented 255-character limits.
 export const contactLimits = { first_name:80, last_name:80, email:254, phone:30 };
-const labels = { first_name:'Le prénom', last_name:'Le nom', email:'L’adresse e-mail', phone:'Le téléphone' };
+const contactFieldLabels = { first_name:'Le prénom', last_name:'Le nom', email:'L’adresse e-mail', phone:'Le téléphone' };
 const invisible = /[\u0000-\u001f\u007f-\u009f\u200b\u200e\u200f\u2028-\u202e\u2060-\u206f\ufeff]/;
 export function contactIssue(field, value) {
   if(!Object.hasOwn(contactLimits,field))return '';
-  const label=labels[field];
+  const label=contactFieldLabels[field];
   if(typeof value!=='string'||!value.trim())return `${label} est obligatoire.`;
   if(value.length>contactLimits[field])return `${label} est limité à ${contactLimits[field]} caractères.`;
   if(invisible.test(value))return `${label} contient un caractère invisible ou un retour à la ligne. Retapez ce champ.`;
   const text=value.trim();
   if(field==='first_name'||field==='last_name'){
+    if(/[()[\]{}（）［］｛｝]|\p{N}/u.test(text))return `${label} doit être saisi sans parenthèses, chiffres ni précision comme « coach U10 ». Utilisez les champs Club ou Équipe pour ces mentions.`;
     if(!/\p{L}/u.test(text))return `${label} doit contenir au moins une lettre.`;
     if(text.includes('@')||text.includes('://'))return `${label} doit contenir votre identité, pas une adresse e-mail ou un lien.`;
   }

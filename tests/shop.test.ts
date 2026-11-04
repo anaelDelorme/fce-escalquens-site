@@ -1675,7 +1675,7 @@ test('coordonnées boutique et tournois : saisie invalide refusée avant command
  await ORDERS.prepare('DELETE FROM rate_limits').run();await TOURNEYS.prepare('DELETE FROM rate_limits').run();
  const snapshot=async(db:TestDatabase)=>JSON.stringify(await Promise.all(['orders','order_items','checkout_attempts','payments','outbox'].map(async table=>[table,(await db.prepare('SELECT * FROM '+table+' ORDER BY rowid').all()).results])));
  const shopBefore=await snapshot(ORDERS),tourneyBefore=await snapshot(TOURNEYS),intentsBefore=intents;
- for(const [field,value,code] of [['first_name','123','CONTACT_FIRST_NAME'],['last_name','Nom\u200b','CONTACT_LAST_NAME'],['email','a..b@example.org','CONTACT_EMAIL'],['phone','......','CONTACT_PHONE']]){
+ for(const [field,value,code] of [['first_name','123','CONTACT_FIRST_NAME'],['first_name','Camille (coach u10)','CONTACT_FIRST_NAME'],['last_name','Exemple U10','CONTACT_LAST_NAME'],['last_name','Nom\u200b','CONTACT_LAST_NAME'],['email','a..b@example.org','CONTACT_EMAIL'],['phone','......','CONTACT_PHONE']]){
   const a=await route(request('/api/shop/checkout',{...payload(),[field]:value}));assert.equal(a.status,400);assert.equal(a.body.code,code);
   const res=await tournamentRoute(request('/api/tournaments/registrations',{...tournamentPayload(),[field]:value}),env,ctx);assert.equal(res!.status,400);assert.equal((await res!.json() as any).code,code);
  }

@@ -6,9 +6,10 @@ export function orderSearch(url: URL) {
   const q=(url.searchParams.get('q')||'').slice(0,100);
   const payment=(url.searchParams.get('payment')||'').slice(0,30);
   const fulfillment=(url.searchParams.get('fulfillment')||'').slice(0,30);
+  const includeArchived=url.searchParams.get('include_archived')==='1';
   return {
-    where:"o.kind='shop' AND (?='' OR instr(lower(o.reference||' '||o.email||' '||o.first_name||' '||o.last_name),lower(?))>0) AND (?='' OR o.payment_status=?) AND (?='' OR o.fulfillment=?)",
-    bindings:[q,q,payment,payment,fulfillment,fulfillment],
+    where:"o.kind='shop' AND (?=1 OR NOT EXISTS(SELECT 1 FROM order_archives a WHERE a.order_id=o.id)) AND (?='' OR instr(lower(o.reference||' '||o.email||' '||o.first_name||' '||o.last_name),lower(?))>0) AND (?='' OR o.payment_status=?) AND (?='' OR o.fulfillment=?)",
+    bindings:[includeArchived?1:0,q,q,payment,payment,fulfillment,fulfillment],
   };
 }
 

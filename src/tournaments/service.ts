@@ -33,7 +33,7 @@ import {
 } from "../shop/service";
 import { queueMail, drainMail } from "../shop/mail";
 import { api, connectionStatus } from "../shop/helloasso";
-import {payerContact} from '../shop/contact';
+import {payerContact,correctPayer} from '../shop/contact';
 
 async function sales(env: ShopEnv, all = false) {
   return (
@@ -435,7 +435,7 @@ export async function tournamentRoute(
         });
       }
       const match = path.match(
-        /^\/admin-tournois\/api\/registrations\/([a-f0-9-]{36})(?:\/(reconcile|resend|rotate-link|resolve-attempt|cheque-received|archive))?$/,
+        /^\/admin-tournois\/api\/registrations\/([a-f0-9-]{36})(?:\/(reconcile|resend|rotate-link|resolve-attempt|cheque-received|archive|payer))?$/,
       );
       if (match) {
         const order = await findOrder(env, match[1]);
@@ -443,6 +443,7 @@ export async function tournamentRoute(
           fail("NOT_FOUND", 404, "Inscription introuvable.");
         if (request.method === "GET" && !match[2])
           return response(await detail(env, order, true));
+        if(request.method==='POST'&&match[2]==='payer')return await correctPayer(request,env,order,actor);
         if(request.method==='POST'&&match[2]==='archive') {
           const d=await body(request),version=integer(d.version,0,2147483647);
           if(typeof d.archived!=='boolean')fail('ARCHIVE',400,'Choisissez le retrait ou la remise dans le suivi.');

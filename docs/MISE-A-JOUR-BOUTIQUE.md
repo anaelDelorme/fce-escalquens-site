@@ -26,9 +26,17 @@ Les endpoints d’export sont réservés à l’administration boutique et renvo
 
 ## Coordonnées et diagnostic HelloAsso
 
-Les formulaires des cinq boutiques et des tournois partagent des contrôles de prénom, nom, e-mail et téléphone avec leur API. Les erreurs sont affichées sous les champs avant toute création ; les noms internationaux et la ponctuation sont conservés. Les mentions de coach, d’équipe et de club ont leurs champs dédiés. La spécification officielle ne publie pas d’interdiction des parenthèses : aucune suppression automatique de texte n’est appliquée au nom.
+Les formulaires des cinq boutiques et des tournois partagent des contrôles de prénom, nom, e-mail et téléphone avec leur API. Les erreurs sont affichées sous les champs avant toute création ; les noms internationaux, apostrophes et traits d’union sont conservés. Les annotations entre parenthèses, crochets ou accolades et les chiffres sont refusés dans l’identité, à la suite du refus constaté avec « (coach u10) ». Les mentions de coach, d’équipe et de club ont leurs champs dédiés. Cette prévention complète la spécification officielle, qui ne publie pas cette restriction ; aucune suppression automatique de texte n’est appliquée au nom.
 
 Les prochaines tentatives refusées conservent le statut HTTP et les noms de champs que le site sait reconnaître, sans valeur personnelle ni message brut du prestataire. Ces diagnostics sont lisibles dans les fiches administratives boutique et tournois. Le détail des anciennes erreurs n’est pas reconstituable. Les reprises des commandes déjà enregistrées restent idempotentes et aucun paiement n’est relancé automatiquement. Voir [les contraintes documentées et les protections](HELLOASSO-COORDONNEES.md).
+
+Pour une demande déjà créée, ouvrir sa fiche puis « Corriger le nom et le prénom du payeur ». Cette action est disponible avant tout paiement engagé et conserve les articles, le montant, l’e-mail et la référence. Le client reprend ensuite le paiement depuis son lien de suivi existant. Dès qu’une intention HelloAsso ou un paiement existe, la correction est bloquée ; les versions empêchent aussi une ancienne lecture de lancer un paiement avec les noms précédents.
+
+## Retirer une commande annulée du suivi
+
+Une fiche de commande annulée propose « Retirer du suivi ». La commande disparaît des listes et du CSV habituels. Cocher « Afficher aussi les commandes retirées du suivi » puis appliquer les filtres permet de la retrouver et de choisir « Remettre dans le suivi ». Le même filtre est appliqué aux exports. La commande reste annulée après sa remise dans la liste.
+
+Il s’agit d’un retrait réversible, sans effacement des articles, paiements, tentatives HelloAsso, mails ou historique. L’action est réservée aux responsables boutique, contrôlée par version et tracée ; elle ne déclenche aucun mail ni appel HelloAsso. La migration ORDERS `0007_order_archive.sql` crée uniquement la table de métadonnées `order_archives`, initialement vide. Les commandes existantes restent visibles et le schéma des tables de commandes et paiements reste compatible avec les anciennes copies tournois.
 
 ## Protection avant chaque déploiement production
 
@@ -38,7 +46,7 @@ Les trois repères et les identifiants des bases sont chiffrés avec le secret e
 
 L’artefact est conservé 7 jours et contient des points de reprise, pas une copie SQL indépendante. La durée de restauration effective dépend de la rétention D1 Time Travel de l’offre Cloudflare (7 ou 30 jours) ; conserver les repères plus longtemps ne prolonge pas cette rétention. La capture réelle se fait dans GitHub Actions au déploiement, pas pendant la préparation de la PR.
 
-Une restauration de base ne se déclenche jamais automatiquement : elle pourrait supprimer des commandes ou paiements arrivés après le point de reprise. Pour cette PR sans modification de schéma, revenir au Worker précédent préserve ces nouvelles données. La reprise d’une base nécessite d’abord d’identifier et de protéger les transactions postérieures.
+Une restauration de base ne se déclenche jamais automatiquement : elle pourrait supprimer des commandes ou paiements arrivés après le point de reprise. La nouvelle table de retrait du suivi est indépendante des tables de commandes et paiements : revenir au Worker précédent préserve les données, mais réaffiche les commandes retirées du suivi. La reprise d’une base nécessite d’abord d’identifier et de protéger les transactions postérieures.
 
 ## Copie du catalogue staging vers production
 

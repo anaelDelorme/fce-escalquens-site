@@ -35,8 +35,9 @@ import { mailReady, mailTransportReady } from "./mail-config";
 import { smtpConfigured } from "./smtp";
 import { priceLabelStatement } from "./catalogue-pricing";
 import { orderSearch, orderExportPage, supplierOrder } from './order-exports';
-import {payerContact,contactField} from './contact';
+import {payerContact,contactField,correctPayer} from './contact';
 import {HelloAssoRejection} from './helloasso-errors';
+import {archiveOrder} from './order-archive';
 export interface ShopEnv {
   DB: D1Database;
   ORDERS: D1Database;
@@ -259,6 +260,10 @@ export async function detail(env: ShopEnv, order: Row, admin = false) {
       );
   delete safeOrder.token_hash;
   delete safeOrder.request_hash;
+  if(admin&&order.kind==='shop'){
+    const archive=await env.ORDERS.prepare('SELECT archived_at,archived_by FROM order_archives WHERE order_id=?').bind(order.id).first<Row>();
+    safeOrder.archived_at=archive?.archived_at??null;safeOrder.archived_by=archive?.archived_by||'';
+  }
   return {
     order: safeOrder,
     items: items.results.map((i) => ({
@@ -529,12 +534,13 @@ export async function checkout(
   if(!Number.isSafeInteger(order.total_cents)||order.total_cents<=0||order.total_cents>2147483647)
     fail('PAYMENT_AMOUNT',409,'Le montant enregistré doit être vérifié par le club avant de lancer le paiement.');
   const attemptId = crypto.randomUUID();
+  let claimed;
   try {
-    await env.ORDERS.prepare(
-      "INSERT INTO checkout_attempts(id,order_id,created_at) VALUES(?,?,?)",
+    claimed=await env.ORDERS.prepare(
+      "INSERT INTO checkout_attempts(id,order_id,created_at) SELECT ?,?,? FROM orders WHERE id=? AND version=? AND payment_status IN ('pending','refused') AND fulfillment<>'cancelled' RETURNING id",
     )
-      .bind(attemptId, order.id, now())
-      .run();
+      .bind(attemptId, order.id, now(),order.id,order.version)
+      .first();
   } catch {
     return fail(
       "PAYMENT_PENDING",
@@ -542,6 +548,7 @@ export async function checkout(
       "Une demande de paiement est déjà en cours. Actualisez le suivi.",
     );
   }
+  if(!claimed)fail('ORDER_CHANGED',409,'Les informations de cette demande ont changé. Actualisez son suivi avant de reprendre le paiement.');
   try {
     const link = `${origin(env)}/paiements/retour/?order=${order.id}&context=${order.kind === "tournament" ? "tournois" : "boutique"}`;
     const result = await api(
@@ -1233,7 +1240,7 @@ export async function shopRoute(
         );
         const search=orderSearch(url);
         const rows = await env.ORDERS.prepare(
-          `SELECT o.id,o.reference,o.email,o.first_name,o.last_name,o.team,o.total_cents,o.payment_status,o.fulfillment,o.created_at,o.version FROM orders o WHERE ${search.where} ORDER BY o.created_at DESC,o.id DESC LIMIT 51 OFFSET ?`,
+          `SELECT o.id,o.reference,o.email,o.first_name,o.last_name,o.team,o.total_cents,o.payment_status,o.fulfillment,o.created_at,o.version,(SELECT a.archived_at FROM order_archives a WHERE a.order_id=o.id) AS archived_at FROM orders o WHERE ${search.where} ORDER BY o.created_at DESC,o.id DESC LIMIT 51 OFFSET ?`,
         )
           .bind(...search.bindings, page * 50)
           .all<Row>();
@@ -1257,13 +1264,15 @@ export async function shopRoute(
         return response({ aggregate, responses: rows.results });
       }
       const match = path.match(
-        /^\/admin-boutique\/api\/orders\/([a-f0-9-]{36})(?:\/(purchase-order|reconcile|resend|rotate-link|resolve-attempt))?$/,
+        /^\/admin-boutique\/api\/orders\/([a-f0-9-]{36})(?:\/(purchase-order|reconcile|resend|rotate-link|resolve-attempt|archive|payer))?$/,
       );
       if (match) {
         const order = await findOrder(env, match[1]);
         if(order.kind !== "shop")fail("ORDER_NOT_FOUND",404,"Commande boutique introuvable.");
         if (!match[2] && request.method === "GET")
           return response(await detail(env, order, true));
+        if(match[2]==='archive'&&request.method==='POST')return await archiveOrder(request,env,order,actor);
+        if(match[2]==='payer'&&request.method==='POST')return await correctPayer(request,env,order,actor);
         if (!match[2] && request.method === "PATCH") {
           const result = await updateFulfillment(request, env, order, actor);
           ctx.waitUntil(drainMail(env, s));

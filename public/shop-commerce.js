@@ -248,7 +248,7 @@ function renderCart() {
   const form = document.querySelector("#checkout-form");
   const validateContact=bindContactValidation(form);
   const identityHelp=document.createElement('p');identityHelp.className='commerce-help wide';identityHelp.id='shop-payer-help';
-  identityHelp.textContent='Indiquez le prénom et le nom du payeur. Réservez les mentions de coach ou de catégorie au champ Équipe / catégorie.';
+  identityHelp.textContent='Indiquez uniquement le prénom et le nom du payeur, sans parenthèses, chiffres ni précision. Réservez les mentions de coach ou de catégorie au champ Équipe / catégorie.';
   form.querySelector('.commerce-form-grid').append(identityHelp);
   for(const name of ['first_name','last_name']){form.elements[name].setAttribute('aria-describedby',`${form.elements[name].getAttribute('aria-describedby')} shop-payer-help`);form.elements[name].spellcheck=false;form.elements[name].setAttribute('autocorrect','off');}
   form.elements.email.setAttribute('inputmode','email');form.elements.email.spellcheck=false;

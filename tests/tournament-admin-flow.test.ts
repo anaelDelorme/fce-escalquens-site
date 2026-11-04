@@ -32,7 +32,7 @@ async function fixture(t:any) {
     assert.ok(response);return response;
   }) as any;
   t.after(async()=>{await Promise.allSettled(tasks);await w.happyDOM.abort();w.close();site.close();orders.close();tournaments.close();});
-  w.eval(common+'\n'+source('tournament-form-fields')+'\n'+source('admin-tournaments'));
+  w.eval(common+'\n'+readFileSync('public/shop-contact.js','utf8').replace(/export /g,'')+'\n'+source('tournament-form-fields')+'\n'+source('admin-tournaments'));
   await until(()=>Boolean(w.document.querySelector('[data-order]')));
   return {w,tournaments,id,calls,env,messages,tasks};
 }

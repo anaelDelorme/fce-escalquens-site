@@ -44,7 +44,7 @@ async function open(id) {
   dialog.querySelector("[data-close]").onclick = () => dialog.close();
   const form=dialog.querySelector("form");
   form.id='tournament-contact-form';form.validateContact=bindContactValidation(form);
-  const identityHelp=document.createElement('p');identityHelp.className='commerce-help wide';identityHelp.id='tournament-payer-help';identityHelp.textContent='Indiquez le prénom et le nom du contact qui règle l’inscription. Renseignez le nom du club dans le champ Club.';
+  const identityHelp=document.createElement('p');identityHelp.className='commerce-help wide';identityHelp.id='tournament-payer-help';identityHelp.textContent='Indiquez uniquement le prénom et le nom du contact, sans parenthèses, chiffres ni précision. Renseignez le nom du club dans le champ Club et les catégories dans les sections du tournoi.';
   form.querySelector('[name=phone]').closest('label').after(identityHelp);
   for(const [name,autocomplete] of [['first_name','given-name'],['last_name','family-name'],['email','email'],['phone','tel']])form.elements[name].setAttribute('autocomplete',autocomplete);
   for(const name of ['first_name','last_name']){form.elements[name].setAttribute('aria-describedby',`${form.elements[name].getAttribute('aria-describedby')} tournament-payer-help`);form.elements[name].spellcheck=false;form.elements[name].setAttribute('autocorrect','off');}
