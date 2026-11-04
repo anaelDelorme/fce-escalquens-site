@@ -200,7 +200,7 @@ test('prix : comparaison discrète, tailles cohérentes et absence de référenc
  const {priceMarkup}=await import('../public/shop-common.js');
  assert.doesNotMatch(priceMarkup([{price_cents:2000}]),/Prix catalogue/);
  const exact=priceMarkup([{price_cents:2000,catalogue_price_cents:3000}]);assert.match(exact,/Tarif FCE/);assert.match(exact,/Prix catalogue/);assert.doesNotMatch(exact,/économ|%|promo/i);
- assert.match(priceMarkup([{price_cents:1800,price_kind:'coach'}]),/Tarif coach/);
+ assert.match(priceMarkup([{price_cents:1800,price_kind:'coach'}]),/Tarif FCE/);
  const mixed=priceMarkup([{price_cents:2000,catalogue_price_cents:3000},{price_cents:2500,catalogue_price_cents:null}]);assert.match(mixed,/Prix catalogue/);assert.doesNotMatch(mixed,/Référence catalogue renseignée|certaines tailles/);
  const w=setup({...fixture,variants:fixture.variants.map(v=>({...v,catalogue_price_cents:v.id==='v2'?4000:null}))}),d=w.document;
  d.querySelector<HTMLElement>('[data-order-product="1"]')!.click();await next();
@@ -221,14 +221,11 @@ test('photos : aperçu existant, nouvelle clé et erreur explicite dans la zone 
  await w.happyDOM.abort();w.close();
 });
 
-test('accès coach : formulaire discret, erreur explicite, code absent du stockage et sortie accessible',async()=>{
- const w=setup(),d=w.document;d.body.insertAdjacentHTML('beforeend','<div id="shop-browse"></div>');
- d.dispatchEvent(new w.CustomEvent('shop-loaded',{detail:{...fixture,coach_access_enabled:true,pricing_mode:'fce'}}));
- const input=d.querySelector<HTMLInputElement>('#coach-code-form [name=code]')!;assert.equal(input.type,'password');input.value='code-confidentiel';
- let submitted:any;w.fetch=(async(path:any,options:any)=>{submitted=JSON.parse(options.body);return Response.json({error:'Code incorrect.',code:'COACH_CODE'},{status:403});}) as any;
- d.querySelector('form')!.dispatchEvent(new w.Event('submit',{cancelable:true,bubbles:true}));await next();assert.equal(submitted.code,'code-confidentiel');assert.match(d.querySelector('#coach-access [role=alert]')!.textContent!,/Code incorrect/);
- assert.doesNotMatch(JSON.stringify(Object.entries(w.sessionStorage)),/code-confidentiel/);assert.equal(w.location.search,'');
- d.dispatchEvent(new w.CustomEvent('shop-loaded',{detail:{...fixture,coach_access_enabled:true,pricing_mode:'coach'}}));assert.ok(d.querySelector('#coach-logout'));assert.equal(d.querySelector('#coach-code-form'),null);
+test('boutique sans accès coach : aucun formulaire ni action même avec un ancien catalogue',async()=>{
+ const w=setup({...fixture,coach_access_enabled:true,pricing_mode:'coach'}),d=w.document;
+ d.body.insertAdjacentHTML('beforeend','<div id="shop-browse"></div>');
+ d.dispatchEvent(new w.CustomEvent('shop-loaded',{detail:{...fixture,coach_access_enabled:true,pricing_mode:'coach'}}));
+ assert.equal(d.querySelector('#coach-access'),null);assert.equal(d.querySelector('#coach-code-form'),null);
  await w.happyDOM.abort();w.close();
 });
 
@@ -257,7 +254,7 @@ test('tarifs groupés DOM : sélectionner enfant, appliquer deux prix, préserve
  const variants=['6 ans','10 ans','XS','L'].map((size,i)=>({id:'bulk'+i,product_id:1,label:size,size,price_cents:2500,catalogue_price_cents:3500,coach_price_cents:1900,active:1}));
  const calls:any[]=[];const call=async(path:string,options:any={})=>{if(options.method){calls.push({path,...options});return {ok:true};}if(path==='catalogue')return {products:[{id:1,name:'Maillot'}],variants,options:[]};if(path==='suppliers')return {suppliers:[]};throw new Error(path);};
  await renderVariants(w.document.querySelector('#root'),call,()=>{},1);
- const d=w.document,form=d.querySelector<HTMLFormElement>('#bulk-prices')!;assert.ok(form);assert.equal((form.querySelector('[type=submit]') as HTMLButtonElement).disabled,true);
+ const d=w.document,form=d.querySelector<HTMLFormElement>('#bulk-prices')!;assert.ok(form);assert.equal(form.querySelector('[data-bulk-action=coach_price_cents]'),null);assert.doesNotMatch(d.querySelector('#root')!.textContent!,/Tarif coach/);assert.equal((form.querySelector('[type=submit]') as HTMLButtonElement).disabled,true);
  d.querySelector<HTMLElement>('[data-size-preset=child]')!.click();assert.equal(d.querySelectorAll('[data-select-variant]:checked').length,2);
  for(const [key,value] of [['price_cents','23'],['catalogue_price_cents','32']]){const select=form.querySelector<HTMLSelectElement>(`[data-bulk-action=${key}]`)!;select.value='set';select.dispatchEvent(new w.Event('change'));const input=form.querySelector<HTMLInputElement>(`[data-bulk-price=${key}]`)!;assert.equal(input.hidden,false);input.step='any';input.value=value;} // Happy DOM uses binary floating-point modulo for step validity.
  assert.equal((form.querySelector('[type=submit]') as HTMLButtonElement).disabled,false);form.dispatchEvent(new w.Event('submit',{cancelable:true,bubbles:true}));await next();await next();
@@ -265,15 +262,6 @@ test('tarifs groupés DOM : sélectionner enfant, appliquer deux prix, préserve
  d.querySelector<HTMLElement>('[data-move-variant=bulk1][data-direction="-1"]')!.click();await next();await next();assert.equal(calls[1].path,'variants/order');assert.deepEqual(calls[1].data.variant_ids,['bulk1','bulk0','bulk2','bulk3']);
  d.querySelector<HTMLElement>('[data-size-preset=adult]')!.click();assert.equal(d.querySelectorAll('[data-select-variant]:checked').length,2);
  d.querySelector<HTMLElement>('#natural-size-order')!.click();await next();assert.equal(calls[2].data.action,'automatic');
- await w.happyDOM.abort();w.close();
-});
-
-test('accès coach visible : lien du haut ouvre le formulaire et affiche le code à la demande',async()=>{
- const w=setup({...fixture,coach_access_enabled:true},true),d=w.document;w.HTMLElement.prototype.scrollIntoView=()=>{};
- d.dispatchEvent(new w.CustomEvent('shop-loaded',{detail:{...fixture,coach_access_enabled:true}}));
- d.querySelector<HTMLElement>('#open-coach')!.click();await next();assert.equal((d.querySelector('#coach-access details') as HTMLDetailsElement).open,true);
- const input=d.querySelector<HTMLInputElement>('#coach-code-form [name=code]')!;assert.equal(input.placeholder,'FCE-XXXX-XXXX');d.querySelector<HTMLElement>('#reveal-coach')!.click();assert.equal(input.type,'text');d.querySelector<HTMLElement>('#reveal-coach')!.click();assert.equal(input.type,'password');
- assert.doesNotMatch(d.querySelector('#coach-access')!.textContent!,/8 heures/);
  await w.happyDOM.abort();w.close();
 });
 

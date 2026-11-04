@@ -1,3 +1,5 @@
+> Mise à jour : les tarifs coach et l’accès par code sont supprimés. La boutique utilise le tarif FCE pour tous. La remise par le coach reste possible. Les mails et le récapitulatif des équipes par catégorie sont décrits dans [MISE-A-JOUR-BOUTIQUE.md](MISE-A-JOUR-BOUTIQUE.md).
+
 # Guide technique boutique
 
 **V5.2.17 :** [dupliquer un article avec ses tailles, tarifs et personnalisations](CORRECTIF-V5.2.17.md). Présentation des prix : [V5.2.16](CORRECTIF-V5.2.16.md). Tarifs groupés et tri des tailles : [V5.2.15](CORRECTIF-V5.2.15.md).

@@ -5,9 +5,10 @@ import {createHash} from 'node:crypto';
 import {productionPlan,shopTables,tournamentTables,businessFields} from './production-transfer.mjs';
 import {publicMedia} from './public-media.mjs';
 
-const args=process.argv.slice(2),known=['--config','--out','--release','--media-source'];
+const args=process.argv.slice(2),known=['--config','--out','--release','--media-source','--scope'];
 for(let i=0;i<args.length;i+=2)if(!known.includes(args[i])||!args[i+1]||args[i+1].startsWith('--'))throw Error('Usage: node scripts/prepare-production.mjs [--config fichier] [--out dossier] [--release identifiant] [--media-source auto|r2|public]');
 const get=(key,fallback)=>args.includes(key)?args[args.indexOf(key)+1]:fallback;
+const scope=get('--scope','all');if(!['all','shop'].includes(scope))throw Error('Périmètre de reprise invalide.');
 const config=JSON.parse(readFileSync(get('--config','wrangler.jsonc'),'utf8'));
 const release=get('--release','fce-'+new Date().toISOString().replace(/[:.TZ]/g,'-').replace(/-+$/,''));
 const folder=resolve(get('--out','.production-preparation/'+release));
@@ -50,22 +51,28 @@ function tables(env,db,names,required=false){
   return [name,existing.has(name)?query(env,db,`SELECT * FROM ${name}${filter}`):[]];
  }));
 }
+let source,target,tournamentsInitialized=false,targetTournaments=null;
+if(scope==='shop') {
+ source={shop:tables('staging','DB',shopTables,true),tournaments:{}};
+ target={shop:tables('production','DB',shopTables,true),tournaments:{}};
+} else {
 const configuredTournaments=valid(binding(config,'TOURNAMENTS')?.database_id);
 const targetTournamentTables=configuredTournaments?existingTables('production','TOURNAMENTS'):new Set();
-const tournamentsInitialized=tournamentTables.every(name=>targetTournamentTables.has(name))&&targetTournamentTables.has('module_imports')&&query('production','TOURNAMENTS',"SELECT id FROM module_imports WHERE id='v5.2'").length>0;
+tournamentsInitialized=tournamentTables.every(name=>targetTournamentTables.has(name))&&targetTournamentTables.has('module_imports')&&query('production','TOURNAMENTS',"SELECT id FROM module_imports WHERE id='v5.2'").length>0;
 // A newly created binding is not an initialized destination. Keep reviewing
 // the legacy production contents until their initial copy has been verified.
-const targetTournaments=tournamentsInitialized?'TOURNAMENTS':'DB';
-const source={shop:tables('staging','DB',shopTables,true),tournaments:tables('staging','TOURNAMENTS',tournamentTables,true),teams:query('staging','DB','SELECT id,slug FROM teams')};
+targetTournaments=tournamentsInitialized?'TOURNAMENTS':'DB';
+source={shop:tables('staging','DB',shopTables,true),tournaments:tables('staging','TOURNAMENTS',tournamentTables,true),teams:query('staging','DB','SELECT id,slug FROM teams')};
 source.business_settings=query('staging','ORDERS',`SELECT ${businessFields.map(k=>`json_extract(data,'$.${k}') AS ${k}`).join(',')} FROM settings WHERE id=1`)[0]||{};
-if(!query('staging','DB','PRAGMA table_info(shop_personalizations)').some(c=>c.name==='required'))throw Error('La migration des personnalisations obligatoires manque en staging.');
 source.venues=query('staging','DB','SELECT id,name,address FROM venues');source.seasons=query('staging','DB','SELECT id,label FROM seasons');
 const venues=new Map(source.venues.map(v=>[v.id,v.name]));
 for(const t of source.tournaments.tournaments)if(!t.venue)t.venue=venues.get(t.venue_id)||'';
-const target={shop:tables('production','DB',shopTables),tournaments:tables('production',targetTournaments,tournamentTables),teams:query('production','DB','SELECT id,slug FROM teams')};
+target={shop:tables('production','DB',shopTables),tournaments:tables('production',targetTournaments,tournamentTables),teams:query('production','DB','SELECT id,slug FROM teams')};
 target.venues=query('production','DB','SELECT id,name,address FROM venues');target.seasons=query('production','DB','SELECT id,label FROM seasons');
+}
+if(!query('staging','DB','PRAGMA table_info(shop_personalizations)').some(c=>c.name==='required'))throw Error('La migration des personnalisations obligatoires manque en staging.');
 for(const [name,value] of [['source.json',source],['target.json',target]])writeFileSync(join(folder,name),JSON.stringify(value,null,2)+'\n',{mode:0o600});
-const plan=productionPlan(source,target,release,{organizationSlug:config.vars?.HELLOASSO_ORGANIZATION_SLUG});
+const plan=productionPlan(source,target,release,{organizationSlug:config.vars?.HELLOASSO_ORGANIZATION_SLUG,scope});
 writeFileSync(join(folder,'shop.sql'),plan.shop_sql,{mode:0o600});
 writeFileSync(join(folder,'tournaments.sql'),plan.tournaments_sql,{mode:0o600});
 writeFileSync(join(folder,'settings.sql'),plan.settings_sql,{mode:0o600});
@@ -84,6 +91,6 @@ for(const object of plan.media){
  const bytes=readFileSync(join(folder,object.file));object.sha256=createHash('sha256').update(bytes).digest('hex');object.bytes=bytes.length;
 }
 const checksum=file=>createHash('sha256').update(readFileSync(join(folder,file))).digest('hex');
-const manifest={release,created_at:new Date().toISOString(),counts:plan.counts,source_bucket:stageBucket,target_bucket:prodBucket,target_site_db:binding(config,'DB').database_id,target_orders_db:binding(config,'ORDERS')?.database_id||null,target_tournaments_db:binding(config,'TOURNAMENTS')?.database_id||null,production_tournaments_initialized:tournamentsInitialized,production_tournament_snapshot_from:targetTournaments,media:plan.media,sql_sha256:{shop:checksum('shop.sql'),tournaments:checksum('tournaments.sql'),settings:checksum('settings.sql')},business_contact_present:!!source.business_settings.contact_email,desired_shop_enabled:plan.desired_shop_enabled,desired_tournament_sales:plan.desired_tournament_sales,sales_closed:true};
+const manifest={release,...(scope==='shop'?{scope}:{}),created_at:new Date().toISOString(),counts:plan.counts,source_bucket:stageBucket,target_bucket:prodBucket,target_site_db:binding(config,'DB').database_id,target_orders_db:binding(config,'ORDERS')?.database_id||null,target_tournaments_db:binding(config,'TOURNAMENTS')?.database_id||null,production_tournaments_initialized:tournamentsInitialized,production_tournament_snapshot_from:targetTournaments,media:plan.media,sql_sha256:{shop:checksum('shop.sql'),tournaments:checksum('tournaments.sql'),settings:checksum('settings.sql')},business_contact_present:!!source.business_settings?.contact_email,desired_shop_enabled:plan.desired_shop_enabled,desired_tournament_sales:plan.desired_tournament_sales,sales_closed:true};
 writeFileSync(join(folder,'manifest.json'),JSON.stringify(manifest,null,2)+'\n',{mode:0o600});
 console.log(JSON.stringify({folder,counts:plan.counts,production_writes:0,tournament_media_copied:0}));

@@ -23,7 +23,7 @@ const preview=layout!=='grid';
   <body class={`shop-storefront shop-layout-${layout}`} data-shop-layout={layout}>
     <Header/>
     {preview&&<nav class="shop-preview-notice" aria-label="Variantes de présentation"><strong>Présentation à tester · {layout==='rail'?'Défilement horizontal':layout==='editorial'?'Catalogue éditorial':layout==='experimental'?'Le vestiaire interactif':'Collection immersive'}</strong><a href="/boutique/">Boutique actuelle</a><a href="/boutique-2/" aria-current={layout==='rail'?'page':undefined}>Version 2</a><a href="/boutique-3/" aria-current={layout==='editorial'?'page':undefined}>Version 3</a><a href="/boutique-4/" aria-current={layout==='future'?'page':undefined}>Version 4</a><a href="/boutique-5/" aria-current={layout==='experimental'?'page':undefined}>Version 5</a></nav>}
-    <div class="commerce-toolbar"><span class="shop-toolbar-label">Boutique FCE</span><a href="#coach-access" id="open-coach">Tarifs coach</a><a href="/boutique/suivi/">Suivre une commande</a><button type="button" id="open-cart">Mon panier <span id="cart-count" aria-hidden="true">0</span><span id="cart-value" class="shop-cart-value"></span></button></div>
+    <div class="commerce-toolbar"><span class="shop-toolbar-label">Boutique FCE</span><a href="/boutique/suivi/">Suivre une commande</a><button type="button" id="open-cart">Mon panier <span id="cart-count" aria-hidden="true">0</span><span id="cart-value" class="shop-cart-value"></span></button></div>
     <main class="shop-page is-loading" id="shop-page">
       <section id="shop-maintenance" class="shop-maintenance" hidden aria-label="Boutique temporairement fermée">
         <div class="shop-maintenance-inner">
@@ -43,7 +43,6 @@ const preview=layout!=='grid';
       </section>
       </>}
 
-      <section id="coach-access" class="shop-coach-access" aria-label="Accès aux tarifs coach"></section>
 
       <section class="shop-feature" aria-labelledby="featured-title">
         <div class="section-intro">

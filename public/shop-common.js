@@ -134,8 +134,7 @@ export function priceMarkup(variants) {
     const number=n=>new Intl.NumberFormat('fr-FR',{minimumFractionDigits:decimals,maximumFractionDigits:2}).format(n/100);
     return (min===max?number(min):`${number(min)} – ${number(max)}`)+' €';
   };
-  const kinds=new Set(variants.map(v=>v.price_kind||'fce'));
-  const label=kinds.size>1?'Votre tarif':kinds.has('coach')?'Tarif coach':'Tarif FCE';
+  const label='Tarif FCE';
   const references=variants.filter(v=>Number(v.catalogue_price_cents)>0);
   const partial=references.length>0&&references.length<variants.length;
   const scope=partial?sizeSummary(references).replace(/ : /g,' ').replace(/\n/g,' · '):'';
@@ -182,7 +181,7 @@ export function zoomImageMarkup(product,featured=false,className='') {
 export function groupedVariantPricesMarkup(variants) {
  const groups=new Map();
  for(const variant of variants){
-  const key=JSON.stringify([variant.price_cents,variant.catalogue_price_cents??null,variant.price_kind||'fce',variant.color||'']);
+  const key=JSON.stringify([variant.price_cents,variant.catalogue_price_cents??null,'fce',variant.color||'']);
   if(!groups.has(key))groups.set(key,[]);groups.get(key).push(variant);
  }
  return [...groups.values()].map(group=>`<li><span class="detail-size-group">${esc(sizeSummary(group).replace(/\n/g,' · '))}${group[0].color?' · '+esc(group[0].color):''}</span>${priceMarkup(group)}</li>`).join('');

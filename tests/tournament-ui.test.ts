@@ -6,6 +6,28 @@ const next=()=>new Promise(resolve=>setImmediate(resolve));
 const until=async(condition:()=>boolean)=>{const deadline=Date.now()+2000;while(!condition()&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,5));assert.ok(condition(),'Le traitement asynchrone du formulaire n’a pas terminé.');};
 const common=readFileSync(new URL('../public/shop-common.js',import.meta.url),'utf8').replace(/export /g,'');
 const source=(name:string)=>readFileSync(new URL(`../src/scripts/${name}.js`,import.meta.url),'utf8').replace(/^import[\s\S]*?from [^;]+;\n?/gm,'').replace(/export /g,'');
+test('inscriptions : quantités par catégorie et tournoi, clubs visibles, annulées exclues et filtres cohérents',async()=>{
+ const w=new Window({url:'https://example.org/admin-tournois/'});
+ w.document.write('<p id="tournament-environment"></p><p id="tournament-admin-message"></p><div id="tournament-admin" data-page="registrations"></div>');
+ const sections=(a:number,b:number)=>JSON.stringify([{section:'U11',quantity:a,participating:a>0},{section:'U13',quantity:b,participating:b>0}]);
+ const rows=[
+  {order_id:'a',tournament_id:1,tournament_name:'Coupe A',club_name:'Club <A>',team_name:'4 équipes',category:'U11, U13',sections_json:sections(3,1),registration_status:'pending',payment_status:'pending',total_cents:20000},
+  {order_id:'b',tournament_id:1,tournament_name:'Coupe A',club_name:'Club B',team_name:'Équipe Bleu',category:'U11',team_count:2,registration_status:'accepted',payment_status:'paid',total_cents:10000},
+  {order_id:'c',tournament_id:1,tournament_name:'Coupe A',club_name:'Club annulé',category:'U11',sections_json:sections(20,0),registration_status:'cancelled',payment_status:'pending',total_cents:100000},
+  {order_id:'d',tournament_id:2,tournament_name:'Coupe B',club_name:'Club D',category:'U11',sections_json:sections(1,0),registration_status:'accepted',payment_status:'pending',total_cents:5000},
+ ];
+ w.fetch=(async(path:any)=>Response.json(String(path).endsWith('/status')?{environment:'sandbox'}:{registrations:rows})) as any;
+ w.eval(common+'\n'+source('admin-tournaments'));await next();await next();
+ const d=w.document,cards=()=>[...d.querySelectorAll('.tournament-category-card')];
+ assert.equal(cards().length,3);
+ const u11=cards().find(c=>c.querySelector('h3')!.textContent==='U11'&&c.textContent!.includes('Coupe A'))!;
+ assert.equal(u11.querySelector('.tournament-category-heading>strong')!.textContent,'5 équipes');assert.match(u11.textContent!,/2 validées · 3 à valider/);assert.match(u11.textContent!,/Club <A>/);assert.match(u11.textContent!,/Équipe Bleu/);assert.doesNotMatch(u11.textContent!,/Club annulé/);assert.equal(u11.querySelector('a'),null);
+ const category=d.querySelector<HTMLSelectElement>('#category-filter')!;category.value='U13';category.dispatchEvent(new w.Event('change'));
+ assert.equal(cards().length,1);assert.equal(cards()[0].querySelector('h3')!.textContent,'U13');assert.equal(cards()[0].querySelector('.tournament-category-heading>strong')!.textContent,'1 équipe');assert.equal(d.querySelectorAll('#registration-table [data-order]').length,1);
+ d.querySelector<HTMLElement>('#reset-registration-filters')!.click();assert.equal(cards().length,3);
+ const status=d.querySelector<HTMLSelectElement>('#registration-filter')!;status.value='cancelled';status.dispatchEvent(new w.Event('change'));assert.equal(cards().length,0);assert.match(d.querySelector('#registration-categories')!.textContent!,/Aucune équipe active/);
+ await w.happyDOM.abort();w.close();
+});
 test('tournois DOM : formulaire par tournoi, quantités par section, total par équipe et paiement différé et suivi conservé après une erreur HelloAsso',async()=>{
  const w=new Window({url:'https://example.org/tournois/',settings:{disableCSSFileLoading:true,disableJavaScriptFileLoading:true}});
  Object.defineProperty(w,'crypto',{value:globalThis.crypto});Object.defineProperty(w,'TextEncoder',{value:TextEncoder});
