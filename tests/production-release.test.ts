@@ -149,8 +149,12 @@ test('compte rendu Actions : seul le statut contrôlé est publié, branche main
   const data=join(work,'.production-preparation/preparation-123');mkdirSync(data,{recursive:true});
   writeFileSync(join(data,'source.json'),JSON.stringify({private:'must not be committed'}));
   writeFileSync(join(data,'manifest.json'),JSON.stringify({counts:{articles:4},sql_sha256:{shop:'abc',tournaments:'def'},production_tournaments_initialized:false,production_tournament_snapshot_from:'DB'}));
-  const result=run(process.execPath,[resolve('scripts/production-report.mjs')],work,{...process.env,GITHUB_RUN_ID:'123',GITHUB_SHA:'code-sha',GITHUB_REPOSITORY:'club/site',PREPARATION_OUTCOME:'success',PR_OUTCOME:'success',PR_URL:'https://github.com/club/site/pull/1',ARTIFACT_OUTCOME:'success',ARTIFACT_URL:'https://github.com/club/site/actions/runs/123/artifacts/456'});
+  const bin=join(folder,'bin');mkdirSync(bin);
+  writeFileSync(join(bin,'git'),`#!${process.execPath}\nconst fs=require('node:fs');if(process.argv[2]==='push'&&!fs.existsSync('retry.marker')){fs.writeFileSync('retry.marker','failed-once');process.stderr.write('remote: Internal Server Error private-server-details');process.exit(1);}const result=require('node:child_process').spawnSync('/usr/bin/git',process.argv.slice(2),{stdio:'inherit'});process.exit(result.status??1);\n`,{mode:0o755});
+  const summary=join(work,'summary.md');
+  const result=run(process.execPath,[resolve('scripts/production-report.mjs')],work,{...process.env,PATH:bin+':'+process.env.PATH,GITHUB_STEP_SUMMARY:summary,GITHUB_RUN_ID:'123',GITHUB_SHA:'code-sha',GITHUB_REPOSITORY:'club/site',PREPARATION_OUTCOME:'success',PR_OUTCOME:'success',PR_URL:'https://github.com/club/site/pull/1',ARTIFACT_OUTCOME:'success',ARTIFACT_URL:'https://github.com/club/site/actions/runs/123/artifacts/456'});
   assert.equal(result.status,0,result.stderr);
+  assert.equal(existsSync(join(work,'retry.marker')),true);assert.match(result.stderr,/raison=github-server/);assert.doesNotMatch(result.stdout+result.stderr,/private-server-details/);assert.match(readFileSync(summary,'utf8'),/"articles": 4/);assert.doesNotMatch(readFileSync(summary,'utf8'),/must not be committed/);
   const remote=join(folder,'remote.git'),ref='refs/heads/release/production-preparation-report';
   const files=run('git',['ls-tree','--name-only',ref],remote);assert.equal(files.stdout.trim(),'status.json');
   const status=JSON.parse(run('git',['show',ref+':status.json'],remote).stdout);assert.equal(status.counts.articles,4);assert.equal(status.production_writes,0);assert.equal(status.artifact,'success');assert.match(status.artifact_url,/artifacts\/456$/);assert.doesNotMatch(JSON.stringify(status),/must not be committed/);

@@ -1,4 +1,4 @@
-import {readFileSync} from 'node:fs';
+import {readFileSync,appendFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 const report={commit:process.env.GITHUB_SHA,preparation:process.env.PREPARATION_OUTCOME||'unknown',pr:process.env.PR_OUTCOME||'unknown',pr_url:process.env.PR_URL||null,run_url:`https://github.com/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,production_writes:0};
@@ -46,10 +46,20 @@ if(!report.counts){try{
  const source=JSON.parse(readFileSync(`.production-preparation/preparation-${process.env.GITHUB_RUN_ID}/source.json`,'utf8'));
  report.database_exports={articles:source.shop.shop_products.length,tournaments:source.tournaments.tournaments.length};
 }catch{}}
+// Keep the sanitized result visible even if GitHub temporarily rejects the
+// report branch update. No database rows or credential values enter this JSON.
+if(process.env.GITHUB_STEP_SUMMARY)appendFileSync(process.env.GITHUB_STEP_SUMMARY,'```json\n'+JSON.stringify(report,null,2)+'\n```\n');
 function git(args,input){
- const result=spawnSync('git',args,{encoding:'utf8',input,env:{...process.env,GIT_AUTHOR_NAME:'github-actions[bot]',GIT_AUTHOR_EMAIL:'41898282+github-actions[bot]@users.noreply.github.com',GIT_COMMITTER_NAME:'github-actions[bot]',GIT_COMMITTER_EMAIL:'41898282+github-actions[bot]@users.noreply.github.com'}});
- if(result.status!==0)throw Error('Impossible de publier le compte rendu de préparation.');
- return result.stdout.trim();
+ const network=['ls-remote','fetch','push'].includes(args[0]),attempts=network?3:1;
+ for(let attempt=1;attempt<=attempts;attempt++){
+  const result=spawnSync('git',args,{encoding:'utf8',input,timeout:45000,env:{...process.env,GIT_AUTHOR_NAME:'github-actions[bot]',GIT_AUTHOR_EMAIL:'41898282+github-actions[bot]@users.noreply.github.com',GIT_COMMITTER_NAME:'github-actions[bot]',GIT_COMMITTER_EMAIL:'41898282+github-actions[bot]@users.noreply.github.com'}});
+  if(result.status===0)return result.stdout.trim();
+  const diagnostic=(result.stderr||'')+'\n'+(result.stdout||'');
+  const reason=/Internal Server Error|HTTP (500|502|503|504)/i.test(diagnostic)?'github-server':/authentication|permission|403|could not read Username/i.test(diagnostic)?'authentication':/non-fast-forward|fetch first/i.test(diagnostic)?'concurrent-update':result.error?.code||'git-failure';
+  console.error(`Publication du compte rendu : commande=${args[0]}, tentative=${attempt}/${attempts}, raison=${reason}.`);
+  if(attempt===attempts)throw Error(`Impossible de publier le compte rendu de préparation (commande=${args[0]},raison=${reason}). Le résumé du workflow conserve le résultat.`);
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,1000*attempt);
+ }
 }
 const ref='refs/heads/release/production-preparation-report';
 const remote=git(['ls-remote','--heads','origin',ref]);
