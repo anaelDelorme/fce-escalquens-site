@@ -28,19 +28,20 @@ test('reprise production : remappage des articles et tournois, médias boutique 
   shop_settings:[{id:1,catalogue_key:'catalogue.pdf',maintenance_image_key:'attente.webp'}],
   site_media:[{slot:'shop_hero',object_key:'uploads/cover.webp',alt_text:'Couverture'}],
  },tournaments:{
-  tournaments:[{id:5,slug:'coupe',name:'Coupe FCE',starts_on:'2027-06-02',image_key:'stage-tournament.webp'},{id:6,slug:'nouveau',name:'Nouveau tournoi',starts_on:'2027-06-03',poster_key:'stage-poster.webp'}],
+  tournaments:[{id:5,slug:'coupe',name:'Coupe FCE',starts_on:'2027-06-02',venue_id:1,season_id:2,image_key:'stage-tournament.webp'},{id:6,slug:'nouveau',name:'Nouveau tournoi',starts_on:'2027-06-03',poster_key:'stage-poster.webp'}],
   tournament_sales:[{tournament_id:5,fee_cents:2500,enabled:1,form_json:'[{"id":"club","label":"Club","type":"text"}]',allow_pay_later:1}],
   tournament_teams:[{tournament_id:5,team_id:3,notes:'U11'}],
- },teams:[{id:3,slug:'u11'}]};
- const target={shop:{shop_products:[{id:44,slug:'maillot'},{id:45,slug:'autre'}],shop_suppliers:[{id:'prod-supplier',name:'Kappa'}]},tournaments:{},teams:[{id:99,slug:'u11'}]};
+ },teams:[{id:3,slug:'u11'}],venues:[{id:1,name:'Stade',address:'Rue du stade'}],seasons:[{id:2,label:'2026/2027'}]};
+ const target={shop:{shop_products:[{id:44,slug:'maillot'},{id:45,slug:'autre'}],shop_suppliers:[{id:'prod-supplier',name:'Kappa'}]},tournaments:{},teams:[{id:99,slug:'u11'}],venues:[{id:80,name:'Stade',address:'Rue du stade'}],seasons:[{id:81,label:'2026/2027'}]};
  const plan=productionPlan(source,target,'release-test',{organizationSlug:'fce'});
+ assert.throws(()=>productionPlan(source,{...target,seasons:[]},'release-test'),/Saison du tournoi/);
  await DB.exec(plan.shop_sql);await TOURNAMENTS.exec(plan.tournaments_sql);
  const product=await DB.prepare("SELECT * FROM shop_products WHERE slug='maillot'").first<any>();assert.equal(product.id,44);assert.equal(product.shop_category_id,20);assert.equal(product.name,"Maillot d'été");assert.equal(product.image_key,'releases/release-test/shop/uploads/maillot.webp');
  assert.equal(await DB.prepare("SELECT * FROM shop_products WHERE id=45").first(),null);
  const v=await DB.prepare('SELECT * FROM shop_variants').first<any>();assert.equal(v.product_id,44);assert.equal(v.supplier_id,'prod-supplier');assert.equal(v.price_cents,2000);
  assert.equal((await DB.prepare('SELECT * FROM shop_personalizations').first<any>()).required,1);
  assert.equal((await DB.prepare('SELECT shop_enabled FROM shop_settings').first<any>()).shop_enabled,0);
- const event=await TOURNAMENTS.prepare("SELECT * FROM tournaments WHERE slug='coupe'").first<any>();assert.equal(event.id,73);assert.equal(event.image_key,'');assert.equal(event.poster_key,'');assert.equal(event.rules_key,null);
+ const event=await TOURNAMENTS.prepare("SELECT * FROM tournaments WHERE slug='coupe'").first<any>();assert.equal(event.id,73);assert.equal(event.image_key,'');assert.equal(event.poster_key,'');assert.equal(event.rules_key,null);assert.equal(event.venue_id,80);assert.equal(event.season_id,81);
  assert.equal((await TOURNAMENTS.prepare("SELECT * FROM tournaments WHERE slug='nouveau'").first<any>()).image_key,'');
  const sale=await TOURNAMENTS.prepare('SELECT * FROM tournament_sales').first<any>();assert.equal(sale.tournament_id,73);assert.equal(sale.fee_cents,2500);assert.equal(sale.enabled,0);assert.match(sale.form_json,/Club/);
  assert.equal((await TOURNAMENTS.prepare('SELECT team_id FROM tournament_teams').first<any>()).team_id,99);

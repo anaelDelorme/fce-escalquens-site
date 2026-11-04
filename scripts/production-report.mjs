@@ -6,7 +6,7 @@ try{report.production_databases=JSON.parse(readFileSync('.production-preparation
 try{report.production_secret_presence=JSON.parse(readFileSync('.production-preparation/production-secret-presence.json','utf8'));}catch{}
 if(report.preparation==='failure'){
  const error=(()=>{try{return readFileSync('preparation-error.txt','utf8');}catch{return '';}})();
- const known=['Lecture Cloudflare impossible','Média public staging inaccessible','Migration source absente','Clé média invalide','Fournisseur source absent','Catégorie source absente','Personnalisation source absente','Équipe de tournoi sans correspondance production','Identifiant de choix déjà utilisé','Nom de base production ambigu','La migration des personnalisations obligatoires manque'];
+ const known=['Lecture Cloudflare impossible','Média public staging inaccessible','Migration source absente','Clé média invalide','Fournisseur source absent','Catégorie source absente','Personnalisation source absente','Équipe de tournoi sans correspondance production','Lieu du tournoi sans correspondance production','Saison du tournoi sans correspondance production','Identifiant de choix déjà utilisé','Nom de base production ambigu','La migration des personnalisations obligatoires manque'];
  report.preparation_reason=known.find(message=>error.includes(message))||'preparation_command_failed';
  const operation=error.match(/operation=([a-z0-9-]+),env=([a-z-]+),resource=([A-Z-]+)/);
  if(operation)report.failed_operation={operation:operation[1],environment:operation[2],resource:operation[3]};

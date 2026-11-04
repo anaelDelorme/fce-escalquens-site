@@ -17,7 +17,10 @@ avant de fusionner. Le push de la branche exécute uniquement la préparation en
   Aucun objet existant de production n'est écrasé.
 - Tournois configurés : descriptions, dates, catégories, lieux, prix, capacités,
   échéances, formulaires, options de règlement et associations aux équipes.
-  Les identifiants sont remappés par slug, y compris les équipes du site.
+  Les identifiants sont remappés par slug, y compris les équipes du site. Les
+  lieux sont rapprochés par nom/adresse et les saisons par libellé ; le plan
+  refuse une correspondance absente pour éviter de lier un autre lieu ou une
+  autre saison en production.
 - Pas de copie des commandes, inscriptions, réponses de participants, paiements,
   files d'e-mails, comptes administrateurs, secrets ou caches OAuth de staging.
 - Pas de copie des médias tournois (photos, affiches, règlements). Les références

@@ -89,7 +89,15 @@ export function productionPlan(source,target,release,{organizationSlug}={}){
  const events=new Map(rows(source.tournaments,'tournaments').map(t=>[t.id,t]));
  if(events.size)tournaments.push(`UPDATE tournament_sales SET enabled=0 WHERE tournament_id IN (SELECT id FROM tournaments WHERE slug IN (${[...events.values()].map(t=>quote(t.slug)).join(',')}));`);
  for(const t of events.values()){
-  tournaments.push(insert('tournaments',{...pick(t,'tournaments'),image_key:'',poster_key:'',rules_key:null},'slug'));
+  const sourceVenue=(source.venues||[]).find(v=>v.id===t.venue_id);
+  const matches=sourceVenue?(target.venues||[]).filter(v=>v.name===sourceVenue.name&&v.address===sourceVenue.address):[];
+  const season=(source.seasons||[]).find(s=>s.id===t.season_id);
+  const seasonId=season?(target.seasons||[]).find(s=>s.label===season.label)?.id:null;
+  if(t.venue_id!=null&&matches.length!==1)throw Error('Lieu du tournoi sans correspondance production.');
+  if(t.season_id!=null&&seasonId==null)throw Error('Saison du tournoi sans correspondance production.');
+  // Foreign keys from staging must never accidentally bind another production
+  // stadium or season. Keep the source venue label when no match is available.
+  tournaments.push(insert('tournaments',{...pick(t,'tournaments'),venue_id:matches.length===1?matches[0].id:null,season_id:seasonId??null,registration_url:null,image_key:'',poster_key:'',rules_key:null},'slug'));
   tournaments.push(`UPDATE tournaments SET version=version+1 WHERE slug=${quote(t.slug)};`);
  }
  for(const sale of rows(source.tournaments,'tournament_sales')){

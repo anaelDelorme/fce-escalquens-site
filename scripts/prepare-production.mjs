@@ -48,9 +48,11 @@ const targetTournaments=valid(binding(config,'TOURNAMENTS')?.database_id)?'TOURN
 const source={shop:tables('staging','DB',shopTables,true),tournaments:tables('staging','TOURNAMENTS',tournamentTables,true),teams:query('staging','DB','SELECT id,slug FROM teams')};
 source.business_settings=query('staging','ORDERS',`SELECT ${businessFields.map(k=>`json_extract(data,'$.${k}') AS ${k}`).join(',')} FROM settings WHERE id=1`)[0]||{};
 if(!query('staging','DB','PRAGMA table_info(shop_personalizations)').some(c=>c.name==='required'))throw Error('La migration des personnalisations obligatoires manque en staging.');
-const venues=new Map(query('staging','DB','SELECT id,name FROM venues').map(v=>[v.id,v.name]));
+source.venues=query('staging','DB','SELECT id,name,address FROM venues');source.seasons=query('staging','DB','SELECT id,label FROM seasons');
+const venues=new Map(source.venues.map(v=>[v.id,v.name]));
 for(const t of source.tournaments.tournaments)if(!t.venue)t.venue=venues.get(t.venue_id)||'';
 const target={shop:tables('production','DB',shopTables),tournaments:tables('production',targetTournaments,tournamentTables),teams:query('production','DB','SELECT id,slug FROM teams')};
+target.venues=query('production','DB','SELECT id,name,address FROM venues');target.seasons=query('production','DB','SELECT id,label FROM seasons');
 for(const [name,value] of [['source.json',source],['target.json',target]])writeFileSync(join(folder,name),JSON.stringify(value,null,2)+'\n',{mode:0o600});
 const plan=productionPlan(source,target,release,{organizationSlug:config.vars?.HELLOASSO_ORGANIZATION_SLUG});
 writeFileSync(join(folder,'shop.sql'),plan.shop_sql,{mode:0o600});
