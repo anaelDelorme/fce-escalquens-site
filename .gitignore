@@ -47,3 +47,4 @@ backups/boutique-*/
 # Copies temporaires de la migration tournois (données privées)
 .tournaments-copy-*/
 backups-tournois/
+.production-preparation/

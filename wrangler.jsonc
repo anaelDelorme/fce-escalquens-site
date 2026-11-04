@@ -41,9 +41,10 @@
       "migrations_dir": "migrations-orders"
     },
     {
-      "binding": "fce_escalquens_tournaments_staging",
-      "database_name": "fce-escalquens-tournaments-staging",
-      "database_id": "00000000-0000-0000-0000-000000000000"
+      "binding": "TOURNAMENTS",
+      "database_name": "fce-escalquens-tournaments",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations-tournaments"
     }
   ],
   "r2_buckets": [
@@ -130,7 +131,12 @@
     }
   },
   "vars": {
-    "APP_ENV": "production"
+    "APP_ENV": "production",
+    "SHOP_ORIGIN": "https://fcescalquens.fr",
+    "MAIL_PROVIDER": "ovh",
+    "MAIL_FROM": "contact@fcescalquens.fr",
+    "SMTP_HOST": "ssl0.ovh.net",
+    "SMTP_USER": "contact@fcescalquens.fr"
   },
   "triggers": {
     "crons": [

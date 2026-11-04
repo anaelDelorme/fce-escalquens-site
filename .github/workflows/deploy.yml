@@ -1,10 +1,69 @@
 name: Déployer
 on:
   push:
-    branches: [main]
+    branches: [main, release/boutique-tournois-production]
   workflow_dispatch:
+    inputs:
+      prepare_only:
+        description: Exporter les contenus staging et préparer la reprise sans écrire en production
+        type: boolean
+        default: true
 jobs:
+  prepare:
+    if: github.ref == 'refs/heads/release/boutique-tournois-production' || (github.event_name == 'workflow_dispatch' && inputs.prepare_only)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    concurrency:
+      group: prepare-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: {node-version: 24, cache: npm}
+      - run: npm ci
+      - name: Relever les bases production existantes sans les modifier
+        continue-on-error: true
+        run: node scripts/discover-production.mjs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Récupérer les articles, tournois configurés et médias boutique
+        id: export
+        run: node scripts/prepare-production.mjs --release preparation-${{ github.run_id }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - uses: actions/upload-artifact@v4
+        if: steps.export.outcome == 'success'
+        with:
+          name: preparation-production-${{ github.run_id }}
+          path: .production-preparation/
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: error
+      - name: Ouvrir la PR brouillon vers main
+        id: pr
+        if: always() && github.ref == 'refs/heads/release/boutique-tournois-production'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pr_url=$(gh pr list --base main --head "$GITHUB_REF_NAME" --json url --jq '.[0].url // empty')
+          if [ -z "$pr_url" ]; then
+            pr_url=$(gh pr create --draft --base main --head "$GITHUB_REF_NAME" --title "Prépare la production : boutique et tournois de staging" --body-file docs/PR-PRODUCTION.md 2>pr-error.txt)
+          fi
+          printf 'url=%s\n' "$pr_url" >> "$GITHUB_OUTPUT"
+      - name: Publier le compte rendu de préparation sans données privées
+        if: always()
+        env:
+          PREPARATION_OUTCOME: ${{ steps.export.outcome }}
+          PR_OUTCOME: ${{ steps.pr.outcome }}
+          PR_URL: ${{ steps.pr.outputs.url }}
+        run: node scripts/production-report.mjs
   deploy:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || !inputs.prepare_only)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -14,6 +73,8 @@ jobs:
       - run: npm test
       - run: npm run typecheck:shop
       - run: npm run build
+      - name: Vérifier les prérequis de production
+        run: node scripts/check-production.mjs
       - name: Vérifier la configuration des bases commandes
         run: node scripts/configure-orders.mjs --check production
 
