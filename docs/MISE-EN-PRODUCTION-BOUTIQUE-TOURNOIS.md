@@ -5,6 +5,14 @@ Branche de préparation : `release/boutique-tournois-production`. Base de la PR 
 La fusion déclenche un déploiement réel : compléter les prérequis ci-dessous
 avant de fusionner. Le push de la branche exécute uniquement la préparation en lecture ; aucun import ni déploiement production n’est exécuté par ce push.
 
+La reprise de production a été effectuée et contrôlée :
+[initialisation et migrations](https://github.com/anaelDelorme/fce-escalquens-site/actions/runs/41818523633),
+puis [import](https://github.com/anaelDelorme/fce-escalquens-site/actions/runs/41833330766).
+Le résultat est de 38 articles, 365 déclinaisons, 6 personnalisations, 1 tournoi et
+40 médias, avec sauvegardes chiffrées, transactions conservées et ventes fermées.
+Les procédures d'initialisation/import ci-dessous documentent cette opération ;
+la prochaine étape est la fusion de la PR, puis les diagnostics après déploiement.
+
 ## Périmètre validé
 
 - Catalogue boutique complet : catégories, articles, textes, tailles, tarifs FCE /
@@ -266,7 +274,10 @@ ne détourne pas ces messages ; il ne sert qu'au bouton d'envoi de test explicit
 En staging, tous les messages restent dirigés vers le destinataire de test.
 
 Vérifier le contact de production, l'expéditeur OVH, SMTP_PASSWORD et la réception
-sur une boîte contrôlée par le club avant ouverture. Pour activer ce bouton :
+sur une boîte contrôlée par le club avant ouverture. Le bouton de test production
+est configuré vers `contact@fcescalquens.fr`. Cette variable sert uniquement au
+test explicite ; elle ne redirige pas les messages de commande production.
+Pour choisir une autre boîte contrôlée par le club :
 
 ```bash
 node scripts/configure-ovh-mail.mjs --env production --test-to ADRESSE_CONTROLEE_PAR_LE_CLUB

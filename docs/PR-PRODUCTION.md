@@ -1,17 +1,17 @@
-La production utilise encore l’ancien catalogue. Cette PR reprend le code staging et prépare le remplacement complet du catalogue boutique et des tournois par ceux configurés en staging.
+Cette PR déploie la boutique et les tournois configurés en staging. Le catalogue et les médias ont déjà été repris dans les bases et le stockage de production ; les ventes et inscriptions restent fermées pendant les vérifications après déploiement.
 
-- Boutique : articles, catégories, fournisseurs, tailles, tarifs, personnalisations et images associées. Les articles propres à l’ancien catalogue production sont retirés lors de la reprise validée.
-- Tournois : événements, formulaires, tarifs et équipes configurés en staging. Les anciens tournois absents de staging sont retirés ; les médias tournois ne sont pas repris.
-- Les commandes, inscriptions, paiements réels et leurs instantanés restent conservés. Aucune transaction, file mail ou authentification Sandbox n’est importée.
-- L’export et le téléchargement des médias utilisent les secrets Cloudflare existants de GitHub Actions. Le push de cette branche ne déploie pas en production. Le diff reprend aussi les annonces et correctifs du site déjà présents dans staging.
-- Deux opérations manuelles distinctes préparent la bascule : initialisation avec sauvegarde des trois bases et copie de l'historique réel, puis import d'une archive relue avec son SHA-256. Les médias sont vérifiés dans R2 avant les SQL ; un export périmé ou modifié est refusé. Les ventes restent fermées pour la recette.
-- Le dépôt étant public, les archives de préparation et sauvegardes D1 sont chiffrées avant publication (AES-256-GCM, secret GitHub Actions `PRODUCTION_ARCHIVE_PASSWORD`). Les anciennes préparations en clair générées par ce travail sont retirées après remplacement chiffré ; les commandes et inscriptions ne sont jamais publiées en clair.
-- En production, les mails gardent leurs destinataires client/club ; le test HelloAsso effectue OAuth et des lectures sans créer de paiement.
+- Boutique : affichage mobile/ordinateur, prix harmonisés, catalogue de personnalisations partagé entre articles et écussons obligatoires. Les anciens articles propres à la production ont été retirés.
+- Tournois : événements, formulaires, tarifs et équipes repris dans la base dédiée, sans leurs médias. Les anciens tournois absents de staging ont été retirés.
+- Commandes, inscriptions et paiements réels conservés et contrôlés pendant l'import. Aucune transaction ni authentification Sandbox importée.
+- Accès Cloudflare distincts pour le site, la boutique et les tournois. HelloAsso utilise l'association de production `fce` ; les mails de commande gardent leurs destinataires client/club. Le bouton de test mail est configuré vers `contact@fcescalquens.fr`.
+- Le diff reprend également les annonces et autres correctifs déjà présents sur staging.
 
-Le slug HelloAsso de production est confirmé : `fce`.
+Reprise vérifiée : **38 articles, 365 déclinaisons, 6 personnalisations, 1 tournoi et 40 médias**. Les médias ont été relus dans R2 et comparés par SHA-256 avant les imports SQL. Les sauvegardes sont chiffrées, y compris dans les artefacts du dépôt public.
 
-Les UUID ORDERS/TOURNAMENTS et les paramètres Cloudflare Access (site, boutique, tournois) sont renseignés. La présence des quatre secrets Worker production a été vérifiée après configuration par le club ; leur fonctionnement reste à tester après déploiement. Avant fusion : configurer la clé d'archivage GitHub, exécuter l'initialisation avec le premier responsable explicite, relire puis importer l'archive, contrôler les politiques Access et les réglages de mail. La fusion dans main déclenche le déploiement réel ; aucun import de catalogue n'est relancé automatiquement par les déploiements suivants.
+Exécutions validées : [initialisation et migrations](https://github.com/anaelDelorme/fce-escalquens-site/actions/runs/41818523633), puis [import et contrôle des données](https://github.com/anaelDelorme/fce-escalquens-site/actions/runs/41833330766).
 
-Procédure et limites : `docs/MISE-EN-PRODUCTION-BOUTIQUE-TOURNOIS.md`.
+La fusion dans `main` déploie le Worker avec les bindings et paramètres de production. Les déploiements suivants conservent les contenus de production : aucun import de catalogue n'est lancé automatiquement.
 
-Validation locale : 184 tests, dont les transferts/opérations manuelles sur SQLite réel, les sauvegardes incomplètes, l'export périmé, les médias corrompus, le chiffrement/restauration, les déclenchements des workflows, les destinataires mail et l'absence de création de paiement par le diagnostic HelloAsso. TypeScript, compilation et workflow vérifiés.
+Après déploiement, vérifier les accès admin, utiliser **Tester HelloAsso sans paiement** (OAuth et lectures uniquement), puis **Tester l'envoi d'un e-mail** et contrôler la réception effective dans la boîte du club. Vérifier les coordonnées vendeur/contact et l'affichage avant de rétablir les ouvertures. La présence des secrets a été contrôlée ; la connexion HelloAsso et la réception SMTP réelles restent à confirmer sur le Worker déployé.
+
+Validation : 184 tests locaux, TypeScript, compilation et workflow vérifiés ; migrations et import distants réussis. Procédure complète : `docs/MISE-EN-PRODUCTION-BOUTIQUE-TOURNOIS.md`.

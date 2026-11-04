@@ -82,7 +82,7 @@ jobs:
         run: |
           pr_url=$(gh pr list --base main --head "$GITHUB_REF_NAME" --json url --jq '.[0].url // empty')
           if [ -z "$pr_url" ]; then
-            pr_url=$(gh pr create --draft --base main --head "$GITHUB_REF_NAME" --title "Prépare la production : boutique et tournois de staging" --body-file docs/PR-PRODUCTION.md 2>pr-error.txt)
+            pr_url=$(gh pr create --draft --base main --head "$GITHUB_REF_NAME" --title "Met en production la boutique et les tournois de staging" --body-file docs/PR-PRODUCTION.md 2>pr-error.txt)
           fi
           printf 'url=%s\n' "$pr_url" >> "$GITHUB_OUTPUT"
       - name: Publier le compte rendu de préparation sans données privées
