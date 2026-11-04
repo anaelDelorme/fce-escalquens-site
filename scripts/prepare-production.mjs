@@ -23,7 +23,9 @@ function wrangler(argv){
  if(result.status!==0){
   const environment=argv.includes('--env')?(argv[argv.indexOf('--env')+1]||'production'):'staging';
   const operation=argv[0]==='d1'?'d1-read':'r2-read',resource=argv[0]==='d1'?argv[2]:'MEDIA';
-  throw Error(`Lecture Cloudflare impossible (operation=${operation},env=${environment},resource=${resource}). Vérifiez les droits D1/R2 et l’authentification ; aucune écriture en production.`);
+  const diagnostic=result.stderr+'\n'+result.stdout,code=diagnostic.match(/\[code:\s*(\d+)\]/)?.[1]||'unknown';
+  const hint=diagnostic.includes('Authentication error')?'authentication':/not found|Could not find|does not exist/i.test(diagnostic)?'not-found':/permission|not authorized/i.test(diagnostic)?'permission':/assets.directory|assets directory/i.test(diagnostic)?'assets-config':'unclassified';
+  throw Error(`Lecture Cloudflare impossible (operation=${operation},env=${environment},resource=${resource},code=${code},hint=${hint}). Vérifiez les droits D1/R2 et l’authentification ; aucune écriture en production.`);
  }
  return result.stdout;
 }

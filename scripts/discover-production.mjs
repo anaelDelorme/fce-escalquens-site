@@ -12,4 +12,10 @@ const production=Object.fromEntries(['DB','ORDERS','TOURNAMENTS'].map(name=>{
 }));
 mkdirSync('.production-preparation',{recursive:true,mode:0o700});
 writeFileSync('.production-preparation/discovered-bindings.json',JSON.stringify(production,null,2)+'\n',{mode:0o600});
+const secretResult=spawnSync(process.execPath,['node_modules/wrangler/bin/wrangler.js','secret','list','--name',config.name,'--env=','--format','json'],{encoding:'utf8',maxBuffer:1024*1024});
+if(secretResult.status===0){
+ const names=new Set(JSON.parse(secretResult.stdout).map(s=>s.name));
+ const present=Object.fromEntries(['TRACKING_SECRET','HELLOASSO_CLIENT_ID','HELLOASSO_CLIENT_SECRET','SMTP_PASSWORD'].map(name=>[name,names.has(name)]));
+ writeFileSync('.production-preparation/production-secret-presence.json',JSON.stringify(present,null,2)+'\n',{mode:0o600});
+}
 console.log('Métadonnées des bases production relevées, aucune base créée ni modifiée.');
