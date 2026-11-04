@@ -31,12 +31,12 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: Récupérer les articles, tournois configurés et médias boutique
         id: export
-        run: node scripts/prepare-production.mjs --release preparation-${{ github.run_id }}
+        run: node scripts/prepare-production.mjs --release preparation-${{ github.run_id }} 2>preparation-error.txt
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - uses: actions/upload-artifact@v4
-        if: steps.export.outcome == 'success'
+        if: always() && steps.export.outcome != 'skipped'
         with:
           name: preparation-production-${{ github.run_id }}
           path: .production-preparation/

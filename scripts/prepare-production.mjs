@@ -20,7 +20,11 @@ if(!stageBucket||!prodBucket||stageBucket===prodBucket)throw Error('Les buckets 
 mkdirSync(dirname(folder),{recursive:true,mode:0o700});mkdirSync(folder,{mode:0o700});mkdirSync(join(folder,'media'),{mode:0o700});
 function wrangler(argv){
  const result=spawnSync(process.execPath,['node_modules/wrangler/bin/wrangler.js',...argv,'--config',resolve(get('--config','wrangler.jsonc'))],{encoding:'utf8',maxBuffer:64*1024*1024});
- if(result.status!==0)throw Error('Lecture Cloudflare impossible. Vérifiez les droits D1/R2 et l’authentification ; aucun export ni média n’est écrit en production.');
+ if(result.status!==0){
+  const environment=argv.includes('--env')?(argv[argv.indexOf('--env')+1]||'production'):'staging';
+  const operation=argv[0]==='d1'?'d1-read':'r2-read',resource=argv[0]==='d1'?argv[2]:'MEDIA';
+  throw Error(`Lecture Cloudflare impossible (operation=${operation},env=${environment},resource=${resource}). Vérifiez les droits D1/R2 et l’authentification ; aucune écriture en production.`);
+ }
  return result.stdout;
 }
 function query(env,db,sql){
@@ -42,8 +46,8 @@ if(!query('staging','DB','PRAGMA table_info(shop_personalizations)').some(c=>c.n
 const venues=new Map(query('staging','DB','SELECT id,name FROM venues').map(v=>[v.id,v.name]));
 for(const t of source.tournaments.tournaments)if(!t.venue)t.venue=venues.get(t.venue_id)||'';
 const target={shop:tables('production','DB',shopTables),tournaments:tables('production',targetTournaments,tournamentTables),teams:query('production','DB','SELECT id,slug FROM teams')};
-const plan=productionPlan(source,target,release);
 for(const [name,value] of [['source.json',source],['target.json',target]])writeFileSync(join(folder,name),JSON.stringify(value,null,2)+'\n',{mode:0o600});
+const plan=productionPlan(source,target,release);
 writeFileSync(join(folder,'shop.sql'),plan.shop_sql,{mode:0o600});
 writeFileSync(join(folder,'tournaments.sql'),plan.tournaments_sql,{mode:0o600});
 for(const object of plan.media){
