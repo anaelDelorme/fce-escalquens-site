@@ -89,8 +89,17 @@ est aussi exécuté avant les migrations du workflow de déploiement.
    avec `scripts/copy-tournaments.mjs --env production --apply`, après sauvegarde
    et fermeture des anciennes inscriptions, conformément à `TOURNOIS-V5.2.md`.
    Cette copie concerne l'historique réel de production, pas celui du staging.
-3. Configurer Cloudflare Access sur les URLs de production : issuer et audiences
-   boutique/tournois vérifiées, puis responsables autorisés dans les bases cibles.
+3. Les paramètres Cloudflare Access de production fournis par le club sont
+   renseignés dans `wrangler.jsonc` : domaine d'équipe
+   `https://cold-flower-98c5.cloudflareaccess.com` et audiences distinctes pour
+   le site, la boutique et les tournois. Vérifier les chemins et politiques des
+   applications dans Zero Trust, puis les responsables autorisés dans les bases
+   cibles. L'application site doit couvrir `/admin` et `/admin/*`, sans règle
+   large `/admin*` qui recouvrirait les applications boutique et tournois.
+   Les applications métier couvrent chacune leur chemin racine et ses enfants :
+   `/admin-boutique` et `/admin-boutique/*`, puis `/admin-tournois` et
+   `/admin-tournois/*`. Ces valeurs ne déploient ni ne modifient les politiques
+   Cloudflare ; la connexion réelle reste à vérifier après déploiement.
 4. Sur le Worker **fce-escalquens**, vérifier les secrets `TRACKING_SECRET`,
    `HELLOASSO_CLIENT_ID`, `HELLOASSO_CLIENT_SECRET`, `SMTP_PASSWORD`.
    Les identifiants HelloAsso doivent être ceux du compte de production.
