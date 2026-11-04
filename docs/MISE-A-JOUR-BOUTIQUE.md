@@ -24,6 +24,16 @@ Le PDF regroupe les bons des commandes payées et non annulées répondant aux m
 
 Les endpoints d’export sont réservés à l’administration boutique et renvoient des réponses non mises en cache. Les résultats sont parcourus par lots avec un curseur de date et d’identifiant pour couvrir toutes les commandes sans être limité aux 50 lignes visibles. Une erreur empêche le téléchargement d’un fichier partiel. Aucune migration ni secret supplémentaire n’est nécessaire.
 
+## Protection avant chaque déploiement production
+
+Le workflow de déploiement prépare des points de restauration **D1 Time Travel** pour DB, ORDERS et TOURNAMENTS, avec un instant de reprise commun, avant toute migration et avant de publier le Worker. Il utilise uniquement `wrangler d1 time-travel info`, qui lit les repères de la sauvegarde native Cloudflare. L’export SQL complet est réservé à la maintenance, car Wrangler indique qu’il peut rendre D1 temporairement indisponible.
+
+Les trois repères et les identifiants des bases sont chiffrés avec le secret existant `PRODUCTION_ARCHIVE_PASSWORD`. Le workflow vérifie le déchiffrement, l’intégrité, les destinations et le rattachement à son exécution, puis conserve l’archive dans l’artefact `points-restauration-avant-deploiement-NUMERO_RUN-TENTATIVE`. Le lien est indiqué dans son résumé. Toute erreur avant la conservation du fichier bloque les migrations et le déploiement.
+
+L’artefact est conservé 7 jours et contient des points de reprise, pas une copie SQL indépendante. La durée de restauration effective dépend de la rétention D1 Time Travel de l’offre Cloudflare (7 ou 30 jours) ; conserver les repères plus longtemps ne prolonge pas cette rétention. La capture réelle se fait dans GitHub Actions au déploiement, pas pendant la préparation de la PR.
+
+Une restauration de base ne se déclenche jamais automatiquement : elle pourrait supprimer des commandes ou paiements arrivés après le point de reprise. Pour cette PR sans modification de schéma, revenir au Worker précédent préserve ces nouvelles données. La reprise d’une base nécessite d’abord d’identifier et de protéger les transactions postérieures.
+
 ## Copie du catalogue staging vers production
 
 Le workflow « Copier la boutique staging vers production » s’exécute uniquement sur la branche `ops/sync-shop-production`, lors d’un push intentionnel vers cette branche ou d’une relance manuelle sur celle-ci. Un push ordinaire sur main, staging ou une branche de PR ne lance pas cette copie.

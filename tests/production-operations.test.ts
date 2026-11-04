@@ -181,7 +181,27 @@ test('workflow production : seuls les lancements manuels explicites initialisent
  assert.deepEqual(selected('workflow_dispatch','main','preparer',false),['deploy']);
  assert.ok(yaml.indexOf('name: Conserver les sauvegardes privées')<yaml.indexOf('name: Exécuter uniquement l’opération demandée'));
  const uploads=[...yaml.matchAll(/uses: actions\/upload-artifact@v4[\s\S]*?path: ([^\n]+)/g)].map(m=>m[1]);
- assert.equal(uploads.length,3);assert.ok(uploads.every(path=>path.startsWith('.production-encrypted/')&&path.endsWith('.fce')),'Les artefacts du dépôt public doivent être chiffrés avant publication.');
+ assert.equal(uploads.length,4);assert.ok(uploads.every(path=>path.startsWith('.production-encrypted/')&&path.endsWith('.fce')),'Les artefacts du dépôt public doivent être chiffrés avant publication.');
+});
+
+test('déploiement production : sauvegarde vérifiée et conservée obligatoire avant toutes les migrations et le Worker',()=>{
+ const deploy=readFileSync('.github/workflows/deploy.yml','utf8').split('\n  deploy:\n')[1];
+ const steps=deploy.split(/\n      - /).slice(1),ordered=[
+  'name: Préparer les points de restauration des trois bases sans export SQL',
+  'name: Conserver les points de restauration chiffrés avant déploiement',
+  'name: Exiger le lien de sauvegarde avant toute migration',
+ ];
+ const indices=ordered.map(name=>steps.findIndex(step=>step.startsWith(name)));assert.ok(indices.every(i=>i>=0));assert.ok(indices[0]<indices[1]&&indices[1]<indices[2]);
+ for(const i of indices)assert.doesNotMatch(steps[i],/continue-on-error: true|if:.*(?:always|failure)/);
+ const verification=steps[indices[0]];
+ for(const action of ['check-key','capture','encrypt','decrypt','verify'])assert.match(verification,new RegExp('--action '+action+'(?: |\\n)'));
+ assert.ok(verification.indexOf('--action decrypt')<verification.indexOf('--action verify'));
+ const upload=steps[indices[1]];assert.match(upload,/retention-days: 7/);assert.match(upload,/if-no-files-found: error/);assert.match(upload,/github.run_attempt/);
+ assert.match(steps[indices[2]],/test -n "\$BACKUP_ARTIFACT_URL"/);assert.match(steps[indices[2]],/steps.deployment_backup.outputs.artifact-url/);
+ const mutations=steps.map((step,index)=>({step,index})).filter(({step})=>/wrangler (?:d1 migrations apply|deploy)/.test(step));
+ assert.equal(mutations.length,4);assert.ok(mutations.every(({index})=>index>indices[2]));
+ assert.ok(mutations.every(({step})=>!/if:.*(?:always|failure)|continue-on-error: true/.test(step)));
+ assert.doesNotMatch(deploy,/--action (?:backup|initialize|import-shop|import)(?: |\n)|copy-tournaments\.mjs[^\n]*--apply|d1 export/);
 });
 
 test('workflow de copie boutique : branche dédiée, sauvegarde chiffrée avant import et aucun déploiement',()=>{

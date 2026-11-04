@@ -4,6 +4,7 @@ import {readFileSync,readdirSync} from 'node:fs';
 import {Window} from 'happy-dom';
 import {TestDatabase} from './d1';
 import {shopRoute,type ShopEnv} from '../src/shop/service';
+import worker from '../src/worker';
 import {ordersCsv,collectOrderExport} from '../src/scripts/admin-shop-exports.js';
 
 const source=(name:string)=>readFileSync(`src/scripts/${name}.js`,'utf8').replace(/^import[\s\S]*?from [^;]+;\n?/gm,'').replace(/export /g,'');
@@ -28,8 +29,29 @@ async function fixture(t:any){
   }
   const call=async(path:string)=>{calls.push(path);const response=await request(path);const data=await response.json() as any;if(!response.ok)throw new Error(data.error);return data;};
   t.after(()=>{orders.close();site.close();});
-  return {orders,request,call,calls};
+  return {orders,site,env,request,call,calls};
 }
+
+test('exports dans le Worker : base strictement en lecture, paiements existants et file mail conservés, aucun appel externe',async t=>{
+  const f=await fixture(t),id='00000000-0000-4000-8000-000000000000';
+  await f.orders.prepare("INSERT INTO checkout_attempts(id,order_id,intent_id,state,created_at) VALUES('existing-attempt',?,123,'completed',1700000000)").bind(id).run();
+  await f.orders.prepare("INSERT INTO payments(id,order_id,attempt_id,state,amount_cents,updated_at) VALUES(456,?,'existing-attempt','Authorized',4750,1700000000)").bind(id).run();
+  await f.orders.prepare("INSERT INTO order_events(id,order_id,kind,actor,message,created_at) VALUES('event',?,'paid','helloasso','Paiement confirmé',1700000000)").bind(id).run();
+  await f.orders.prepare("INSERT INTO outbox(id,order_id,kind,status,available_at) VALUES('mail',?,'paid','pending',1700000000)").bind(id).run();
+  const snapshot=()=>[f.orders,f.site].map(db=>db.db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all().map((row:any)=>[row.name,db.db.prepare(`SELECT * FROM "${row.name}" ORDER BY rowid`).all()]));
+  const before=JSON.stringify(snapshot());
+  await f.orders.exec('PRAGMA query_only=ON');await f.site.exec('PRAGMA query_only=ON');
+  t.mock.method(globalThis,'fetch',()=>assert.fail('Les exports ne doivent pas contacter HelloAsso ou un transport mail.'));
+  const ctx={waitUntil(){assert.fail('Les exports ne doivent pas programmer de tâche de fond.');}} as any;
+  const request=async(path:string)=>{
+    const response=await worker.fetch(new Request('http://localhost:8787/admin-boutique/api/'+path,{headers:{'x-admin-token':'local-test'}}),f.env as any,ctx);
+    assert.equal(response.status,200);return response.json();
+  };
+  const csv=await collectOrderExport(request,'orders/export',{q:'Durand'});
+  const pdf=await collectOrderExport(request,'orders/purchase-orders',{q:'Durand'});
+  assert.equal(csv.orders.length,69);assert.equal(pdf.orders.length,67);
+  assert.equal(JSON.stringify(snapshot()),before,'Aucune table de production ne doit être modifiée par un export.');
+});
 
 test('exports boutique : mêmes filtres que la liste, toutes les pages et dates identiques sans doublon',async t=>{
   const f=await fixture(t),filters={q:'Durand',payment:'paid',fulfillment:'new'};
