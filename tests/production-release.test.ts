@@ -106,10 +106,11 @@ const fs=require('node:fs'),args=process.argv.slice(2),value=k=>args[args.indexO
 fs.appendFileSync('calls.jsonl',JSON.stringify(args)+'\\n');
 if(args[0]==='r2'&&args[1]==='object'&&args[2]==='get'){if(process.env.FAIL_MEDIA)process.exit(1);fs.writeFileSync(value('--file'),'test-image');process.exit(0);}
 if(args[0]!=='d1'||args[1]!=='execute')process.exit(2);
-const sql=value('--command'),stage=value('--env')==='staging';
+const sql=value('--command'),stage=value('--env')==='staging',dedicated=!stage&&args[2]==='TOURNAMENTS';
 const names=['shop_categories','shop_suppliers','shop_personalizations','shop_products','shop_variants','shop_options','shop_settings','site_media','tournaments','tournament_sales','tournament_teams'];
 let rows=[];
-if(sql.includes('sqlite_master'))rows=names.map(name=>({name}));
+if(sql.includes('sqlite_master'))rows=dedicated&&!process.env.TOURNAMENT_STATE?[]:[...names,...(dedicated?['module_imports']:[])].map(name=>({name}));
+else if(sql.includes('FROM module_imports'))rows=process.env.TOURNAMENT_STATE==='initialized'?[{id:'v5.2'}]:[];
 else if(sql.startsWith('PRAGMA'))rows=[{name:'required'}];
 else if(!sql.startsWith('SELECT'))process.exit(3);
 else if(stage&&sql==='SELECT * FROM shop_products')rows=[{id:1,slug:'test',name:'Test',image_key:'uploads/test.webp'}];
@@ -119,8 +120,14 @@ console.log(JSON.stringify([{success:true,results:rows}]));
   const result=spawnSync(process.execPath,[cli,'--release','test-release'],{cwd:folder,encoding:'utf8'});assert.equal(result.status,0,result.stderr);
   const base=join(folder,'.production-preparation/test-release');
   const manifest=JSON.parse(readFileSync(join(base,'manifest.json'),'utf8'));assert.equal(manifest.counts.articles,1);assert.equal(manifest.media.length,1);assert.equal(manifest.media[0].bytes,10);
+  assert.equal(manifest.production_tournaments_initialized,false);assert.equal(manifest.production_tournament_snapshot_from,'DB');
   assert.equal(readFileSync(join(base,manifest.media[0].file),'utf8'),'test-image');
   assert.ok(readFileSync(join(folder,'calls.jsonl'),'utf8').trim().split('\n').map(s=>JSON.parse(s)).every(a=>a[0]==='d1'?(a.includes('--command')&&/^(SELECT|PRAGMA)/.test(a[a.indexOf('--command')+1])):a[2]==='get'));
+  for(const state of ['migrated','initialized']){
+   const prepared=spawnSync(process.execPath,[cli,'--release',state],{cwd:folder,encoding:'utf8',env:{...process.env,TOURNAMENT_STATE:state}});assert.equal(prepared.status,0,prepared.stderr);
+   const checked=JSON.parse(readFileSync(join(folder,'.production-preparation',state,'manifest.json'),'utf8'));
+   assert.equal(checked.production_tournaments_initialized,state==='initialized');assert.equal(checked.production_tournament_snapshot_from,state==='initialized'?'TOURNAMENTS':'DB');
+  }
   const failed=spawnSync(process.execPath,[cli,'--release','failed-release','--media-source','r2'],{cwd:folder,encoding:'utf8',env:{...process.env,FAIL_MEDIA:'1'}});assert.notEqual(failed.status,0);assert.equal(existsSync(join(folder,'.production-preparation/failed-release/manifest.json')),false);
  }finally{rmSync(folder,{recursive:true,force:true});}
 });
@@ -141,12 +148,13 @@ test('compte rendu Actions : seul le statut contrôlé est publié, branche main
   const work=join(folder,'work');assert.equal(run('git',['remote','add','origin',join(folder,'remote.git')],work).status,0);
   const data=join(work,'.production-preparation/preparation-123');mkdirSync(data,{recursive:true});
   writeFileSync(join(data,'source.json'),JSON.stringify({private:'must not be committed'}));
-  writeFileSync(join(data,'manifest.json'),JSON.stringify({counts:{articles:4},sql_sha256:{shop:'abc',tournaments:'def'}}));
+  writeFileSync(join(data,'manifest.json'),JSON.stringify({counts:{articles:4},sql_sha256:{shop:'abc',tournaments:'def'},production_tournaments_initialized:false,production_tournament_snapshot_from:'DB'}));
   const result=run(process.execPath,[resolve('scripts/production-report.mjs')],work,{...process.env,GITHUB_RUN_ID:'123',GITHUB_SHA:'code-sha',GITHUB_REPOSITORY:'club/site',PREPARATION_OUTCOME:'success',PR_OUTCOME:'success',PR_URL:'https://github.com/club/site/pull/1',ARTIFACT_OUTCOME:'success',ARTIFACT_URL:'https://github.com/club/site/actions/runs/123/artifacts/456'});
   assert.equal(result.status,0,result.stderr);
   const remote=join(folder,'remote.git'),ref='refs/heads/release/production-preparation-report';
   const files=run('git',['ls-tree','--name-only',ref],remote);assert.equal(files.stdout.trim(),'status.json');
   const status=JSON.parse(run('git',['show',ref+':status.json'],remote).stdout);assert.equal(status.counts.articles,4);assert.equal(status.production_writes,0);assert.equal(status.artifact,'success');assert.match(status.artifact_url,/artifacts\/456$/);assert.doesNotMatch(JSON.stringify(status),/must not be committed/);
+  assert.equal(status.production_tournaments_initialized,false);assert.equal(status.production_tournament_snapshot_from,'DB');
   assert.notEqual(run('git',['rev-parse','--verify','refs/heads/main'],remote).status,0);
  }finally{rmSync(folder,{recursive:true,force:true});}
 });

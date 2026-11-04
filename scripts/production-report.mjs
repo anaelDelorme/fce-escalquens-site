@@ -20,6 +20,8 @@ if(report.pr==='failure'){
 try{
  const manifest=JSON.parse(readFileSync(`.production-preparation/preparation-${process.env.GITHUB_RUN_ID}/manifest.json`,'utf8'));
  report.counts=manifest.counts;report.sql_sha256=manifest.sql_sha256;report.business_contact_present=manifest.business_contact_present;
+ report.production_tournaments_initialized=manifest.production_tournaments_initialized;
+ report.production_tournament_snapshot_from=manifest.production_tournament_snapshot_from;
 }catch{ /* Missing manifest means exports did not complete. No rows are logged. */ }
 if(!report.counts){try{
  const source=JSON.parse(readFileSync(`.production-preparation/preparation-${process.env.GITHUB_RUN_ID}/source.json`,'utf8'));

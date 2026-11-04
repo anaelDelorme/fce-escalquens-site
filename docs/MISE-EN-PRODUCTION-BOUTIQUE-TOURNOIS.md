@@ -67,19 +67,24 @@ privées (statut, nombres de contenus, empreintes SQL et URL de PR) est publié
 sur `release/production-preparation-report`. Les dumps et médias restent dans
 l’artefact privé, pas dans Git.
 
-Si la base TOURNAMENTS production n'est pas encore configurée, l'état de
-référence des tournois est lu dans l'ancienne DB. Ce premier export permet la
-revue ; refaire une préparation après l'initialisation de la vraie destination
-avant d'utiliser les SQL pour une bascule.
+Si la base TOURNAMENTS production n'est pas encore configurée ou initialisée
+(migrations et marqueur de copie `v5.2`), l'état de référence des tournois est lu
+dans l'ancienne DB. Le manifeste et le compte rendu indiquent
+`production_tournaments_initialized=false` et
+`production_tournament_snapshot_from=DB`. Ce premier export permet la revue ;
+refaire une préparation après l'initialisation de la vraie destination avant
+d'utiliser les SQL pour une bascule.
 
 ## Configuration indispensable de la production
 
 `node scripts/check-production.mjs` signale les champs encore absents. Ce contrôle
 est aussi exécuté avant les migrations du workflow de déploiement.
 
-1. Renseigner les vrais UUID **distincts** de `ORDERS` et `TOURNAMENTS` production
-   dans `wrangler.jsonc`. Les UUID nuls sont des prérequis non remplis, jamais des
-   destinations d'import. Ne pas utiliser les UUID staging.
+1. Les bases production créées par le club sont renseignées dans `wrangler.jsonc` :
+   `ORDERS` : `d0ce5147-4c85-43ca-83ca-ef84df8b5626` ;
+   `TOURNAMENTS` : `dd0b1d97-3858-4e61-96c9-1e2735d362d0`.
+   La préparation vérifie leur existence sans les modifier. Leur création ne
+   remplace pas l'application des migrations ni la copie initiale des tournois.
 2. Appliquer leurs migrations et initialiser les tournois existants de production
    avec `scripts/copy-tournaments.mjs --env production --apply`, après sauvegarde
    et fermeture des anciennes inscriptions, conformément à `TOURNOIS-V5.2.md`.

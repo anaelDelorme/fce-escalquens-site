@@ -8,7 +8,7 @@ La production utilise encore l’ancien catalogue. Cette PR reprend le code stag
 
 Le slug HelloAsso de production est confirmé : `fce`.
 
-Avant fusion : compléter les UUID ORDERS/TOURNAMENTS production, les paramètres Cloudflare Access et les secrets Worker de production ; contrôler l’artefact de reprise et les réglages de mail. La fusion dans main déclenche le déploiement réel, l’import de contenus reste une opération distincte après validation.
+Les UUID des deux nouvelles bases ORDERS/TOURNAMENTS production sont renseignés. Avant fusion : appliquer les migrations et la copie initiale des tournois, compléter les paramètres Cloudflare Access et les secrets Worker de production ; contrôler l’artefact de reprise et les réglages de mail. La fusion dans main déclenche le déploiement réel, l’import de contenus reste une opération distincte après validation.
 
 Procédure et limites : `docs/MISE-EN-PRODUCTION-BOUTIQUE-TOURNOIS.md`.
 

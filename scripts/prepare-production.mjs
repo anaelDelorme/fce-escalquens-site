@@ -36,15 +36,26 @@ function query(env,db,sql){
  if(!Array.isArray(json)||json.some(r=>r.success===false))throw Error('Réponse D1 invalide.');
  return json.flatMap(r=>r.results||[]);
 }
+const tableNames=new Map();
+function existingTables(env,db){
+ const key=env+':'+db;
+ if(!tableNames.has(key))tableNames.set(key,new Set(query(env,db,"SELECT name FROM sqlite_master WHERE type='table'").map(r=>r.name)));
+ return tableNames.get(key);
+}
 function tables(env,db,names,required=false){
- const existing=new Set(query(env,db,"SELECT name FROM sqlite_master WHERE type='table'").map(r=>r.name));
+ const existing=existingTables(env,db);
  return Object.fromEntries(names.map(name=>{
   if(required&&!existing.has(name))throw Error('Migration source absente : '+name);
   const filter=name==='site_media'?" WHERE slot='shop_hero'":'';
   return [name,existing.has(name)?query(env,db,`SELECT * FROM ${name}${filter}`):[]];
  }));
 }
-const targetTournaments=valid(binding(config,'TOURNAMENTS')?.database_id)?'TOURNAMENTS':'DB';
+const configuredTournaments=valid(binding(config,'TOURNAMENTS')?.database_id);
+const targetTournamentTables=configuredTournaments?existingTables('production','TOURNAMENTS'):new Set();
+const tournamentsInitialized=tournamentTables.every(name=>targetTournamentTables.has(name))&&targetTournamentTables.has('module_imports')&&query('production','TOURNAMENTS',"SELECT id FROM module_imports WHERE id='v5.2'").length>0;
+// A newly created binding is not an initialized destination. Keep reviewing
+// the legacy production contents until their initial copy has been verified.
+const targetTournaments=tournamentsInitialized?'TOURNAMENTS':'DB';
 const source={shop:tables('staging','DB',shopTables,true),tournaments:tables('staging','TOURNAMENTS',tournamentTables,true),teams:query('staging','DB','SELECT id,slug FROM teams')};
 source.business_settings=query('staging','ORDERS',`SELECT ${businessFields.map(k=>`json_extract(data,'$.${k}') AS ${k}`).join(',')} FROM settings WHERE id=1`)[0]||{};
 if(!query('staging','DB','PRAGMA table_info(shop_personalizations)').some(c=>c.name==='required'))throw Error('La migration des personnalisations obligatoires manque en staging.');
@@ -73,6 +84,6 @@ for(const object of plan.media){
  const bytes=readFileSync(join(folder,object.file));object.sha256=createHash('sha256').update(bytes).digest('hex');object.bytes=bytes.length;
 }
 const checksum=file=>createHash('sha256').update(readFileSync(join(folder,file))).digest('hex');
-const manifest={release,created_at:new Date().toISOString(),counts:plan.counts,source_bucket:stageBucket,target_bucket:prodBucket,target_site_db:binding(config,'DB').database_id,target_orders_db:binding(config,'ORDERS')?.database_id||null,target_tournaments_db:binding(config,'TOURNAMENTS')?.database_id||null,production_tournament_snapshot_from:targetTournaments,media:plan.media,sql_sha256:{shop:checksum('shop.sql'),tournaments:checksum('tournaments.sql'),settings:checksum('settings.sql')},business_contact_present:!!source.business_settings.contact_email,desired_shop_enabled:plan.desired_shop_enabled,desired_tournament_sales:plan.desired_tournament_sales,sales_closed:true};
+const manifest={release,created_at:new Date().toISOString(),counts:plan.counts,source_bucket:stageBucket,target_bucket:prodBucket,target_site_db:binding(config,'DB').database_id,target_orders_db:binding(config,'ORDERS')?.database_id||null,target_tournaments_db:binding(config,'TOURNAMENTS')?.database_id||null,production_tournaments_initialized:tournamentsInitialized,production_tournament_snapshot_from:targetTournaments,media:plan.media,sql_sha256:{shop:checksum('shop.sql'),tournaments:checksum('tournaments.sql'),settings:checksum('settings.sql')},business_contact_present:!!source.business_settings.contact_email,desired_shop_enabled:plan.desired_shop_enabled,desired_tournament_sales:plan.desired_tournament_sales,sales_closed:true};
 writeFileSync(join(folder,'manifest.json'),JSON.stringify(manifest,null,2)+'\n',{mode:0o600});
 console.log(JSON.stringify({folder,counts:plan.counts,production_writes:0,tournament_media_copied:0}));
