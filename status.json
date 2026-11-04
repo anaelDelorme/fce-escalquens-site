@@ -1,9 +1,9 @@
 {
-  "commit": "17407341cb130441dc1686dce54831f2cdc5da2d",
-  "preparation": "failure",
+  "commit": "a927c7f4cc3805aabf2e83ebdcabf233de0a4069",
+  "preparation": "success",
   "pr": "failure",
   "pr_url": null,
-  "run_url": "https://github.com/anaelDelorme/fce-escalquens-site/actions/runs/41787898028",
+  "run_url": "https://github.com/anaelDelorme/fce-escalquens-site/actions/runs/41788535133",
   "production_writes": 0,
   "production_databases": {
     "DB": "883401b1-f229-4c0e-9e25-6493f8d01b93",
@@ -16,15 +16,16 @@
     "HELLOASSO_CLIENT_SECRET": false,
     "SMTP_PASSWORD": false
   },
-  "preparation_reason": "Lecture Cloudflare impossible",
-  "failed_operation": {
-    "operation": "r2-read",
-    "environment": "staging",
-    "resource": "MEDIA"
+  "pr_reason": "actions_pr_creation_disabled",
+  "counts": {
+    "articles": 38,
+    "variants": 365,
+    "personalizations": 6,
+    "tournaments": 1,
+    "media": 40
   },
-  "cloudflare_failure": {
-    "code": "unknown",
-    "hint": "authentication"
-  },
-  "pr_reason": "actions_pr_creation_disabled"
+  "sql_sha256": {
+    "shop": "63bac73e5e26f07c60b8ee7339da83e87ca5b15889b874bd3d44be0679434c06",
+    "tournaments": "0cfbb6827541a3eae38a79c85e898b524a1e03bb5e730c849249703af51ae104"
+  }
 }
