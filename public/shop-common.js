@@ -35,6 +35,25 @@ export const fulfillmentLabels = {
   delivered: "Remise au client",
   cancelled: "Annulée",
 };
+export function paymentAttemptMessage(code) {
+  if(!code)return '';
+  if(code==='HELLOASSO_REJECTED')return 'La demande de paiement a échoué. Cet ancien historique ne conserve pas le motif précis.';
+  if(code==='HELLOASSO_AUTH')return 'La connexion HelloAsso n’a pas pu être établie ou renouvelée.';
+  if(code==='HELLOASSO_CONFIG')return 'La configuration HelloAsso doit être vérifiée par le club.';
+  if(code==='PAYMENT_UNCERTAIN')return 'La réponse à cette tentative est incertaine. Vérifiez son état avant de relancer le paiement.';
+  const match=String(code).match(/^HELLOASSO_REJECTED:(400|401|403|404|409|422):([a-z_,]*)$/);
+  if(!match)return 'Une erreur de paiement a été enregistrée. Contactez le club pour vérifier cette tentative.';
+  const labels={first_name:'Prénom du payeur',last_name:'Nom du payeur',email:'E-mail du payeur',total_amount:'Montant total',initial_amount:'Montant du premier règlement',item_name:'Libellé de la demande',back_url:'Adresse de retour',return_url:'Adresse de confirmation',error_url:'Adresse en cas d’erreur',contains_donation:'Nature du règlement',terms:'Échéances',country:'Pays du payeur',date_of_birth:'Date de naissance du payeur'};
+  const fields=match[2].split(',').filter(key=>Object.hasOwn(labels,key)).map(key=>labels[key]);
+  return `HelloAsso a refusé la demande (HTTP ${match[1]}). ${fields.length?'Champ'+(fields.length>1?'s signalés':' signalé')+' : '+fields.join(', ')+'.':'Aucun champ précis n’a été identifié dans sa réponse.'}`;
+}
+export function payerCorrectionMarkup(data) {
+  const order=data.order,registration=data.registration;
+  if(!['pending','refused'].includes(order.payment_status)||order.fulfillment!=='new'||order.archived_at||
+    registration&&(registration.registration_status==='cancelled'||registration.archived_at)||
+    (data.attempts||[]).some(attempt=>attempt.intent_id!=null||['creating','pending','uncertain','completed'].includes(attempt.state)))return '';
+  return `<details class="commerce-payer-editor"><summary>Corriger le nom et le prénom du payeur</summary><p class="commerce-help">Saisissez uniquement l’identité du payeur, sans parenthèses, chiffres ni mention de coach ou d’équipe. Cette correction conserve la référence, les articles, le montant et l’adresse e-mail. Elle ne lance pas de paiement et n’envoie pas de mail.</p><form data-payer-form id="payer-${esc(order.id)}"><div class="commerce-form-grid"><label>Prénom du payeur<input name="first_name" value="${esc(order.first_name)}" maxlength="80" autocomplete="given-name" required></label><label>Nom du payeur<input name="last_name" value="${esc(order.last_name)}" maxlength="80" autocomplete="family-name" required></label></div><p><button type="submit">Enregistrer le nom et le prénom</button></p></form></details>`;
+}
 export function readStorage(key, fallback = null) {
   try {
     return JSON.parse(sessionStorage.getItem(key)) ?? fallback;

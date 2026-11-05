@@ -15,8 +15,9 @@ function setup(catalogue=fixture,coachMarkup=false,storedCart:any=null){
  window.fetch=(async()=>Response.json(catalogue)) as any;
  if(storedCart)window.sessionStorage.setItem('fce-cart-v1',JSON.stringify(storedCart));
  const common=readFileSync(new URL('../public/shop-common.js',import.meta.url),'utf8').replace(/export /g,'');
- const commerce=readFileSync(new URL('../public/shop-commerce.js',import.meta.url),'utf8').replace(/^import[\s\S]*?from "\.\/shop-common.js";/,'');
- window.eval(common+'\n'+commerce);return window;
+ const contact=readFileSync(new URL('../public/shop-contact.js',import.meta.url),'utf8').replace(/export /g,'');
+ const commerce=readFileSync(new URL('../public/shop-commerce.js',import.meta.url),'utf8').replace(/^import[\s\S]*?from [^;]+;\n?/gm,'');
+ window.eval(common+'\n'+contact+'\n'+commerce);return window;
 }
 test('personnalisation obligatoire DOM : précochée et verrouillée, supplément inclus, modification conservée',async()=>{
  const w=setup({...fixture,options:[...fixture.options,badge]}),d=w.document;

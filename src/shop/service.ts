@@ -34,6 +34,10 @@ import { drainMail, queueMail, testMail, mailQueueStatus } from "./mail";
 import { mailReady, mailTransportReady } from "./mail-config";
 import { smtpConfigured } from "./smtp";
 import { priceLabelStatement } from "./catalogue-pricing";
+import { orderSearch, orderExportPage, supplierOrder } from './order-exports';
+import {payerContact,contactField,correctPayer} from './contact';
+import {HelloAssoRejection} from './helloasso-errors';
+import {archiveOrder} from './order-archive';
 export interface ShopEnv {
   DB: D1Database;
   ORDERS: D1Database;
@@ -256,6 +260,10 @@ export async function detail(env: ShopEnv, order: Row, admin = false) {
       );
   delete safeOrder.token_hash;
   delete safeOrder.request_hash;
+  if(admin&&order.kind==='shop'){
+    const archive=await env.ORDERS.prepare('SELECT archived_at,archived_by FROM order_archives WHERE order_id=?').bind(order.id).first<Row>();
+    safeOrder.archived_at=archive?.archived_at??null;safeOrder.archived_by=archive?.archived_by||'';
+  }
   return {
     order: safeOrder,
     items: items.results.map((i) => ({
@@ -292,17 +300,18 @@ async function createOrder(request: Request, env: ShopEnv, s: Settings) {
       400,
       "Veuillez lire et accepter les conditions générales de vente à jour.",
     );
+  let order = await env.ORDERS.prepare("SELECT * FROM orders WHERE id=?").bind(id).first<Row>();
+  // Preserve the original request hash on retries of orders accepted before these checks.
+  const contact=order?{email:email(data.email),first_name:text(data.first_name,80,true),last_name:text(data.last_name,80,true),phone:text(data.phone,30,true)}:payerContact(data);
   const customer = {
-    email: email(data.email),
-    first_name: text(data.first_name, 80, true),
-    last_name: text(data.last_name, 80, true),
-    phone: text(data.phone, 30, true),
+    email:contact.email,
+    first_name:contact.first_name,
+    last_name:contact.last_name,
+    phone:contact.phone,
     licensed_name: text(data.licensed_name || "", 120),
     team: text(data.team || "", 80),
     delivery_method: data.delivery_method,
   };
-  if (!/^[+0-9 ().-]{6,30}$/.test(customer.phone))
-    fail("PHONE", 400, "Vérifiez le numéro de téléphone.");
   if (
     !["coach", "club"].includes(customer.delivery_method) ||
     (customer.delivery_method === "coach" &&
@@ -317,9 +326,6 @@ async function createOrder(request: Request, env: ShopEnv, s: Settings) {
   const requestHash = await sha256(
     JSON.stringify({ customer, items: data.items, terms: TERMS_VERSION,...(data.pricing_mode==='coach'?{coach:true}:{}) }),
   );
-  let order = await env.ORDERS.prepare("SELECT * FROM orders WHERE id=?")
-    .bind(id)
-    .first<Row>();
   if (order && order.request_hash !== requestHash)
     fail(
       "IDEMPOTENCY_CONFLICT",
@@ -523,13 +529,18 @@ export async function checkout(
         "La demande de paiement est en cours ou nécessite une vérification. Consultez le suivi ou contactez le club avant de payer à nouveau.",
       );
   }
+  // Validate before creating a new attempt; paid and existing active checkouts keep their original path.
+  const payer={firstName:contactField('first_name',order.first_name),lastName:contactField('last_name',order.last_name),email:contactField('email',order.email)};
+  if(!Number.isSafeInteger(order.total_cents)||order.total_cents<=0||order.total_cents>2147483647)
+    fail('PAYMENT_AMOUNT',409,'Le montant enregistré doit être vérifié par le club avant de lancer le paiement.');
   const attemptId = crypto.randomUUID();
+  let claimed;
   try {
-    await env.ORDERS.prepare(
-      "INSERT INTO checkout_attempts(id,order_id,created_at) VALUES(?,?,?)",
+    claimed=await env.ORDERS.prepare(
+      "INSERT INTO checkout_attempts(id,order_id,created_at) SELECT ?,?,? FROM orders WHERE id=? AND version=? AND payment_status IN ('pending','refused') AND fulfillment<>'cancelled' RETURNING id",
     )
-      .bind(attemptId, order.id, now())
-      .run();
+      .bind(attemptId, order.id, now(),order.id,order.version)
+      .first();
   } catch {
     return fail(
       "PAYMENT_PENDING",
@@ -537,6 +548,7 @@ export async function checkout(
       "Une demande de paiement est déjà en cours. Actualisez le suivi.",
     );
   }
+  if(!claimed)fail('ORDER_CHANGED',409,'Les informations de cette demande ont changé. Actualisez son suivi avant de reprendre le paiement.');
   try {
     const link = `${origin(env)}/paiements/retour/?order=${order.id}&context=${order.kind === "tournament" ? "tournois" : "boutique"}`;
     const result = await api(
@@ -551,11 +563,7 @@ export async function checkout(
         backUrl: link,
         returnUrl: link,
         errorUrl: link,
-        payer: {
-          firstName: order.first_name,
-          lastName: order.last_name,
-          email: order.email,
-        },
+        payer,
         metadata: {
           order_id: order.id,
           attempt_id: attemptId,
@@ -587,7 +595,7 @@ export async function checkout(
     )
       .bind(
         rejected ? "failed" : "uncertain",
-        rejected ? "HELLOASSO_REJECTED" : "PAYMENT_UNCERTAIN",
+        rejected ? error instanceof HelloAssoRejection?error.historyCode:error.code : "PAYMENT_UNCERTAIN",
         attemptId,
       )
       .run();
@@ -915,8 +923,7 @@ async function updateFulfillment(
 }
 function purchaseOrder(order: Row, items: Row[], s: Settings) {
   return response({
-    order:Object.fromEntries(['reference','first_name','last_name','licensed_name','team'].map(key=>[key,order[key]])),
-    items:items.map(item=>Object.fromEntries(['name','supplier','size','quantity','options_json'].map(key=>[key,item[key]]))),
+    ...supplierOrder(order,items),
     club:Object.fromEntries(['seller_name','seller_address','contact_email','seller_phone'].map(key=>[key,s[key as keyof Settings]])),
   });
 }
@@ -1231,22 +1238,21 @@ export async function shopRoute(
           0,
           Math.min(100000, Number(url.searchParams.get("page")) || 0),
         );
-        const q = (url.searchParams.get("q") || "").slice(0, 100);
-        const payment = (url.searchParams.get("payment") || "").slice(0, 30),
-          fulfillment = (url.searchParams.get("fulfillment") || "").slice(
-            0,
-            30,
-          );
+        const search=orderSearch(url);
         const rows = await env.ORDERS.prepare(
-          `SELECT id,reference,email,first_name,last_name,team,total_cents,payment_status,fulfillment,created_at,version FROM orders WHERE kind='shop' AND (?='' OR instr(lower(reference||' '||email||' '||first_name||' '||last_name),lower(?))>0) AND (?='' OR payment_status=?) AND (?='' OR fulfillment=?) ORDER BY created_at DESC LIMIT 51 OFFSET ?`,
+          `SELECT o.id,o.reference,o.email,o.first_name,o.last_name,o.team,o.total_cents,o.payment_status,o.fulfillment,o.created_at,o.version,(SELECT a.archived_at FROM order_archives a WHERE a.order_id=o.id) AS archived_at FROM orders o WHERE ${search.where} ORDER BY o.created_at DESC,o.id DESC LIMIT 51 OFFSET ?`,
         )
-          .bind(q, q, payment, payment, fulfillment, fulfillment, page * 50)
+          .bind(...search.bindings, page * 50)
           .all<Row>();
         return response({
           orders: rows.results.slice(0, 50),
           has_more: rows.results.length > 50,
           page,
         });
+      }
+      if(request.method==='GET'&&['/admin-boutique/api/orders/export','/admin-boutique/api/orders/purchase-orders'].includes(path)) {
+        const supplier=path.endsWith('/purchase-orders');
+        return response({...await orderExportPage(env,url,supplier),...(supplier?{club:Object.fromEntries(['seller_name','seller_address','contact_email','seller_phone'].map(key=>[key,s[key as keyof Settings]]))}:{})});
       }
       if (path === "/admin-boutique/api/surveys" && request.method === "GET") {
         const aggregate = await env.ORDERS.prepare(
@@ -1258,13 +1264,15 @@ export async function shopRoute(
         return response({ aggregate, responses: rows.results });
       }
       const match = path.match(
-        /^\/admin-boutique\/api\/orders\/([a-f0-9-]{36})(?:\/(purchase-order|reconcile|resend|rotate-link|resolve-attempt))?$/,
+        /^\/admin-boutique\/api\/orders\/([a-f0-9-]{36})(?:\/(purchase-order|reconcile|resend|rotate-link|resolve-attempt|archive|payer))?$/,
       );
       if (match) {
         const order = await findOrder(env, match[1]);
         if(order.kind !== "shop")fail("ORDER_NOT_FOUND",404,"Commande boutique introuvable.");
         if (!match[2] && request.method === "GET")
           return response(await detail(env, order, true));
+        if(match[2]==='archive'&&request.method==='POST')return await archiveOrder(request,env,order,actor);
+        if(match[2]==='payer'&&request.method==='POST')return await correctPayer(request,env,order,actor);
         if (!match[2] && request.method === "PATCH") {
           const result = await updateFulfillment(request, env, order, actor);
           ctx.waitUntil(drainMail(env, s));

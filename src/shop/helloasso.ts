@@ -3,6 +3,7 @@ import { environment } from "./security";
 import type { ShopEnv } from "./service";
 import type { Settings } from "./terms";
 import { accessToken } from "./helloasso-auth";
+import {HelloAssoRejection,rejectedFields} from './helloasso-errors';
 export function apiBase(env: ShopEnv) {
   return environment(env) === "production"
     ? "https://api.helloasso.com"
@@ -51,12 +52,10 @@ export async function api(
     if (
       method === "POST" &&
       [400, 401, 403, 404, 409, 422].includes(result.status)
-    )
-      fail(
-        "HELLOASSO_REJECTED",
-        502,
-        rejectedRequestMessage(result.status, /\/checkout-intents$/.test(path)),
-      );
+    ) {
+      const fields=[400,422].includes(result.status)?await rejectedFields(result):[];
+      throw new HelloAssoRejection(result.status,rejectedRequestMessage(result.status,/\/checkout-intents$/.test(path)),fields);
+    }
     fail(
       "HELLOASSO_UNAVAILABLE",
       503,

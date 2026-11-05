@@ -33,6 +33,7 @@ import {
 } from "../shop/service";
 import { queueMail, drainMail } from "../shop/mail";
 import { api, connectionStatus } from "../shop/helloasso";
+import {payerContact,correctPayer} from '../shop/contact';
 
 async function sales(env: ShopEnv, all = false) {
   return (
@@ -71,15 +72,15 @@ async function create(request: Request, env: ShopEnv, s: Row) {
     id = uuid(data.idempotency_key),
     tournamentId = integer(data.tournament_id, 1, 2147483647);
   configured(env,s,data.payment_choice!=="cheque");
+  let order = await env.ORDERS.prepare("SELECT * FROM orders WHERE id=?").bind(id).first<Row>();
+  const contact=order?{email:email(data.email),first_name:text(data.first_name,80,true),last_name:text(data.last_name,80,true),phone:text(data.phone,30,true)}:payerContact(data);
   const customer = {
-    email: email(data.email),
-    first_name: text(data.first_name, 80, true),
-    last_name: text(data.last_name, 80, true),
-    phone: text(data.phone, 30, true),
+    email:contact.email,
+    first_name:contact.first_name,
+    last_name:contact.last_name,
+    phone:contact.phone,
     club_name: text(data.club_name, 120, true),
   };
-  if (!/^[+0-9 ().-]{6,30}$/.test(customer.phone))
-    fail("PHONE", 400, "Vérifiez le numéro de téléphone.");
   if (
     data.accept_terms !== true ||
     !["now", "later", "cheque"].includes(data.payment_choice)
@@ -96,9 +97,6 @@ async function create(request: Request, env: ShopEnv, s: Row) {
       sections: data.sections,
     }),
   );
-  let order = await env.ORDERS.prepare("SELECT * FROM orders WHERE id=?")
-    .bind(id)
-    .first<Row>();
   if (order && (order.kind !== "tournament" || order.request_hash !== hash))
     fail(
       "IDEMPOTENCY_CONFLICT",
@@ -437,7 +435,7 @@ export async function tournamentRoute(
         });
       }
       const match = path.match(
-        /^\/admin-tournois\/api\/registrations\/([a-f0-9-]{36})(?:\/(reconcile|resend|rotate-link|resolve-attempt|cheque-received|archive))?$/,
+        /^\/admin-tournois\/api\/registrations\/([a-f0-9-]{36})(?:\/(reconcile|resend|rotate-link|resolve-attempt|cheque-received|archive|payer))?$/,
       );
       if (match) {
         const order = await findOrder(env, match[1]);
@@ -445,6 +443,7 @@ export async function tournamentRoute(
           fail("NOT_FOUND", 404, "Inscription introuvable.");
         if (request.method === "GET" && !match[2])
           return response(await detail(env, order, true));
+        if(request.method==='POST'&&match[2]==='payer')return await correctPayer(request,env,order,actor);
         if(request.method==='POST'&&match[2]==='archive') {
           const d=await body(request),version=integer(d.version,0,2147483647);
           if(typeof d.archived!=='boolean')fail('ARCHIVE',400,'Choisissez le retrait ou la remise dans le suivi.');

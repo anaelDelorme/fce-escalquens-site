@@ -14,6 +14,40 @@ Pour les règlements HelloAsso, « Vérifier chez HelloAsso » affiche le résul
 
 L’export CSV contient une ligne par catégorie pour chaque inscription, avec `nb_equipes`. Par exemple, deux U11 et une U13F donnent deux lignes : U11 / 2 et U13F / 1. Le tournoi et les filtres sélectionnés restent appliqués. Les catégories non participantes sont exclues. `total_cents` correspond au montant de la catégorie, calculé à partir du tarif par équipe de l’inscription ; `registration_total_cents` indique le total de l’inscription et se répète comme information de référence. Si le tarif par équipe ne peut pas être déduit en centimes entiers d’une ancienne inscription, le montant de catégorie reste vide et le total original est conservé.
 
+## Exports des commandes boutique
+
+Dans la liste des commandes, appliquer la recherche et les filtres, puis utiliser « Exporter les commandes CSV » ou « Télécharger les bons fournisseur en un PDF ». Les deux exports portent sur tous les résultats de la recherche appliquée, même depuis une autre page de la liste. Une saisie non validée par « Appliquer » ne modifie pas leur périmètre. « Toutes les commandes » et « Effacer » permettent de retirer les filtres ; le raccourci « Payées, à préparer » permet de préparer le PDF des commandes à passer au fournisseur.
+
+Le CSV comporte une ligne par commande et 15 colonnes en français : référence, date de commande, nom, prénom, e-mail, téléphone, licencié, équipe, état de préparation, état du paiement, détail de la commande, quantité totale, montant en euros, mode de remise et fournisseurs. Le détail conserve les articles, tailles, couleurs, personnalisations et leurs textes, les quantités et les montants. Format UTF-8 avec marqueur pour Excel, séparateur point-virgule et décimales françaises. Les cellules sont protégées contre l’interprétation d’un texte comme formule.
+
+Le PDF regroupe les bons des commandes payées et non annulées répondant aux mêmes critères. Chaque commande client commence sur une nouvelle page et peut se poursuivre sur plusieurs pages. Les coordonnées privées du client et les prix de vente restent exclus, comme dans le bon individuel. La pagination du fichier est globale. Le téléchargement individuel est conservé ; aucun téléchargement ne marque les commandes comme transmises au fournisseur et aucun mail n’est envoyé.
+
+Les endpoints d’export sont réservés à l’administration boutique et renvoient des réponses non mises en cache. Les résultats sont parcourus par lots avec un curseur de date et d’identifiant pour couvrir toutes les commandes sans être limité aux 50 lignes visibles. Une erreur empêche le téléchargement d’un fichier partiel. Aucune migration ni secret supplémentaire n’est nécessaire.
+
+## Coordonnées et diagnostic HelloAsso
+
+Les formulaires des cinq boutiques et des tournois partagent des contrôles de prénom, nom, e-mail et téléphone avec leur API. Les erreurs sont affichées sous les champs avant toute création ; les noms internationaux, apostrophes et traits d’union sont conservés. Les annotations entre parenthèses, crochets ou accolades et les chiffres sont refusés dans l’identité, à la suite du refus constaté avec « (coach u10) ». Les mentions de coach, d’équipe et de club ont leurs champs dédiés. Cette prévention complète la spécification officielle, qui ne publie pas cette restriction ; aucune suppression automatique de texte n’est appliquée au nom.
+
+Les prochaines tentatives refusées conservent le statut HTTP et les noms de champs que le site sait reconnaître, sans valeur personnelle ni message brut du prestataire. Ces diagnostics sont lisibles dans les fiches administratives boutique et tournois. Le détail des anciennes erreurs n’est pas reconstituable. Les reprises des commandes déjà enregistrées restent idempotentes et aucun paiement n’est relancé automatiquement. Voir [les contraintes documentées et les protections](HELLOASSO-COORDONNEES.md).
+
+Pour une demande déjà créée, ouvrir sa fiche puis « Corriger le nom et le prénom du payeur ». Cette action est disponible avant tout paiement engagé et conserve les articles, le montant, l’e-mail et la référence. Le client reprend ensuite le paiement depuis son lien de suivi existant. Dès qu’une intention HelloAsso ou un paiement existe, la correction est bloquée ; les versions empêchent aussi une ancienne lecture de lancer un paiement avec les noms précédents.
+
+## Retirer une commande annulée du suivi
+
+Une fiche de commande annulée propose « Retirer du suivi ». La commande disparaît des listes et du CSV habituels. Cocher « Afficher aussi les commandes retirées du suivi » puis appliquer les filtres permet de la retrouver et de choisir « Remettre dans le suivi ». Le même filtre est appliqué aux exports. La commande reste annulée après sa remise dans la liste.
+
+Il s’agit d’un retrait réversible, sans effacement des articles, paiements, tentatives HelloAsso, mails ou historique. L’action est réservée aux responsables boutique, contrôlée par version et tracée ; elle ne déclenche aucun mail ni appel HelloAsso. La migration ORDERS `0007_order_archive.sql` crée uniquement la table de métadonnées `order_archives`, initialement vide. Les commandes existantes restent visibles et le schéma des tables de commandes et paiements reste compatible avec les anciennes copies tournois.
+
+## Protection avant chaque déploiement production
+
+Le workflow de déploiement prépare des points de restauration **D1 Time Travel** pour DB, ORDERS et TOURNAMENTS, avec un instant de reprise commun, avant toute migration et avant de publier le Worker. Il utilise uniquement `wrangler d1 time-travel info`, qui lit les repères de la sauvegarde native Cloudflare. L’export SQL complet est réservé à la maintenance, car Wrangler indique qu’il peut rendre D1 temporairement indisponible.
+
+Les trois repères et les identifiants des bases sont chiffrés avec le secret existant `PRODUCTION_ARCHIVE_PASSWORD`. Le workflow vérifie le déchiffrement, l’intégrité, les destinations et le rattachement à son exécution, puis conserve l’archive dans l’artefact `points-restauration-avant-deploiement-NUMERO_RUN-TENTATIVE`. Le lien est indiqué dans son résumé. Toute erreur avant la conservation du fichier bloque les migrations et le déploiement.
+
+L’artefact est conservé 7 jours et contient des points de reprise, pas une copie SQL indépendante. La durée de restauration effective dépend de la rétention D1 Time Travel de l’offre Cloudflare (7 ou 30 jours) ; conserver les repères plus longtemps ne prolonge pas cette rétention. La capture réelle se fait dans GitHub Actions au déploiement, pas pendant la préparation de la PR.
+
+Une restauration de base ne se déclenche jamais automatiquement : elle pourrait supprimer des commandes ou paiements arrivés après le point de reprise. La nouvelle table de retrait du suivi est indépendante des tables de commandes et paiements : revenir au Worker précédent préserve les données, mais réaffiche les commandes retirées du suivi. La reprise d’une base nécessite d’abord d’identifier et de protéger les transactions postérieures.
+
 ## Copie du catalogue staging vers production
 
 Le workflow « Copier la boutique staging vers production » s’exécute uniquement sur la branche `ops/sync-shop-production`, lors d’un push intentionnel vers cette branche ou d’une relance manuelle sur celle-ci. Un push ordinaire sur main, staging ou une branche de PR ne lance pas cette copie.

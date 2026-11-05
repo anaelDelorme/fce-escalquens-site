@@ -1,12 +1,15 @@
 import { sectionsSummary } from "./tournament-form-fields";
 import { formEditor } from "./tournament-form-editor";
 import { eventEditor } from "./tournament-events-editor";
+import {bindContactValidation} from '../../public/shop-contact.js';
 import {
   api,
   esc,
   money,
   date,
   paymentLabels,
+  paymentAttemptMessage,
+  payerCorrectionMarkup,
   mailStatusList,
 } from "../../public/shop-common.js";
 const root = document.querySelector("#tournament-admin"),
@@ -200,7 +203,7 @@ async function show(id, focus = false, provided = null) {
     )
     .join(
       "",
-    )}</select></label><label>Message visible par le contact<textarea name="public_note" maxlength="1500">${esc(o.public_note)}</textarea></label><label>Note interne au club<textarea name="internal_note" maxlength="3000">${esc(o.internal_note)}</textarea></label><div><button type="submit">Enregistrer et informer le contact</button></div></form>${r.registration_status==='cancelled'?`<section class="commerce-mail-context"><p>${r.archived_at?'Cette inscription a été retirée du suivi courant.':'Cette inscription est annulée. Vous pouvez la retirer des listes et exports courants.'}</p><button type="button" class="commerce-secondary" data-archive-registration>${r.archived_at?'Remettre dans le suivi':'Retirer du suivi'}</button></section>`:''}<h3>Suivi des e-mails</h3>${tournamentEnvironment!=="production"?'<p class="commerce-mail-context">En staging, tous les mails clients et club sont redirigés vers MAIL_TEST_TO. Le destinataire effectif est indiqué pour chaque envoi.</p>':""}${mailStatusList(data.mails)}<details><summary>Historique et paiements</summary>${data.events.map((e) => `<p>${date(e.created_at)} · ${esc(e.message)}</p>`).join("")}<h3>Tentatives de paiement</h3>${data.attempts.map((a) => `<p>${esc(a.intent_id || "Sans réponse")} · ${esc(a.state)} · ${esc(a.last_error)}<br><small>Tentative : ${esc(a.id)}</small></p>`).join("")}</details>${
+    )}</select></label><label>Message visible par le contact<textarea name="public_note" maxlength="1500">${esc(o.public_note)}</textarea></label><label>Note interne au club<textarea name="internal_note" maxlength="3000">${esc(o.internal_note)}</textarea></label><div><button type="submit">Enregistrer et informer le contact</button></div></form>${r.registration_status==='cancelled'?`<section class="commerce-mail-context"><p>${r.archived_at?'Cette inscription a été retirée du suivi courant.':'Cette inscription est annulée. Vous pouvez la retirer des listes et exports courants.'}</p><button type="button" class="commerce-secondary" data-archive-registration>${r.archived_at?'Remettre dans le suivi':'Retirer du suivi'}</button></section>`:''}${payerCorrectionMarkup(data)}<h3>Suivi des e-mails</h3>${tournamentEnvironment!=="production"?'<p class="commerce-mail-context">En staging, tous les mails clients et club sont redirigés vers MAIL_TEST_TO. Le destinataire effectif est indiqué pour chaque envoi.</p>':""}${mailStatusList(data.mails)}<details><summary>Historique et paiements</summary>${data.events.map((e) => `<p>${date(e.created_at)} · ${esc(e.message)}</p>`).join("")}<h3>Tentatives de paiement</h3>${data.attempts.map((a) => `<p>${esc(a.intent_id || "Sans réponse")} · ${esc(a.state)} · ${esc(paymentAttemptMessage(a.last_error))}<br><small>Tentative : ${esc(a.id)}</small></p>`).join("")}</details>${
     data.attempts.some(
       (a) => !a.intent_id && ["creating", "uncertain"].includes(a.state),
     )
@@ -215,6 +218,11 @@ async function show(id, focus = false, provided = null) {
       : ""
   }</section>`;
   target.querySelector('#close-registration-detail').onclick=()=>{target.innerHTML='';root.querySelector(`[data-order="${id}"]`)?.focus();};
+  const payerForm=target.querySelector('[data-payer-form]');
+  if(payerForm){const validate=bindContactValidation(payerForm,['first_name','last_name']);payerForm.onsubmit=event=>{
+    event.preventDefault();if(!validate()||!payerForm.reportValidity())return;
+    action(payerForm.querySelector('[type=submit]'),async()=>{await call(`registrations/${id}/payer`,{method:'POST',data:{version:o.version,...Object.fromEntries(new FormData(payerForm))}});await registrations();await show(id);},'Nom et prénom corrigés. L’inscription et son montant sont conservés ; aucun paiement n’a été lancé.');
+  };}
   if(focus){target.querySelector('.commerce-admin-detail').focus();target.scrollIntoView({behavior:'smooth',block:'start'});}
   target.querySelector("#resolve-attempt")?.addEventListener("submit", (e) => {
     e.preventDefault();

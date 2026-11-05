@@ -1,4 +1,5 @@
 import { questionMarkup, readQuestionAnswers, sectionMarkup, readSections } from "./tournament-form-fields";
+import {bindContactValidation} from '../../public/shop-contact.js';
 import {
   api,
   esc,
@@ -42,6 +43,12 @@ async function open(id) {
     )}${sectionMarkup(sections)}${questionMarkup(questions)}<div class="wide tournament-total" aria-live="polite"><span data-total-count>Choisissez vos sections</span><strong data-total-price>${money(0)}</strong><small>Nombre d’équipes × ${money(sale.fee_cents)} par équipe</small></div><div class="wide"><h3>Quand souhaitez-vous payer ?</h3><label class="tournament-choice"><input type="radio" name="payment_choice" value="now" checked> De suite avec HelloAsso</label>${sale.allow_pay_later ? '<label class="tournament-choice"><input type="radio" name="payment_choice" value="later"> Plus tard avec HelloAsso</label>' : ""}${sale.allow_cheque ? `<label class="tournament-choice"><input type="radio" name="payment_choice" value="cheque"><span>Par chèque<small>À l’ordre de ${esc(sale.cheque_payee)} · À envoyer à ${esc(sale.cheque_address)} avant le ${date(sale.cheque_deadline)}.</small></span></label>` : ""}<p>Paiement au plus tard le ${date(sale.payment_deadline)}. La contribution volontaire proposée par HelloAsso peut être modifiée ou retirée sur sa page de paiement.</p><details><summary>Conditions d’inscription et d’annulation</summary><p class="tournament-terms">${esc(sale.terms)}</p></details><label class="tournament-choice"><input type="checkbox" name="accept_terms" required> J’ai lu et j’accepte les conditions de ce tournoi. *</label><p class="commerce-help">Les champs * sont nécessaires à la gestion de l’inscription et du paiement. Coordonnées du contact uniquement ; aucune liste de joueurs n’est demandée. <a href="/confidentialite/" target="_blank" rel="noopener">Vos données et vos droits</a>.</p><button type="submit">Confirmer mon inscription →</button><p data-error role="status" tabindex="-1"></p><div data-recovery></div></div></form>`;
   dialog.querySelector("[data-close]").onclick = () => dialog.close();
   const form=dialog.querySelector("form");
+  form.id='tournament-contact-form';form.validateContact=bindContactValidation(form);
+  const identityHelp=document.createElement('p');identityHelp.className='commerce-help wide';identityHelp.id='tournament-payer-help';identityHelp.textContent='Indiquez uniquement le prénom et le nom du contact, sans parenthèses, chiffres ni précision. Renseignez le nom du club dans le champ Club et les catégories dans les sections du tournoi.';
+  form.querySelector('[name=phone]').closest('label').after(identityHelp);
+  for(const [name,autocomplete] of [['first_name','given-name'],['last_name','family-name'],['email','email'],['phone','tel']])form.elements[name].setAttribute('autocomplete',autocomplete);
+  for(const name of ['first_name','last_name']){form.elements[name].setAttribute('aria-describedby',`${form.elements[name].getAttribute('aria-describedby')} tournament-payer-help`);form.elements[name].spellcheck=false;form.elements[name].setAttribute('autocorrect','off');}
+  form.elements.email.setAttribute('inputmode','email');form.elements.email.spellcheck=false;form.elements.phone.setAttribute('inputmode','tel');
   const updateTotal=()=>{
     const count=readSections(form,sections).reduce((sum,row)=>sum+(Number.isInteger(row.quantity)&&row.quantity>0?row.quantity:0),0);
     form.querySelector("[data-total-count]").textContent=`${count} équipe${count>1?'s':''} à inscrire`;
@@ -56,7 +63,7 @@ async function submit(event) {
   const form = event.target,
     button = form.querySelector("button[type=submit]"),
     message = form.querySelector("[data-error]");
-  if (!form.reportValidity()) return;
+  if (!form.validateContact()||!form.reportValidity()) return;
   const selection=readSections(form,sections);
   const count=selection.reduce((sum,row)=>sum+row.quantity,0);
   if(!count||count>100){message.textContent="Inscrivez entre 1 et 100 équipes au total.";message.focus();return;}

@@ -1670,3 +1670,27 @@ test('boutique masquée : nouvelle commande refusée sans supprimer le catalogue
   assert.deepEqual(await ORDERS.prepare('SELECT COUNT(*) AS n FROM orders').first(),orders);
  }finally{await DB.prepare('UPDATE shop_settings SET shop_enabled=? WHERE id=1').bind(before.shop_enabled).run();}
 });
+
+test('coordonnées boutique et tournois : saisie invalide refusée avant commande, mail ou demande HelloAsso',async()=>{
+ await ORDERS.prepare('DELETE FROM rate_limits').run();await TOURNEYS.prepare('DELETE FROM rate_limits').run();
+ const snapshot=async(db:TestDatabase)=>JSON.stringify(await Promise.all(['orders','order_items','checkout_attempts','payments','outbox'].map(async table=>[table,(await db.prepare('SELECT * FROM '+table+' ORDER BY rowid').all()).results])));
+ const shopBefore=await snapshot(ORDERS),tourneyBefore=await snapshot(TOURNEYS),intentsBefore=intents;
+ for(const [field,value,code] of [['first_name','123','CONTACT_FIRST_NAME'],['first_name','Camille (coach u10)','CONTACT_FIRST_NAME'],['last_name','Exemple U10','CONTACT_LAST_NAME'],['last_name','Nom\u200b','CONTACT_LAST_NAME'],['email','a..b@example.org','CONTACT_EMAIL'],['phone','......','CONTACT_PHONE']]){
+  const a=await route(request('/api/shop/checkout',{...payload(),[field]:value}));assert.equal(a.status,400);assert.equal(a.body.code,code);
+  const res=await tournamentRoute(request('/api/tournaments/registrations',{...tournamentPayload(),[field]:value}),env,ctx);assert.equal(res!.status,400);assert.equal((await res!.json() as any).code,code);
+ }
+ assert.equal(await snapshot(ORDERS),shopBefore);assert.equal(await snapshot(TOURNEYS),tourneyBefore);assert.equal(intents,intentsBefore);
+});
+
+test('ancienne commande payée : reprise idempotente avec coordonnées historiques, aucun nouvel article ou paiement',async()=>{
+ await ORDERS.prepare('DELETE FROM rate_limits').run();
+ const data={...payload(),first_name:'123',email:'ancien..contact@example.org',phone:'......'},id=data.idempotency_key;
+ const customer={email:data.email,first_name:data.first_name,last_name:data.last_name,phone:data.phone,licensed_name:data.licensed_name,team:data.team,delivery_method:data.delivery_method};
+ const hash=await sha256(JSON.stringify({customer,items:data.items,terms:TERMS_VERSION}));
+ await ORDERS.prepare("INSERT INTO orders(id,reference,request_hash,token_hash,token_expires,email,first_name,last_name,phone,licensed_name,team,delivery_method,total_cents,payment_status,terms_version,terms_snapshot,terms_accepted_at,created_at,updated_at) VALUES(?,?,?,?,9999999999,?,?,?,?,?,?,?,?, 'paid',?,'Conditions historiques',1,1,1)")
+  .bind(id,'FCE-LEGACY-'+id,hash,'old-token-'+id,data.email,data.first_name,data.last_name,data.phone,data.licensed_name,data.team,data.delivery_method,4900,TERMS_VERSION).run();
+ const before=JSON.stringify(await ORDERS.prepare('SELECT * FROM orders WHERE id=?').bind(id).first()),calls=intents;
+ const result=await route(request('/api/shop/checkout',data));assert.equal(result.status,200);assert.equal(result.body.paid,true);assert.equal(result.body.order_id,id);
+ assert.equal(JSON.stringify(await ORDERS.prepare('SELECT * FROM orders WHERE id=?').bind(id).first()),before);assert.equal(intents,calls);
+ for(const table of ['order_items','checkout_attempts','payments','outbox'])assert.equal((await ORDERS.prepare('SELECT COUNT(*) AS n FROM '+table+' WHERE order_id=?').bind(id).first<any>()).n,0);
+});

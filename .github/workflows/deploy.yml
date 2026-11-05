@@ -204,6 +204,34 @@ jobs:
       - name: Vérifier la configuration des bases commandes
         run: node scripts/configure-orders.mjs --check production
 
+      - name: Préparer les points de restauration des trois bases sans export SQL
+        run: |
+          node scripts/production-archive.mjs --action check-key
+          mkdir -p .production-maintenance
+          node scripts/deployment-backup.mjs --action capture --folder ".production-maintenance/deploy-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          node scripts/production-archive.mjs --action encrypt --source ".production-maintenance/deploy-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --out ".production-encrypted/deploy-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.fce"
+          node scripts/production-archive.mjs --action decrypt --file ".production-encrypted/deploy-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.fce" --out ".production-import/verification-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          node scripts/deployment-backup.mjs --action verify --folder ".production-import/verification-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PRODUCTION_ARCHIVE_PASSWORD: ${{ secrets.PRODUCTION_ARCHIVE_PASSWORD }}
+      - name: Conserver les points de restauration chiffrés avant déploiement
+        id: deployment_backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: points-restauration-avant-deploiement-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .production-encrypted/deploy-${{ github.run_id }}-${{ github.run_attempt }}.fce
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: error
+      - name: Exiger le lien de sauvegarde avant toute migration
+        run: |
+          test -n "$BACKUP_ARTIFACT_URL"
+          printf '### Points de restauration avant déploiement\n\n[Télécharger les points de restauration chiffrés](%s) — DB, ORDERS et TOURNAMENTS. Artefact conservé 7 jours ; reprise native D1 Time Travel selon la rétention Cloudflare. Aucun export SQL bloquant.\n' "$BACKUP_ARTIFACT_URL" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          BACKUP_ARTIFACT_URL: ${{ steps.deployment_backup.outputs.artifact-url }}
+
       - name: Appliquer les migrations D1
         run: npx wrangler d1 migrations apply DB --remote --env=""
         env:

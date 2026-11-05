@@ -152,6 +152,8 @@
   color: var(--wine);
   margin: 20px 0;
 }
+.commerce-field-error {color:var(--wine,#981923);font-size:13px;line-height:1.5}
+.commerce-checkout input[aria-invalid=true],.tournament-dialog input[aria-invalid=true]{border-color:#981923;outline-offset:2px}
 .commerce-actions {
   display: flex;
   flex-wrap: wrap;
