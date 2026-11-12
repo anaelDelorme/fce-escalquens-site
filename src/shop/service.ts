@@ -602,6 +602,27 @@ export async function checkout(
     throw error;
   }
 }
+// Cancellation retains provider references: a late payment must still be reconciled.
+export async function cancelCustomerOrder(env: ShopEnv, s: Settings, order: Row): Promise<Row> {
+  if(order.kind!=="shop")fail("NOT_FOUND",404,"Commande introuvable.");
+  if(order.fulfillment==="cancelled")return detail(env,order);
+  if(!["pending","refused"].includes(order.payment_status)||order.paid_at)
+    fail("CANCEL_PAYMENT",409,"Cette commande a un paiement enregistré. Contactez le club pour son annulation ou son remboursement.");
+  const uncertain=await env.ORDERS.prepare("SELECT id FROM checkout_attempts WHERE order_id=? AND state IN ('creating','uncertain') LIMIT 1").bind(order.id).first();
+  if(uncertain)fail("PAYMENT_UNCERTAIN",409,"HelloAsso n’a pas confirmé le résultat de la demande. Le club doit vérifier ce paiement avant une annulation ou une nouvelle commande.");
+  const result=await reconcile(env,s,order.id);
+  if(!result.checked && result.reason==='busy')fail("PAYMENT_PENDING",409,"Une vérification est en cours. Réessayez l’annulation dans quelques secondes.");
+  const fresh=await findOrder(env,order.id);
+  if(!["pending","refused"].includes(fresh.payment_status)||fresh.paid_at)
+    fail("CANCEL_PAYMENT",409,"Un paiement a été enregistré. Actualisez le suivi et contactez le club pour un remboursement.");
+  const stamp=now();
+  const changed=await env.ORDERS.prepare(
+    "UPDATE orders SET fulfillment='cancelled',closed_at=?,updated_at=?,version=version+1 WHERE id=? AND version=? AND payment_status IN ('pending','refused') AND paid_at IS NULL AND fulfillment='new' AND NOT EXISTS(SELECT 1 FROM checkout_attempts WHERE order_id=orders.id AND state IN ('creating','uncertain')) RETURNING id"
+  ).bind(stamp,stamp,order.id,fresh.version).first();
+  if(!changed)fail("ORDER_CHANGED",409,"La commande a changé. Actualisez le suivi avant de réessayer.");
+  await event(env,order.id,"fulfillment","customer","Commande non payée annulée par le client. Ne plus utiliser le lien de paiement HelloAsso.").run();
+  return detail(env,await findOrder(env,order.id));
+}
 export type ReconciliationResult = {checked:false;reason:'busy'|'cheque'|'no_reference'} | {checked:true;payment_status:string};
 export async function reconcile(env: ShopEnv, s: Settings, id: string): Promise<ReconciliationResult> {
   // Lease avoids concurrent stale recomputations of payment totals.
@@ -683,11 +704,16 @@ export async function reconcile(env: ShopEnv, s: Settings, id: string): Promise<
       })),
       order.total_cents,
     );
+    // A provider tab may still be open after local cancellation. Never send such
+    // a payment into preparation: keep the cancellation and alert the club.
+    if(order.fulfillment==='cancelled' && summary.status==='paid')summary.status='review';
     if (summary.status !== order.payment_status) {
       const stamp = now();
       const message =
         summary.status === "paid"
           ? "Paiement HelloAsso confirmé."
+          : summary.status === "review" && order.fulfillment === "cancelled"
+            ? "Un paiement a été reçu après l’annulation. Contactez le club pour sa vérification et son remboursement ; ne payez pas à nouveau."
           : summary.status === "refunded"
             ? "Paiement remboursé."
             : "Le statut du paiement a changé. Le club vérifie si nécessaire les détails auprès de HelloAsso.";
@@ -1479,7 +1505,7 @@ export async function shopRoute(
       });
     }
     const match = path.match(
-      /^\/api\/shop\/orders\/([a-f0-9-]{36})(?:\/(pay|refresh|survey))?$/,
+      /^\/api\/shop\/orders\/([a-f0-9-]{36})(?:\/(pay|refresh|survey|cancel))?$/,
     );
     if (match) {
       await rateLimit(
@@ -1492,6 +1518,10 @@ export async function shopRoute(
       if(order.kind!=="shop")fail("NOT_FOUND",404,"Commande introuvable.");
       if (!match[2] && request.method === "GET")
         return response(await detail(env, order));
+      if (match[2] === "cancel" && request.method === "POST") {
+        await rateLimit(env, `cancel:${order.id}`, 10, 60);
+        return response(await cancelCustomerOrder(env,s,order));
+      }
       if (match[2] === "pay" && request.method === "POST") {
         await openForSales(env, s);
         await rateLimit(env, `pay:${order.id}`, 5);

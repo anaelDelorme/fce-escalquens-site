@@ -309,3 +309,23 @@ test('détails compacts : tarifs regroupés, photo cliquable et toutes les taill
  d.querySelector<HTMLElement>('#detail-order')!.click();await next();assert.equal(d.querySelector<HTMLDialogElement>('#detail-dialog')!.open,false);assert.equal(d.querySelector<HTMLDialogElement>('#product-dialog')!.open,true);
  assert.equal(d.querySelectorAll('[name=variant] option').length,sizes.length+1);await w.happyDOM.abort();w.close();
 });
+
+test('panier : zoom, quantité directe et fiche modifiant la bonne ligne personnalisée',async()=>{
+ const w=setup(fixture,false,[{variant_id:'v2',quantity:1,options:[{id:'o1',text:'AD'}]},{variant_id:'v2',quantity:2,options:[{id:'o1',text:'XX'}]}]),d=w.document;
+ d.querySelector<HTMLElement>('#open-cart')!.click();await next();
+ assert.equal(d.querySelector('[data-zoom-image]')!.getAttribute('data-zoom-image'),'/media/maillot.webp');
+ let quantity=d.querySelector<HTMLInputElement>('[data-quantity="1"]')!;
+ quantity.value='3';quantity.dispatchEvent(new w.Event('change'));
+ assert.equal(d.querySelector('#cart-count')!.textContent,'4');
+ assert.equal(JSON.parse(w.sessionStorage.getItem('fce-cart-v1')!)[1].quantity,3);
+ quantity=d.querySelector<HTMLInputElement>('[data-quantity="1"]')!;quantity.value='31';quantity.dispatchEvent(new w.Event('change'));
+ assert.equal(quantity.value,'3');
+ d.querySelector<HTMLElement>('[data-cart-index="1"]')!.click();await next();
+ d.querySelector<HTMLElement>('#detail-order')!.click();
+ assert.equal(d.querySelector<HTMLInputElement>('[name="text:o1"]')!.value,'XX');
+ const form=d.querySelector<HTMLFormElement>('#product-form')!;
+ (form.elements.namedItem('text:o1') as HTMLInputElement).value='ZZ';form.dispatchEvent(new w.Event('submit',{cancelable:true}));
+ const stored=JSON.parse(w.sessionStorage.getItem('fce-cart-v1')!);assert.equal(stored.length,2);assert.equal(stored[0].options[0].text,'AD');assert.equal(stored[1].options[0].text,'ZZ');
+ d.querySelector<HTMLElement>('[data-remove="0"]')!.click();assert.equal(d.querySelector('#cart-count')!.textContent,'3');
+ await w.happyDOM.abort();w.close();
+});

@@ -215,17 +215,51 @@ function renderCart() {
     return;
   }
   const allValid = cart.every(validLine);
-  content.innerHTML = `<ol class="commerce-checkout-steps" aria-label="Étapes de commande"><li id="cart-step-selection" aria-current="${checkoutStep===1?'step':'false'}">1. Votre panier</li><li id="cart-step-details" aria-current="${checkoutStep===2?'step':'false'}">2. Coordonnées et paiement</li></ol>${catalogue.environment === "sandbox" ? '<p class="commerce-message">Environnement de test : paiements HelloAsso Sandbox.</p>' : ""}${cart
+  const previousDraft=readStorage('fce-checkout-draft'),previousLink=readStorage('fce-order-link');
+  const recoveryUrl=previousDraft && previousLink?.id===previousDraft.key
+    ? `/boutique/suivi/#${previousLink.id}.${previousLink.token}` : '/boutique/suivi/';
+  const recoveryNotice=previousDraft
+    ? `<p class="commerce-message">Une commande précédente reste à vérifier. <a href="${esc(recoveryUrl)}">Reprendre son paiement ou l’annuler avant de recommander →</a></p>` : '';
+
+  content.innerHTML = `${recoveryNotice}<ol class="commerce-checkout-steps" aria-label="Étapes de commande"><li id="cart-step-selection" aria-current="${checkoutStep===1?'step':'false'}">1. Votre panier</li><li id="cart-step-details" aria-current="${checkoutStep===2?'step':'false'}">2. Coordonnées et paiement</li></ol>${catalogue.environment === "sandbox" ? '<p class="commerce-message">Environnement de test : paiements HelloAsso Sandbox.</p>' : ""}${cart
     .map((line, index) => {
       const v = variantFor(line),
         p = catalogue.products.find((p) => p.id === v?.product_id);
-      return `<div class="commerce-cart-line">${p?.image_key?`<img class="commerce-cart-image" src="/media/${encodeURIComponent(p.image_key).replace(/%2F/g,"/")}" alt="">`:'<span class="commerce-cart-placeholder" aria-hidden="true">—</span>'}<div><strong>${esc(p?.name || "Article indisponible")}</strong><small>${esc(v?.label || "Modèle indisponible")}${v?.color?` · ${esc(v.color)}`:""} · Quantité : ${line.quantity}</small>${line.options.map((o) => `<small>${esc(catalogue.options.find((x) => x.id === o.id)?.label || "Option indisponible")}${o.text ? ` : <b>${esc(o.text)}</b>` : ""}</small>`).join("")}${!validLine(line) ? '<p class="commerce-error commerce-message">Cette sélection doit être retirée ou modifiée.</p>' : ""}</div><div class="commerce-cart-price"><strong>${money(unit(line) * line.quantity)}</strong><div class="commerce-actions">${v ? `<button type="button" class="commerce-secondary" data-edit="${index}">Modifier</button>` : ""}<button type="button" class="commerce-secondary" data-remove="${index}">Retirer</button></div></div></div>`;
+      return `<div class="commerce-cart-line">
+        ${p?.image_key?zoomImageMarkup(p,false,"commerce-cart-image"):'<span class="commerce-cart-placeholder" aria-hidden="true">—</span>'}
+        <div class="commerce-cart-info">
+          <strong>${esc(p?.name || "Article indisponible")}</strong>
+          <small>${esc(v?.label || "Modèle indisponible")}${v?.color?` · ${esc(v.color)}`:""}</small>
+          ${line.options.map((o) => `<small>${esc(catalogue.options.find((x) => x.id === o.id)?.label || "Option indisponible")}${o.text ? ` : <b>${esc(o.text)}</b>` : ""}</small>`).join("")}
+          ${!validLine(line) ? '<p class="commerce-error commerce-message">Cette sélection doit être retirée ou modifiée.</p>' : ""}
+        </div>
+        <div class="commerce-cart-price">
+          <strong>${money(unit(line) * line.quantity)}</strong>
+          ${v && p ? `<label class="commerce-cart-quantity">Quantité<input type="number" min="1" max="30" step="1" value="${line.quantity}" data-quantity="${index}" aria-label="Quantité : ${esc(p.name)}"></label>` : ""}
+        </div>
+        <div class="commerce-cart-actions">
+          ${v && p ? `<button type="button" class="commerce-cart-action" data-edit="${index}" aria-label="Modifier la taille ou la personnalisation : ${esc(p.name)}">Modifier</button><button type="button" class="commerce-cart-action" data-product-detail="${p.id}" data-cart-index="${index}">Voir la fiche</button>` : ""}
+          <button type="button" class="commerce-cart-action" data-remove="${index}">Retirer</button>
+        </div>
+      </div>`;
     })
     .join(
       "",
-    )}<div class="commerce-actions"><button type="button" id="continue-selection" class="commerce-secondary">← Continuer mes achats</button></div><div class="commerce-cart-summary"><div class="commerce-total"><span>Total articles</span><span>${money(total())}</span></div><p class="commerce-help">Remise gratuite · Prix recalculés à partir du catalogue actuel · Paiement exclusivement HelloAsso</p></div>${!catalogue.checkout_available ? `<p class="commerce-message">${esc(catalogue.checkout_unavailable?.message||"Le paiement n’est pas encore disponible. Votre panier est conservé.")}</p>` : ""}
+    )}<div class="commerce-actions"><button type="button" id="continue-selection" class="commerce-cart-continue">← Continuer mes achats</button></div><div class="commerce-cart-summary"><div class="commerce-total"><span>Total articles</span><span>${money(total())}</span></div><p class="commerce-help">Remise gratuite · Prix recalculés à partir du catalogue actuel · Paiement exclusivement HelloAsso</p></div>${!catalogue.checkout_available ? `<p class="commerce-message">${esc(catalogue.checkout_unavailable?.message||"Le paiement n’est pas encore disponible. Votre panier est conservé.")}</p>` : ""}
 <div class="commerce-cart-next" id="cart-next" ${checkoutStep===2?'hidden':''}><button id="cart-to-checkout" type="button" ${!allValid||!catalogue.checkout_available?'disabled':''}>Passer à la commande →</button></div>
  <form id="checkout-form" class="commerce-checkout" ${checkoutStep===1?'hidden':''}><div class="commerce-checkout-title"><h3>Vos coordonnées</h3><button id="cart-back" type="button" class="commerce-secondary">← Revoir mon panier</button></div><p>Sans compte ni mot de passe. Le récapitulatif et le lien de suivi seront envoyés à votre adresse e-mail.</p><div class="commerce-form-grid"><label>Prénom *<input name="first_name" autocomplete="given-name" maxlength="80" required></label><label>Nom *<input name="last_name" autocomplete="family-name" maxlength="80" required></label><label>E-mail *<input name="email" type="email" autocomplete="email" maxlength="254" required></label><label>Téléphone *<input name="phone" type="tel" autocomplete="tel" maxlength="30" required></label></div><fieldset><legend>Comment récupérer vos articles ?</legend><label class="commerce-check"><input name="delivery_method" type="radio" value="coach" checked><span>Par le coach de mon équipe</span></label><label class="commerce-check" style="margin-top:14px"><input name="delivery_method" type="radio" value="club"><span>Sur rendez-vous au club</span></label><p class="commerce-help">${esc(catalogue.collection_address)} · Au plus tard ${catalogue.delivery_days} jours après confirmation du paiement.</p></fieldset><div class="commerce-form-grid"><label><span>Nom du licencié <abbr class="commerce-required" data-coach-required title="obligatoire">*</abbr></span><input name="licensed_name" maxlength="120" required></label><label><span>Équipe / catégorie <abbr class="commerce-required" data-coach-required title="obligatoire">*</abbr></span><input name="team" placeholder="Ex. U11, Seniors féminines…" maxlength="80" required></label></div><p class="commerce-help">Le club utilise ces informations pour exécuter votre commande et organiser sa remise. Seules les données nécessaires sont partagées avec HelloAsso, les prestataires et les personnes habilitées. Aucun compte ni inscription publicitaire n’est créé. <a href="/confidentialite/" target="_blank" rel="noopener">Durées de conservation et vos droits</a>.</p><label class="commerce-check"><input type="checkbox" name="accept_terms" required><span>J’ai lu et j’accepte les <a href="/cgv/" target="_blank" rel="noopener">conditions générales de vente</a>, notamment les délais et les conditions applicables aux articles personnalisés. *</span></label><p class="commerce-help">Vérifiez les tailles, les personnalisations et votre adresse e-mail avant de payer. Sur HelloAsso, une contribution volontaire peut être proposée ; elle est distincte de votre panier et peut être retirée ou modifiée.</p><p id="checkout-error" role="alert" tabindex="-1" hidden></p><div id="checkout-recovery"></div><button type="submit" ${!allValid || !catalogue.checkout_available ? "disabled" : ""}>Commander et payer ${money(total())} avec HelloAsso →</button><p class="commerce-help">Les champs marqués * sont obligatoires. Le panier est conservé dans cet onglet jusqu’à sa fermeture.</p></form>`;
+  content.querySelectorAll("[data-quantity]").forEach(input => {
+    input.addEventListener('change', () => {
+      const index=Number(input.dataset.quantity), quantity=Number(input.value);
+      if(!Number.isInteger(quantity)||quantity<1||quantity>30){
+        input.value=String(cart[index].quantity);
+        toast('Choisissez une quantité entre 1 et 30.');
+        return;
+      }
+      cart[index].quantity=quantity;persist();renderCart();
+      content.querySelector(`[data-quantity="${index}"]`)?.focus();
+    });
+  });
   content.querySelectorAll("[data-remove]").forEach(
     (b) =>
       (b.onclick = () => {
@@ -304,9 +338,10 @@ function renderCart() {
           "Une validation précédente reste à vérifier. Retrouvez-la depuis le mail reçu ou la page de suivi avant de créer une autre commande.",
         ),
       );
-      button.textContent = "Commande précédente à vérifier";
+      button.disabled = false;
+      button.textContent = "Commander après vérification du suivi";
       document.querySelector("#checkout-recovery").innerHTML =
-        '<p><a href="/boutique/suivi/">Retrouver ma commande →</a></p>';
+        '<p><a href="/boutique/suivi/">Reprendre ou annuler la commande précédente →</a></p>';
       return;
     }
     if (!draft) {
@@ -361,6 +396,7 @@ document.querySelector("#show-cart").onclick = showCart;
 
 document.addEventListener("click", async event => {
   const button=event.target.closest("[data-product-detail]"); if(!button)return;
+  const cartIndex=button.dataset.cartIndex!==undefined?Number(button.dataset.cartIndex):cartDialog.open?cart.findIndex(line=>variantFor(line)?.product_id===Number(button.dataset.productDetail)):-1;
   const dialog=document.querySelector("#detail-dialog"), content=document.querySelector("#detail-content");
   content.textContent="Chargement de la fiche article…"; dialog.showModal();
   try {
@@ -368,8 +404,8 @@ document.addEventListener("click", async event => {
     if(!p)throw new Error("Cet article n’est plus disponible.");
     const variants=catalogue.variants.filter(v=>v.product_id===p.id),options=catalogue.options.filter(o=>o.product_id===p.id);
     const plain=value=>String(value||'').replace(/\[\/?(?:bordeaux|or)\]/gi,'').replace(/\*\*/g,'');
-    content.innerHTML=`<p class="eyebrow">La fiche de votre équipement</p><h2 id="detail-title">${esc(p.name)}</h2><div class="detail-overview">${zoomImageMarkup(p,false,'detail-image')}${priceMarkup(variants)}</div><p class="detail-description">${esc(plain(p.description||p.short_description||'Le club vous renseignera sur la composition et l’entretien de cet article.'))}</p><h3>Tailles et tarifs</h3><ul class="detail-tariff-groups">${groupedVariantPricesMarkup(variants)||'<li>Tarifs de commande à venir.</li>'}</ul><p class="commerce-help">Choisissez votre taille précise à l’étape suivante.</p>${options.length?`<h3>Personnalisations disponibles</h3><ul class="detail-options">${options.map(o=>`<li>${esc(o.label)}${Number(o.required)===1?' (obligatoire)':''} : ${o.price_cents?'+ '+money(o.price_cents):'inclus'}</li>`).join('')}</ul>`:''}${p.delivery_delay?`<p class="commerce-help">Délai indicatif : ${esc(p.delivery_delay)}</p>`:''}<div class="detail-actions"><button type="button" id="detail-order" ${variants.length?'':'disabled'}>${variants.length?(variants.length===1&&!options.length?"Ajouter au panier":(options.length?"Choisir et personnaliser":"Choisir ma taille")):"Tailles et tarifs bientôt disponibles"} →</button></div>`;
-    document.querySelector("#detail-order").onclick=()=>{dialog.close();if(variants.length===1 && !options.length){const same=cart.find(i=>i.variant_id===variants[0].id&&!i.options.length);if(same && same.quantity>=30){toast('Maximum 30 exemplaires par article.');return;}if(same)same.quantity++;else cart.push({variant_id:variants[0].id,quantity:1,options:[]});persist();cartDialog.showModal();renderCart();}else openProduct(p.id);};
+    content.innerHTML=`<p class="eyebrow">La fiche de votre équipement</p><h2 id="detail-title">${esc(p.name)}</h2><div class="detail-overview">${zoomImageMarkup(p,false,'detail-image')}${priceMarkup(variants)}</div><p class="detail-description">${esc(plain(p.description||p.short_description||'Le club vous renseignera sur la composition et l’entretien de cet article.'))}</p><h3>Tailles et tarifs</h3><ul class="detail-tariff-groups">${groupedVariantPricesMarkup(variants)||'<li>Tarifs de commande à venir.</li>'}</ul><p class="commerce-help">Choisissez votre taille précise à l’étape suivante.</p>${options.length?`<h3>Personnalisations disponibles</h3><ul class="detail-options">${options.map(o=>`<li>${esc(o.label)}${Number(o.required)===1?' (obligatoire)':''} : ${o.price_cents?'+ '+money(o.price_cents):'inclus'}</li>`).join('')}</ul>`:''}${p.delivery_delay?`<p class="commerce-help">Délai indicatif : ${esc(p.delivery_delay)}</p>`:''}<div class="detail-actions"><button type="button" id="detail-order" ${variants.length?'':'disabled'}>${cartIndex>=0?"Modifier cet article du panier":variants.length?(variants.length===1&&!options.length?"Ajouter au panier":(options.length?"Choisir et personnaliser":"Choisir ma taille")):"Tailles et tarifs bientôt disponibles"} →</button></div>`;
+    document.querySelector("#detail-order").onclick=()=>{dialog.close();if(cartIndex>=0){openProduct(p.id,cartIndex);return;}if(variants.length===1 && !options.length){const same=cart.find(i=>i.variant_id===variants[0].id&&!i.options.length);if(same && same.quantity>=30){toast('Maximum 30 exemplaires par article.');return;}if(same)same.quantity++;else cart.push({variant_id:variants[0].id,quantity:1,options:[]});persist();cartDialog.showModal();renderCart();}else openProduct(p.id);};
   }catch(error){content.textContent=error.message;}
 });
 
