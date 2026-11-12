@@ -575,3 +575,14 @@ body:has(.commerce-toolbar) {padding-bottom:0;}
 #indicative-price{background:#f4eee5;cursor:default;font-weight:700;}
 #supplier-editor{padding-top:24px;}
 #variant-form small a{text-decoration:underline;text-underline-offset:3px;}
+
+.commerce-cart-quantity { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.commerce-cart-quantity input { width: 76px; margin: 0; }
+.commerce-cart-line .commerce-cart-image { padding: 0; cursor: zoom-in; }
+.commerce-cart-line .commerce-cart-image img { width: 100%; height: 100%; object-fit: contain; }
+.commerce-cart-line .commerce-cart-image { width: 68px; height: 76px; }
+.commerce-cart-line .commerce-cart-price { max-width: 290px; white-space: normal; }
+@media (max-width: 600px) {
+  .commerce-cart-line .commerce-cart-image { width: 48px; height: 56px; }
+  .commerce-cart-line .commerce-cart-price { max-width: 100%; }
+}

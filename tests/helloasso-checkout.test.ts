@@ -92,3 +92,75 @@ test('HelloAsso : ancien paiement actif ou déjà payé repris sans revalider ni
  assert.equal((await f.orders.prepare('SELECT COUNT(*) AS n FROM checkout_attempts').first<any>()).n,1);
  assert.equal((await f.orders.prepare('SELECT first_name FROM orders').first<any>()).first_name,'123');
 });
+
+test('annulation client : commande sans paiement annulée une seule fois et reprise interdite',async t=>{
+ const f=await fixture(t),order=await f.order(f.orders,'shop'),s=await settings(f.env);
+ const {cancelCustomerOrder}=await import('../src/shop/service');
+ const result=await cancelCustomerOrder(f.env,s,order);
+ assert.equal(result.order.fulfillment,'cancelled');
+ const saved=await f.orders.prepare('SELECT * FROM orders WHERE id=?').bind(order.id).first<any>();
+ assert.equal((await cancelCustomerOrder(f.env,s,saved)).order.fulfillment,'cancelled');
+ assert.equal((await f.orders.prepare('SELECT COUNT(*) AS n FROM order_events WHERE order_id=?').bind(order.id).first<any>()).n,1);
+ await assert.rejects(()=>checkout(f.env,s,saved,'token'),(e:any)=>e.code==='ORDER_CANCELLED');
+});
+
+test('annulation client : refus des commandes payées, incertaines et en cours de création',async t=>{
+ const f=await fixture(t),s=await settings(f.env);
+ const {cancelCustomerOrder}=await import('../src/shop/service');
+ for(const state of ['paid','review','creating','uncertain']){
+  const order=await f.order(f.orders,'shop');
+  if(['paid','review'].includes(state)){
+   await f.orders.prepare('UPDATE orders SET payment_status=? WHERE id=?').bind(state,order.id).run();order.payment_status=state;
+  }else await f.orders.prepare('INSERT INTO checkout_attempts(id,order_id,state,created_at) VALUES(?,?,?,1)').bind(crypto.randomUUID(),order.id,state).run();
+  await assert.rejects(()=>cancelCustomerOrder(f.env,s,order),(e:any)=>['CANCEL_PAYMENT','PAYMENT_UNCERTAIN'].includes(e.code));
+  assert.equal((await f.orders.prepare('SELECT fulfillment FROM orders WHERE id=?').bind(order.id).first<any>()).fulfillment,'new');
+ }
+});
+
+test('annulation client : abandon HelloAsso vérifié, références conservées pour un paiement tardif',async t=>{
+ const f=await fixture(t),order=await f.order(f.orders,'shop'),s=await settings(f.env),attempt=crypto.randomUUID();
+ const {cancelCustomerOrder,reconcile}=await import('../src/shop/service');
+ await f.orders.prepare("INSERT INTO checkout_attempts(id,order_id,intent_id,state,created_at) VALUES(?,?,987,'pending',?)").bind(attempt,order.id,Math.floor(Date.now()/1000)).run();
+ let paid=false;
+ t.mock.method(globalThis,'fetch',async(url:any)=>{
+  if(String(url).endsWith('/oauth2/token'))return Response.json({access_token:'fake-token',expires_in:1800});
+  if(String(url).endsWith('/checkout-intents/987'))return Response.json({id:987,metadata:{order_id:order.id,attempt_id:attempt},...(paid?{order:{id:654,organizationSlug:'fc-escalquens',formType:'Checkout',checkoutIntentId:987,amount:{total:5000},payments:[{id:321,state:'Authorized',amount:5000}]}}:{})});
+  if(String(url).endsWith('/orders/654'))return Response.json({id:654,organizationSlug:'fc-escalquens',checkoutIntentId:987,metadata:{order_id:order.id,attempt_id:attempt},payments:[{id:321,state:'Authorized',amount:5000}]});
+  throw Error('Unexpected provider request');
+ });
+ assert.equal((await cancelCustomerOrder(f.env,s,order)).order.fulfillment,'cancelled');
+ assert.equal((await f.orders.prepare('SELECT intent_id FROM checkout_attempts WHERE id=?').bind(attempt).first<any>()).intent_id,987);
+ paid=true;await f.orders.prepare('UPDATE orders SET last_checked=0 WHERE id=?').bind(order.id).run();
+ await reconcile(f.env,s,order.id);
+ const saved=await f.orders.prepare('SELECT * FROM orders WHERE id=?').bind(order.id).first<any>();
+ assert.equal(saved.fulfillment,'cancelled');assert.equal(saved.payment_status,'review');
+ assert.equal((await f.orders.prepare("SELECT COUNT(*) AS n FROM outbox WHERE order_id=? AND kind='paid'").bind(order.id).first<any>()).n,0);
+});
+
+test('annulation API : lien personnel et origine exigés, paiement détecté avant annulation',async t=>{
+ const f=await fixture(t),order=await f.order(f.orders,'shop');
+ const {shopRoute}=await import('../src/shop/service');const {sha256}=await import('../src/shop/domain');
+ const token='a'.repeat(64);await f.orders.prepare('UPDATE orders SET token_hash=? WHERE id=?').bind(await sha256(token),order.id).run();
+ const call=async(auth:string,origin='https://example.org')=>{
+  const response=await shopRoute(new Request(`https://example.org/api/shop/orders/${order.id}/cancel`,{method:'POST',headers:{origin,authorization:`Bearer ${auth}`,'content-type':'application/json'},body:'{}'}),f.env,{} as ExecutionContext);
+  assert.ok(response);return {status:response.status,data:await response.json() as any};
+ };
+ assert.equal((await call('b'.repeat(64))).status,404);
+ assert.equal((await call(token,'https://foreign.example')).status,403);
+ const cancelled=await call(token);assert.equal(cancelled.status,200);assert.equal(cancelled.data.order.fulfillment,'cancelled');
+});
+
+test('annulation : indisponibilité HelloAsso ou paiement confirmé ne libèrent pas la commande',async t=>{
+ const f=await fixture(t),s=await settings(f.env);const {cancelCustomerOrder}=await import('../src/shop/service');let paid=false;
+ t.mock.method(globalThis,'fetch',async(url:any)=>{
+  if(String(url).endsWith('/oauth2/token'))return Response.json({access_token:'fake-token',expires_in:1800});
+  if(!paid)return new Response('',{status:503});
+  return Response.json({id:456,order:{id:765,organizationSlug:'fc-escalquens',formType:'Checkout',amount:{total:5000},payments:[{id:45678,state:'Authorized',amount:5000}]}});
+ });
+ for(const confirmed of [false,true]){
+  paid=confirmed;const order=await f.order(f.orders,'shop');
+  await f.orders.prepare("INSERT INTO checkout_attempts(id,order_id,intent_id,state,created_at) VALUES(?,?,?,'pending',?)").bind(crypto.randomUUID(),order.id,confirmed?456:457,Math.floor(Date.now()/1000)).run();
+  await assert.rejects(()=>cancelCustomerOrder(f.env,s,order),(e:any)=>confirmed?e.code==='CANCEL_PAYMENT':e.code==='HELLOASSO_UNAVAILABLE');
+  assert.equal((await f.orders.prepare('SELECT fulfillment FROM orders WHERE id=?').bind(order.id).first<any>()).fulfillment,'new');
+ }
+});
