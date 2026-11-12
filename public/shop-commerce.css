@@ -576,13 +576,104 @@ body:has(.commerce-toolbar) {padding-bottom:0;}
 #supplier-editor{padding-top:24px;}
 #variant-form small a{text-decoration:underline;text-underline-offset:3px;}
 
-.commerce-cart-quantity { display: flex; align-items: center; gap: 8px; font-size: 14px; }
-.commerce-cart-quantity input { width: 76px; margin: 0; }
-.commerce-cart-line .commerce-cart-image { padding: 0; cursor: zoom-in; }
-.commerce-cart-line .commerce-cart-image img { width: 100%; height: 100%; object-fit: contain; }
-.commerce-cart-line .commerce-cart-image { width: 68px; height: 76px; }
-.commerce-cart-line .commerce-cart-price { max-width: 290px; white-space: normal; }
+/* Basket: keep article information, utility actions and quantity together. */
+#cart-dialog .commerce-cart-line {
+  grid-template-columns: 84px minmax(0, 1fr) 112px;
+  gap: 10px 20px;
+  padding: 24px 0;
+  align-items: start;
+}
+#cart-dialog .commerce-cart-image,
+#cart-dialog .commerce-cart-placeholder {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  width: 84px;
+  height: 100px;
+  padding: 8px;
+  border-radius: 10px !important;
+  background: #f7f0e8 !important;
+  cursor: zoom-in;
+}
+#cart-dialog .commerce-cart-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+#cart-dialog .commerce-cart-info { grid-column: 2; min-width: 0; }
+#cart-dialog .commerce-cart-info > strong { display: block; line-height: 1.4; }
+#cart-dialog .commerce-cart-info small { margin-top: 5px; }
+#cart-dialog .commerce-cart-price {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 14px;
+  text-align: right;
+  white-space: normal;
+}
+#cart-dialog .commerce-cart-price > strong { font-size: 18px; line-height: 1.4; }
+#cart-dialog .commerce-cart-quantity {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+  margin: 0;
+  color: #74645c;
+  font-size: 12px;
+  font-weight: 400;
+}
+#cart-dialog .commerce-cart-quantity input {
+  width: 72px;
+  min-height: 40px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid #d8c8bd;
+  border-radius: 8px;
+  background: #fffdf9;
+  color: #302623;
+  font-size: 15px;
+  font-weight: 600;
+}
+#cart-dialog .commerce-cart-actions {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 16px;
+  margin: 0;
+}
+#cart-dialog .commerce-cart-actions button {
+  min-height: 36px;
+  padding: 5px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--wine-dark, #681d35);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: #cdb5af;
+  text-underline-offset: 4px;
+}
+#cart-dialog .commerce-cart-actions button:hover { color: #a71922; text-decoration-color: currentColor; }
+#cart-dialog .commerce-cart-actions button:focus-visible { outline: 2px solid var(--wine, #a71922); outline-offset: 3px; }
+#cart-dialog .commerce-cart-actions [data-remove] { color: #7b6c64; font-weight: 400; }
+#cart-dialog #continue-selection { padding: 12px 0; border: 0; background: transparent; color: var(--wine-dark, #681d35); font-size: 14px; }
+#cart-dialog .commerce-cart-summary { margin-top: 12px; padding: 18px 22px; }
+#cart-dialog .commerce-cart-summary .commerce-total { font-size: 22px; }
+#cart-dialog .commerce-cart-summary .commerce-help { margin-top: 10px; font-size: 12px; line-height: 1.6; }
 @media (max-width: 600px) {
-  .commerce-cart-line .commerce-cart-image { width: 48px; height: 56px; }
-  .commerce-cart-line .commerce-cart-price { max-width: 100%; }
+  #cart-dialog .commerce-cart-line { grid-template-columns: 60px minmax(0, 1fr) 80px; gap: 8px 12px; padding: 20px 0; }
+  #cart-dialog .commerce-cart-image,
+  #cart-dialog .commerce-cart-placeholder { width: 60px; height: 76px; padding: 5px; }
+  #cart-dialog .commerce-cart-price { grid-row: 1; gap: 10px; }
+  #cart-dialog .commerce-cart-price > strong { font-size: 16px; }
+  #cart-dialog .commerce-cart-info > strong { font-size: 14px; }
+  #cart-dialog .commerce-cart-info small { font-size: 12px; }
+  #cart-dialog .commerce-cart-actions { grid-column: 2 / -1; gap: 0 14px; }
+  #cart-dialog .commerce-cart-actions button { min-height: 40px; }
+  #cart-dialog .commerce-cart-summary { padding: 16px; }
+  #cart-dialog .commerce-cart-summary .commerce-total { font-size: 20px; }
+  #cart-dialog .commerce-cart-next { margin-top: 16px; }
 }
