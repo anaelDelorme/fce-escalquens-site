@@ -127,3 +127,36 @@ export async function browserCollectCalendarFallback(initialState, seasonYear, c
   }));
   return {collections, results};
 }
+
+// Sérialisé dans une session dédiée pour éviter la limite de la collecte principale.
+export async function browserCollectTeamMonths(targets, fetchComplete) {
+  let state = [];
+  try { state = JSON.parse(document.querySelector('#ng-state')?.textContent || '[]'); } catch {}
+  const entries = (Array.isArray(state) ? state : [state]).flatMap(root => Object.entries(root || {}));
+  const token = entries.find(([key]) => key === 'VLJAXE')?.[1]
+    || entries.find(([key, value]) => key.includes('/api/app-security-token/') && value?.body?.token)?.[1]?.body?.token;
+  const pending = targets.values();
+  const results = [];
+  await Promise.all(Array.from({ length: Math.min(4, targets.length) }, async () => {
+    for (const { team, month, url } of pending) {
+      try {
+        if (!token) throw new Error('contexte FFF indisponible');
+        const payload = await fetchComplete(url, target => fetch(target, {
+          credentials: 'include', signal: AbortSignal.timeout(6000),
+          headers: { Accept: 'application/json', 'X-Competition': String(token) }
+        }));
+        const relevant = payload['hydra:member'].every(wrapper => {
+          const row = wrapper?.donneesFormatees || wrapper;
+          return String(row?.date || '').slice(0, 7) === month
+            && [row?.recevant, row?.visiteur].some(side => side?.equipe?.id === team);
+        });
+        if (!relevant) throw new Error('réponse hors équipe ou hors mois');
+        results.push({ team, month, payload });
+      } catch (error) {
+        results.push({ team, month, error: /^Pagination FFF HTTP [0-9]{3}$/.test(error?.message)
+          ? error.message : 'réponse non vérifiée' });
+      }
+    }
+  }));
+  return results;
+}

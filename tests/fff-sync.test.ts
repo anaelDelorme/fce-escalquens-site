@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { browserCollectCalendarFallback, fetchCompleteMatches } from '../scripts/fff-match-coverage.mjs';
+import { browserCollectCalendarFallback, browserCollectTeamMonths, fetchCompleteMatches } from '../scripts/fff-match-coverage.mjs';
 import { acceptsPartialImport, fetchZenRows, normalizeEpreuves, normalizeEpreuvesFal } from '../scripts/sync-matches.mjs';
 import worker from '../src/worker';
 import { TestDatabase } from './d1';
@@ -165,4 +165,20 @@ test('FFF : la préproduction accepte uniquement les imports de secours effectiv
   assert.equal(acceptsPartialImport({ ...state, hasMatches: false }), false);
   assert.equal(acceptsPartialImport({ ...state, accepted: 61 }), false);
   assert.equal(acceptsPartialImport({ ...state, failures: [...state.failures, { source: 'standings' }] }), false);
+});
+
+test('FFF : le calendrier U15F inclut mai et rejette les matchs hors équipe ou hors mois', async () => {
+  const team = '2026_101544_U15F_5';
+  const makeTarget = (month: string) => ({team, month, url: 'https://epreuves.fff.fr/api/data/matches?idEquipe=' + team + '&dateDebut=' + month + '-01'});
+  const evaluate = new Function('document', 'fetch', 'targets', `
+    return (${browserCollectTeamMonths.toString()})(targets,${fetchCompleteMatches.toString()});
+  `);
+  const document = {querySelector: () => ({textContent: JSON.stringify({VLJAXE: 'test'})})};
+  const request = async (url: string, options: RequestInit) => {
+    assert.equal(new Headers(options.headers).get('X-Competition'), 'test');
+    return Response.json(collection([{...match, date: '2027-05-31T14:00:00+02:00'}]));
+  };
+  const results = await evaluate(document, request, [makeTarget('2027-05'), makeTarget('2027-04')]);
+  assert.equal(results.find(result => result.month === '2027-05').payload['hydra:totalItems'], 1);
+  assert.equal(results.find(result => result.month === '2027-04').error, 'réponse non vérifiée');
 });

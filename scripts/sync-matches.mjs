@@ -1,7 +1,7 @@
 import { browserCollectStandings } from './standings-integrated.mjs';
 import { pathToFileURL } from 'node:url';
-import { browserCollectCalendarFallback, fetchCompleteMatches, isCompleteMatchCollection } from './fff-match-coverage.mjs';
-const SYNC_VERSION='2026.11.18-import-secours-preprod-fff',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+import { browserCollectCalendarFallback, browserCollectTeamMonths, fetchCompleteMatches, isCompleteMatchCollection } from './fff-match-coverage.mjs';
+const SYNC_VERSION='2026.11.18-programme-u15f',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
 const endpoint=siteUrl+'/internal/sync/matches';
 const standingsEndpoint=siteUrl+'/internal/sync/standings';
@@ -748,6 +748,36 @@ export async function fetchZenRows(targetUrls){
       console.log(`::warning title=Calendriers FFF::Collecte isolée en échec (${status}).`);
     }
   }
+  if(payloads.matchMonths<12){
+    const missing=(targetUrls.u15f||[]).filter(({team,month})=>!payloads.calendarResults.some(result=>
+      result.id===team&&result.coverage?.some(({window})=>window?.starts_on===month+'-01'
+        &&window.ends_before===new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5)),0)).toISOString().slice(0,10))
+    ));
+    if(missing.length){
+      const evaluate=`(async()=>{
+        const results=await (${browserCollectTeamMonths.toString()})(${JSON.stringify(missing)},${fetchCompleteMatches.toString()});
+        const output=document.createElement('script');
+        output.id='fce-u15f-months';
+        output.type='application/json';
+        output.textContent=JSON.stringify({status:200,body:results});
+        document.head.replaceChildren();
+        document.body.replaceChildren(output);
+        document.documentElement.setAttribute('data-fce-u15f-done','1');
+      })()`;
+      try{
+        const raw=await runBrowser(evaluate,'html[data-fce-u15f-done="1"]','ZenRows U15F');
+        let html=raw;
+        try{html=JSON.parse(raw)?.html||raw}catch{}
+        const results=embeddedPayloadFromHtml(html,'fce-u15f-months')||[];
+        const collected=results.filter(result=>isCompleteMatchCollection(result.payload));
+        payloads.matches=mergeMatchPayloads([payloads.matches,...collected.map(result=>result.payload)]);
+        console.log(`FFF : programme U15F — ${collected.length}/${missing.length} requêtes complémentaires valides.`);
+        for(const result of results.filter(item=>item.error))console.log(`::warning title=Programme U15F::${result.team} ${result.month} — ${result.error}`);
+      }catch{
+        console.log('::warning title=Programme U15F::Session complémentaire indisponible.');
+      }
+    }
+  }
   console.log(`FFF : ${payloads.matchMonths}/12 mois de matchs et ${payloads.falMonths}/12 mois de plateaux capturés.`);
   if(payloads.calendarResults.length)console.log(`FFF : calendriers d’équipe — ${payloads.calendarResults.map(({id,status,collections})=>`${id}: HTTP ${status}, ${collections} collection(s)`).join(' ; ')}.`);
   for(const {id,coverage} of payloads.calendarResults){
@@ -1013,6 +1043,13 @@ async function collectEpreuvesFFF(){
       const query=new URLSearchParams({dateDebut:start.toISOString().replace('.000Z','+00:00'),dateFin:end.toISOString().replace('.000Z','+00:00'),clNo:CLUB_NO,itemsPerPage:'100',pagination:'true'});
       return `https://epreuves.fff.fr/api/data/matches?${query}`;
     }),
+    u15f:seasonYear===2026?periods.slice(probeIndex,11).flatMap(({start,end})=>
+      ['2026_101544_U15F_4','2026_101544_U15F_5'].map(team=>{
+        const query=new URLSearchParams({idEquipe:team,dateDebut:start.toISOString().replace('.000Z','+00:00'),
+          dateFin:end.toISOString().replace('.000Z','+00:00'),itemsPerPage:'100',pagination:'true'});
+        return {team,month:start.toISOString().slice(0,7),url:`https://epreuves.fff.fr/api/data/matches?${query}`};
+      })
+    ):[],
     fal:periods.map(({start,end})=>{
       const query=new URLSearchParams({dateDebut:start.toISOString().slice(0,10),dateFin:end.toISOString().slice(0,10)});
       return `https://epreuves.fff.fr/api/fal/cdg/${DISTRICT_NO}/club/${CLUB_NO}/sites?${query}`;
