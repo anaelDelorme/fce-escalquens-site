@@ -1,6 +1,7 @@
 import { browserCollectStandings } from './standings-integrated.mjs';
-const SYNC_VERSION='2026.10.15-plateaux-isoles-34',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
-console.log(`Collecteur FCE ${SYNC_VERSION}`);
+import { pathToFileURL } from 'node:url';
+import { browserCollectCalendarFallback, fetchCompleteMatches, isCompleteMatchCollection } from './fff-match-coverage.mjs';
+const SYNC_VERSION='2026.11.18-couverture-fff',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
 const endpoint=siteUrl+'/internal/sync/matches';
 const standingsEndpoint=siteUrl+'/internal/sync/standings';
@@ -17,7 +18,6 @@ let latestStandingsInfo={
 // Le YAML pilote désormais la cadence via un seul cron par créneau (champ
 // `timezone: Europe/Paris`), donc chaque déclenchement du workflow doit
 // lancer une collecte : plus de vérification d'heure locale ici.
-if(!process.env.FCE_SITE_URL||!token)throw new Error('Secrets FCE_SITE_URL ou FCE_SYNC_TOKEN manquants');
 const headers={accept:'application/ld+json, application/json, text/html;q=0.9','accept-language':'fr-FR,fr;q=0.9','user-agent':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/128 Safari/537.36',referer:'https://occitanie.fff.fr/'};
 const first=(...values)=>values.find(value=>value!==undefined&&value!==null&&value!=='');
 const text=value=>typeof value==='string'?value:value?.name||value?.nom||value?.label||value?.short_name||value?.libelle||'';
@@ -142,7 +142,8 @@ function plateauDetailTargets(falPayload){
 
     const when=falDateMs(site.date??site.joDate??site.journee?.date??site.dateDebut??site.site?.date);
     if(!Number.isFinite(when)){stats.invalidDate++;continue}
-    if(when<min||when>max){stats.outsideWindow++;continue}
+    // Rejouer les plateaux U13F de la saison pour retrouver les scores manquants.
+    if((when<min&&String(ep)!=='9833')||when>max){stats.outsideWindow++;continue}
 
     const key=[ep,jo,si].join(':');
     targets.set(key,{
@@ -218,7 +219,7 @@ async function browserCollectPlateauDetails(targets){
 
 async function fetchPlateauDetailsZenRows(falPayload,existingEntries=[]){
   const {targets,stats}=plateauDetailTargets(falPayload);
-  const existingKeys=new Set((existingEntries||[]).map(entry=>String(entry?.payload?.site_key||'')).filter(Boolean));
+  const existingKeys=new Set((existingEntries||[]).map(entry=>entry?.payload?.api_payloads?.length?String(entry.payload.site_key||''):'').filter(Boolean));
   const missingTargets=targets.filter(target=>!existingKeys.has(target.key));
 
   console.log(
@@ -273,7 +274,7 @@ async function fetchPlateauDetailsZenRows(falPayload,existingEntries=[]){
   );
 
   return {
-    entries:[...(existingEntries||[]),...isolatedEntries],
+    entries:[...(existingEntries||[]),...isolatedEntries.filter(entry=>entry.payload?.api_payloads?.length)],
     meta:{...isolatedMeta,targeted:targets.length,reused:(existingEntries||[]).length}
   };
 }
@@ -282,18 +283,22 @@ const epreuvesPayloadFromZenRows=body=>{
   let result;
   try{result=JSON.parse(body)}catch{result={html:body}}
   const html=result?.html||'';
-  const matchPayloads=Array.from({length:12},(_,index)=>embeddedPayloadFromHtml(html,`fce-matches-${index}`)).filter(Boolean);
-  const falPayloads=Array.from({length:12},(_,index)=>embeddedPayloadFromHtml(html,`fce-fal-${index}`)).filter(Boolean);
-  const failedMonthly=[
-    ...Array.from({length:12},(_,index)=>{
-      const status=embeddedStatusFromHtml(html,`fce-matches-${index}`);
-      return status===200?null:{id:`fce-matches-${index}`,status};
-    }),
-    ...Array.from({length:12},(_,index)=>{
-      const status=embeddedStatusFromHtml(html,`fce-fal-${index}`);
-      return status===200?null:{id:`fce-fal-${index}`,status};
-    })
-  ].filter(Boolean);
+  const monthly=(prefix,isValid)=>Array.from({length:12},(_,index)=>{
+    const id=prefix+index;
+    const status=embeddedStatusFromHtml(html,id);
+    try{
+      const payload=embeddedPayloadFromHtml(html,id);
+      return {id,payload:isValid(payload)?payload:null,status};
+    }catch{
+      return {id,payload:null,status};
+    }
+  });
+  const matchesByMonth=monthly('fce-matches-',isCompleteMatchCollection);
+  const falByMonth=monthly('fce-fal-',payload=>Array.isArray(payload?.sites));
+  const matchPayloads=matchesByMonth.flatMap(entry=>entry.payload?[entry.payload]:[]);
+  const falPayloads=falByMonth.flatMap(entry=>entry.payload?[entry.payload]:[]);
+  const failedMonthly=[...matchesByMonth,...falByMonth].filter(entry=>!entry.payload);
+  const fallback=embeddedPayloadFromHtml(html,'fce-calendar-fallback')||{};
   const detailPayloads=embeddedPayloadsByPrefix(html,'fce-detail-');
   const falGamePayloads=embeddedEntriesByPrefix(html,'fce-fal-games-');
   const falGameMeta=embeddedPayloadFromHtml(html,'fce-plateau-detail-meta')||{};
@@ -305,7 +310,8 @@ const epreuvesPayloadFromZenRows=body=>{
     return /"(?:terrain|installation|stade)"\s*:/.test(JSON.stringify(item));
   }).length;
   return {
-    matches:mergeMatchPayloads([...matchPayloads,...detailPayloads]),fal:mergeFalPayloads(falPayloads),
+    matches:mergeMatchPayloads([...(fallback.collections||[]),...matchPayloads,...detailPayloads]),fal:mergeFalPayloads(falPayloads),
+    monthlyMatches:mergeMatchPayloads(matchPayloads),calendarResults:fallback.results||[],
     matchMonths:matchPayloads.length,falMonths:falPayloads.length,
     detailCount:detailPayloads.length,venueDetailCount:venueDetails,
     falGamePayloads,
@@ -335,6 +341,7 @@ async function fetchZenRows(targetUrls){
     const entries=roots.flatMap(item=>Object.entries(item||{}));
     const securityToken=entries.find(([key])=>key==='VLJAXE')?.[1]||entries.find(([key,value])=>key.includes('/api/app-security-token/')&&value?.body?.token)?.[1]?.body?.token;
     if(!securityToken){document.documentElement.setAttribute('data-fce-sync-error','token-X-Competition-introuvable');return}
+    const fetchCompleteMatches=${fetchCompleteMatches.toString()};
     const saved=[];
     const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
     const retryable=status=>[0,429,500,502,503,504].includes(Number(status));
@@ -346,24 +353,24 @@ async function fetchZenRows(targetUrls){
         attempt++;
 
         try{
-          const response=await fetch(
-            src,
-            {
-              credentials:'include',
-              headers:{
-                Accept:'application/json, text/plain, */*',
-                'X-Competition':String(securityToken)
-              }
-            }
-          );
-
+          const request=url=>fetch(url,{
+            credentials:'include',
+            signal:AbortSignal.timeout(8000),
+            headers:{Accept:'application/json, text/plain, */*','X-Competition':String(securityToken)}
+          });
+          if(id.startsWith('fce-matches-')){
+            body=JSON.stringify(await fetchCompleteMatches(src,request));
+            status=200;
+            break;
+          }
+          const response=await request(src);
           status=response.status;
           body=await response.text();
-
           if(response.ok||!retryable(status))break;
         }catch(error){
-          status=0;
+          status=Number(String(error?.message).match(/HTTP (\\d{3})/)?.[1]||0);
           body=JSON.stringify({fce_error:String(error)});
+          if(!retryable(status))break;
         }
 
         if(attempt<3){
@@ -444,6 +451,14 @@ async function fetchZenRows(targetUrls){
         }
       });
     }
+
+    const monthlyFailed=saved.some(item=>item.id.startsWith('fce-matches-')&&item.status!==200);
+    const fallback=await (${browserCollectCalendarFallback.toString()})(state,${Number(targetUrls.seasonYear)},'${CLUB_NO}',monthlyFailed);
+    const calendarOutput=document.createElement('script');
+    calendarOutput.id='fce-calendar-fallback';
+    calendarOutput.type='application/json';
+    calendarOutput.textContent=JSON.stringify({status:200,body:fallback});
+    document.body.appendChild(calendarOutput);
 
     const min=Date.now()-7*86400000,max=Date.now()+45*86400000,details=new Map();
     for(const result of saved.filter(item=>item.id.startsWith('fce-matches-')&&item.status===200)){
@@ -703,6 +718,7 @@ async function fetchZenRows(targetUrls){
   if(cost)console.log(`ZenRows : coût indiqué ${cost}.`);
   const payloads=epreuvesPayloadFromZenRows(body);
   console.log(`FFF : ${payloads.matchMonths}/12 mois de matchs et ${payloads.falMonths}/12 mois de plateaux capturés.`);
+  if(payloads.calendarResults.length)console.log(`FFF : calendriers d’équipe — ${payloads.calendarResults.map(({id,status,collections})=>`${id}: HTTP ${status}, ${collections} collection(s)`).join(' ; ')}.`);
   console.log(`FFF : ${payloads.detailCount} détail(s) de match reçu(s), dont ${payloads.venueDetailCount} avec un terrain.`);
 
   try{
@@ -736,7 +752,7 @@ async function fetchZenRows(targetUrls){
   if(payloads.failedMonthly?.length){
     console.log(
       `::warning title=FFF partiel::Sous-requêtes mensuelles encore en échec après retry : `+
-      payloads.failedMonthly.map(item=>`${item.id} HTTP ${item.status||'réseau'}`).join(', ')
+      payloads.failedMonthly.map(item=>`${item.id} ${item.status===200?'contenu incomplet':item.status?'HTTP '+item.status:'réseau'}`).join(', ')
     );
   }
   return payloads;
@@ -746,12 +762,16 @@ async function fetchEpreuves(targetUrls){
   try{
     const extraHeaders={accept:'application/ld+json, application/json',referer:`https://epreuves.fff.fr/competition/club/${CLUB_CODE}-escalquens-fc/club`};
     const probeIndex=targetUrls.probeIndex;
-    const probe=await fetchOk(targetUrls.matches[probeIndex],'json',extraHeaders);
+    const request=url=>fetch(url,{headers:{...headers,...extraHeaders},signal:AbortSignal.timeout(8000)});
+    const probe=await fetchCompleteMatches(targetUrls.matches[probeIndex],request);
     const [matches,fal]=await Promise.all([
-      Promise.all(targetUrls.matches.map((url,index)=>index===probeIndex?probe:fetchOk(url,'json',extraHeaders))),
+      Promise.all(targetUrls.matches.map((url,index)=>index===probeIndex?probe:fetchCompleteMatches(url,request))),
       Promise.all(targetUrls.fal.map(url=>fetchOk(url,'json',extraHeaders)))
     ]);
-    return {payloads:{matches:mergeMatchPayloads(matches),fal:mergeFalPayloads(fal)},transport:'direct'};
+    const monthlyMatches=mergeMatchPayloads(matches);
+    if(!payloadItems(monthlyMatches).length)throw new Error('API directe : aucun match sur la saison');
+    if(!fal.every(payload=>Array.isArray(payload?.sites)))throw new Error('Réponse mensuelle plateau invalide');
+    return {payloads:{matches:monthlyMatches,monthlyMatches,fal:mergeFalPayloads(fal),matchMonths:12,falMonths:12},transport:'direct'};
   }catch(directError){
     console.log(`Accès FFF direct indisponible, essai via ZenRows : ${String(directError?.message||directError).replace(/\r?\n/g,' ')}`);
     try{return {payloads:await fetchZenRows(targetUrls),transport:'zenrows-browser'}}
@@ -764,13 +784,14 @@ const teamCategory=id=>{
   if(code==='SEF')return 'Seniors F';
   return code;
 };
-function normalizeEpreuves(items){
+export function normalizeEpreuves(items){
   const matches=new Map();
   for(const wrapper of items){
     const item=wrapper.donneesFormatees||wrapper;
     const competition=item.competition?.donneesFormatees||item.competition||{};
     const home=item.recevant||{},away=item.visiteur||{};
-    const clubSide=String(home.club?.clNo)===CLUB_NO?home:String(away.club?.clNo)===CLUB_NO?away:null;
+    const isClub=side=>String(side.club?.clNo)===CLUB_NO||String(side.equipe?.id||'').split('_')[1]===CLUB_NO;
+    const clubSide=isClub(home)?home:isClub(away)?away:null;
     const sourceId=String(item.maNo||wrapper.id||'');
     const played=Boolean(item.joue);
     const statusLabel=String(item.maStatutLib||'').toLowerCase();
@@ -782,8 +803,8 @@ function normalizeEpreuves(items){
     const venue=text(first(venueData,item.lieu,item.site?.nom));
     const venueAddress=addressText(first(venueData.adresse,venueData.address,item.adresse,item.site?.adresse));
     const participants=[
-      {name:home.club?.nomAbr||home.club?.nom||'',club_number:home.club?.clNo||'',team_number:home.equipe?.eqCod||home.equipe?.eqNo||home.equipe?.id||'',logo_url:cleanUrl(home.club?.logo),is_club:String(home.club?.clNo)===CLUB_NO},
-      {name:away.club?.nomAbr||away.club?.nom||'',club_number:away.club?.clNo||'',team_number:away.equipe?.eqCod||away.equipe?.eqNo||away.equipe?.id||'',logo_url:cleanUrl(away.club?.logo),is_club:String(away.club?.clNo)===CLUB_NO}
+      {name:home.club?.nomAbr||home.club?.nom||'',club_number:home.club?.clNo||'',team_number:home.equipe?.eqCod||home.equipe?.eqNo||home.equipe?.id||'',logo_url:cleanUrl(home.club?.logo),is_club:isClub(home)},
+      {name:away.club?.nomAbr||away.club?.nom||'',club_number:away.club?.clNo||'',team_number:away.equipe?.eqCod||away.equipe?.eqNo||away.equipe?.id||'',logo_url:cleanUrl(away.club?.logo),is_club:isClub(away)}
     ];
     const row={
       source:'fff',source_id:sourceId,
@@ -874,13 +895,16 @@ function normalizeFalGames(detail){
   for(const entry of detail?.api_payloads||[])visit(entry?.body);
   return [...found.values()];
 }
-function normalizeEpreuvesFal(payload,falGamePayloads=[]){
+export function normalizeEpreuvesFal(payload,falGamePayloads=[]){
   const rows=new Map();
-  const gameDetails=new Map(falGamePayloads.map(entry=>[String(entry?.payload?.site_key||''),entry?.payload||{}]));
+  const gameDetails=new Map(falGamePayloads.filter(entry=>entry?.payload?.api_payloads?.length)
+    .map(entry=>[String(entry.payload.site_key||''),entry.payload]));
   for(const site of [...(payload?.sites||[]),...(payload?.sitesWithoutDate||[])]){
     const epreuve=site.epreuve||{};
-    const clubTeam=(site.equipes||[]).find(team=>String(team.club?.clNo)===CLUB_NO);
-    if(!clubTeam||!site.date)continue;
+    const clubTeam=(site.equipes||[]).find(team=>String(first(team.club?.clNo,team.clNo))===CLUB_NO);
+    const startsAt=first(site.date,site.joDate);
+    if(!clubTeam||!startsAt)continue;
+    const category=String(epreuve.epNom||'').match(/\bU\d{1,2}F\b/i)?.[0].toUpperCase()||epreuve.caCod||clubTeam.caCod||'';
     const falTeamId=clubTeam.id||clubTeam.eqId||`FAL:${epreuve.epNo}:${epreuve.caCod||clubTeam.caCod||'categorie'}:${clubTeam.eqCod||1}`;
     // siNo évite d'écraser deux plateaux de la même journée organisés sur
     // des sites différents (cas fréquent lorsqu'un groupe engage U9-1/2/3).
@@ -909,13 +933,13 @@ function normalizeEpreuvesFal(payload,falGamePayloads=[]){
       official_team:{
         name:clubTeam.eqNom||clubTeam.club?.clNom||clubTeam.club?.nom||'',
         team_number:String(clubTeam.eqCod||''),
-        category_code:epreuve.caCod||clubTeam.caCod||'',
+        category_code:category,
         competition_name:epreuve.epNom||'',
         division:site.phLib||'',
         pool:site.poLib||site.seLib||''
       },
-      category:epreuve.caCod||clubTeam.caCod||'',competition,
-      starts_at:site.date,venue:terrain||organizer,venue_address:venueAddress,
+      category,competition,
+      starts_at:startsAt,venue:terrain||organizer,venue_address:venueAddress,
       latitude:numberOrNull(first(site.terrain?.latitude,site.terrain?.lat,site.latitude)),
       longitude:numberOrNull(first(site.terrain?.longitude,site.terrain?.lng,site.terrain?.lon,site.longitude)),
       home_team:'FC Escalquens',away_team:awayLabel,
@@ -924,10 +948,9 @@ function normalizeEpreuvesFal(payload,falGamePayloads=[]){
       external_updated_at:null,
       home_logo_url:cleanUrl(payload?.logo),
       away_logo_url:organizerIsClub?'':cleanUrl(site.organisateur?.logo),
-      time_confirmed:site.heureCommuniquee!==false,
+      time_confirmed:Boolean(site.date)&&site.heureCommuniquee!==false,
       participants,
-      // Toujours transmettre le tableau, même vide, afin qu'une collecte
-      // puisse supprimer d'anciens mini-matchs qui ne concernent pas le FCE.
+      // Une page sans données FAL laisse les mini-matchs existants en place.
       plateau_games:
         gameDetails.has(gameDetailKey)
           ?plateauGames
@@ -999,15 +1022,24 @@ async function collectEpreuvesFFF(){
   }
 
   const items=payloadItems(payloads.matches);
-  const total=Number(payloads.matches['hydra:totalItems']??items.length);
-  if(total>items.length)throw new Error(`FFF annonce ${total} matchs mais n'en renvoie que ${items.length}; pagination à ajouter avant import`);
   const matches=normalizeEpreuves(items),plateaux=normalizeEpreuvesFal(payloads.fal,payloads.falGamePayloads);
   if(!matches.length&&!plateaux.length)throw new Error('FFF a renvoyé zéro match et zéro plateau sur les douze mois');
-  console.log(`FFF : ${matches.length} matchs et ${plateaux.length} plateaux reçus via ${transport}.`);
-  return [...matches,...plateaux];
-}
-async function collectFFF(){
-  return collectEpreuvesFFF();
+  const monthlyItems=payloadItems(payloads.monthlyMatches);
+  const matchIds=new Set(monthlyItems.map(item=>String(item?.donneesFormatees?.maNo||item.maNo||item.id||item['@id'])));
+  const seasonStart=`${seasonYear}-07-01`,seasonEnd=`${seasonYear+1}-07-01`;
+  const seasonMatches=matches.filter(row=>Number.isFinite(Date.parse(row.starts_at))
+    &&row.starts_at>=seasonStart&&row.starts_at<seasonEnd);
+  const fullMatches=payloads.matchMonths===12&&matchIds.size>0&&seasonMatches.length===matchIds.size
+    &&seasonMatches.every(row=>matchIds.has(row.source_id));
+  const incomplete=[];
+  if(!fullMatches)incomplete.push(`matchs : ${payloads.matchMonths}/12 mois valides, ${seasonMatches.length} matchs exploitables`);
+  if(payloads.falMonths!==12)incomplete.push(`plateaux : ${payloads.falMonths}/12 mois valides`);
+  console.log(`FFF : ${seasonMatches.length} matchs et ${plateaux.length} plateaux reçus via ${transport}.`);
+  return {
+    rows:[...seasonMatches,...plateaux],
+    incomplete,
+    matchSnapshot:fullMatches?{starts_on:seasonStart,ends_before:seasonEnd,ids:[...matchIds]}:undefined
+  };
 }
 async function collectDistrict(){const base='https://haute-garonne.fff.fr/football-animation-et-loisirs/',html=await fetchOk(base,'text',{accept:'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',referer:'https://haute-garonne.fff.fr/','sec-fetch-dest':'document','sec-fetch-mode':'navigate','sec-fetch-site':'same-origin','upgrade-insecure-requests':'1'}),match=html.match(/<div id=["']animation-data["'][^>]*>\s*([\s\S]*?)\s*<\/div>/i);if(!match)throw new Error('District : animation-data introuvable');const data=JSON.parse(match[1]),rows=[];for(const competition of data){if(!competition.clubs?.some(club=>Number(club.cl_no)===Number(CLUB_NO)&&Number(club.cl_cod)===Number(CLUB_CODE)))continue;for(const phase of competition.phases||[])for(const journey of phase.journees||[]){const sites=(phase.secteurs||[]).flatMap(sector=>sector.poules||[]).flatMap(pool=>pool.journees||[]).find(item=>item.fa_jo_no===journey.fa_jo_no)?.sites||[],site=sites.find(item=>Number(item.club_organisateur?.cl_no)===Number(CLUB_NO)||(item.equipes||[]).some(club=>Number(first(club.cl_no,club.club?.cl_no))===Number(CLUB_NO))),kind=phase.fa_mr_cod==='P'?'plateau':'animation';rows.push({source:'district_fal',source_id:`${competition.fa_ep_no}:${phase.fa_ph_no}:${journey.fa_jo_no}`,category:String(competition.fa_ca_lib||competition.fa_ca_cod||''),competition:`${competition.fa_ep_nom} · ${phase.fa_ph_lib}`,starts_at:iso(first(site?.fa_si_date,journey.fa_jo_date),first(site?.fa_si_ho_cod,journey.fa_ho_cod)),venue:text(first(site?.installation,site?.club_organisateur)),home_team:'FC Escalquens',away_team:kind==='plateau'?'Plateau – participants à confirmer':'Rencontre – adversaire à confirmer',status:site?.fa_si_cancelled?'cancelled':'scheduled',event_type:kind,source_url:`${base}?fal_id=${competition.fa_ep_no}&type=fa&clNo=${CLUB_NO}&clCod=${CLUB_CODE}&checkDate=false`,external_updated_at:competition.date_maj,raw_json:{competition:{id:competition.fa_ep_no,name:competition.fa_ep_nom},phase:{id:phase.fa_ph_no,name:phase.fa_ph_lib},journey,site:site||null}})}}return rows.filter(row=>row.starts_at)}
 let latestSources=[];
@@ -1105,7 +1137,7 @@ async function importLatestStandings(sources){
   }
 }
 
-async function importMatchRows(rows,sources){
+async function importMatchRows(rows,sources,matchSnapshot){
   const chunkSize=40;
   const chunks=[];
 
@@ -1113,22 +1145,13 @@ async function importMatchRows(rows,sources){
     chunks.push(rows.slice(index,index+chunkSize));
   }
 
-  const allPlateauSourceIds=
-    rows
-      .filter(row=>
-        row?.source==='district_fal'
-        &&['plateau','animation'].includes(row?.event_type)
-      )
-      .map(row=>String(row.source_id||''))
-      .filter(Boolean);
-
   const summary={
     ok:true,
     received:0,
     accepted:0,
     changed:0,
     discovered:0,
-    removed_plateau_duplicates:0,
+    removed_stale_matches:0,
     status:sources.some(source=>source?.status==='error')?'partial':'success'
   };
 
@@ -1152,10 +1175,7 @@ async function importMatchRows(rows,sources){
               sources,
               batch:{
                 final,
-                all_plateau_source_ids:
-                  final
-                    ?allPlateauSourceIds
-                    :[]
+                match_snapshot:final?matchSnapshot:undefined
               }
             })
           }
@@ -1178,8 +1198,7 @@ async function importMatchRows(rows,sources){
         summary.accepted+=Number(result.accepted||0);
         summary.changed+=Number(result.changed||0);
         summary.discovered+=Number(result.discovered||0);
-        summary.removed_plateau_duplicates+=
-          Number(result.removed_plateau_duplicates||0);
+        summary.removed_stale_matches+=Number(result.removed_stale_matches||0);
 
         console.log(
           `Cloudflare matchs : lot ${index+1}/${chunks.length} — `
@@ -1217,10 +1236,13 @@ async function importMatchRows(rows,sources){
 }
 
 async function main(){
-  let rows=[],sources=[];
+  let rows=[],sources=[],matchSnapshot;
   try{
-    rows=await collectFFF();
-    sources.push({source:'fff',status:'ok',count:rows.length});
+    const result=await collectEpreuvesFFF();
+    ({rows,matchSnapshot}=result);
+    sources.push(result.incomplete.length
+      ?{source:'fff',status:'error',count:rows.length,error:result.incomplete.join(' ; ')}
+      :{source:'fff',status:'ok',count:rows.length});
   }catch(error){
     sources.push({source:'fff',status:'error',error:String(error?.message||error)});
     try{
@@ -1236,7 +1258,8 @@ async function main(){
   const importResult=
     await importMatchRows(
       rows,
-      sources
+      sources,
+      matchSnapshot
     );
 
   await importLatestStandings(sources);
@@ -1254,4 +1277,8 @@ async function main(){
   }
 }
 
-try{await main()}catch(error){await reportFailure(error);throw error}
+if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
+  console.log(`Collecteur FCE ${SYNC_VERSION}`);
+  if(!siteUrl||!token)throw new Error('Secrets FCE_SITE_URL ou FCE_SYNC_TOKEN manquants');
+  try{await main()}catch(error){await reportFailure(error);throw error}
+}

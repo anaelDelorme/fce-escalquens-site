@@ -1156,7 +1156,7 @@ async function upsertMatch(env: Env, row: AnyRow) {
         raw_json: JSON.stringify(game.raw_json || game)
       }));
     const existingResult = await env.DB.prepare(`SELECT source_game_id,display_order,home_team,away_team,
-      home_score,away_score,status,home_logo_url,away_logo_url
+      home_score,away_score,status,home_logo_url,away_logo_url,raw_json
       FROM plateau_games WHERE plateau_match_id=? ORDER BY display_order,id`).bind(stored.id).all<AnyRow>();
     const existing = (existingResult.results || []).map(game => ({
       source_game_id: String(game.source_game_id || ""),
@@ -1167,10 +1167,21 @@ async function upsertMatch(env: Env, row: AnyRow) {
       away_score: game.away_score === null || game.away_score === undefined ? null : Number(game.away_score),
       status: String(game.status || "scheduled"),
       home_logo_url: String(game.home_logo_url || ""),
-      away_logo_url: String(game.away_logo_url || "")
+      away_logo_url: String(game.away_logo_url || ""),
+      raw_json: String(game.raw_json || "{}")
     }));
+    // Une page FFF peut ne plus publier les résultats déjà acquis.
+    for (const scored of existing) {
+      if (scored.home_score === null || scored.away_score === null) continue;
+      const index = incoming.findIndex(game => game.source_game_id === scored.source_game_id);
+      if (index < 0) incoming.push({ ...scored, display_order: incoming.length });
+      else if (incoming[index].home_score === null || incoming[index].away_score === null) {
+        incoming[index] = { ...incoming[index], home_score: scored.home_score, away_score: scored.away_score, status: scored.status };
+      }
+    }
+    const existingComparable = existing.map(({ raw_json: _rawJson, ...game }) => game);
     const incomingComparable = incoming.map(({ raw_json: _rawJson, ...game }) => game);
-    if (JSON.stringify(existing) !== JSON.stringify(incomingComparable)) {
+    if (JSON.stringify(existingComparable) !== JSON.stringify(incomingComparable)) {
       const statements = [env.DB.prepare("DELETE FROM plateau_games WHERE plateau_match_id=?").bind(stored.id)];
       for (const game of incoming) {
         statements.push(env.DB.prepare(`INSERT INTO plateau_games(
@@ -1242,7 +1253,7 @@ async function ingestMatches(request: Request, env: Env) {
     sources?: AnyRow[];
     batch?: {
       final?: boolean;
-      all_plateau_source_ids?: string[];
+      match_snapshot?: { starts_on: string; ends_before: string; ids: string[] };
     };
   }>().catch(() => null);
   const rows = body?.rows;
@@ -1251,7 +1262,7 @@ async function ingestMatches(request: Request, env: Env) {
   const finalBatch = !batchMode || body?.batch?.final === true;
   const [seasonId, teams, unassigned] = await Promise.all([
     activeSeasonId(env),
-    env.DB.prepare("SELECT id,name,category FROM teams WHERE active=1").all<AnyRow>(),
+    env.DB.prepare("SELECT id,name,category,gender FROM teams WHERE active=1").all<AnyRow>(),
     env.DB.prepare("SELECT id FROM teams WHERE slug='fff-equipes-a-affecter' LIMIT 1").first<{ id: number }>()
   ]);
   if (!seasonId || !unassigned?.id) return json({ error: "Saison active ou groupe technique FFF manquant : appliquez les migrations D1." }, 409);
@@ -1312,8 +1323,28 @@ async function ingestMatches(request: Request, env: Env) {
       ).run();
       refreshedEntries.add(fffTeamId);
     }
-    // Aucune déduction par le libellé U15/U15F : seul l'identifiant FFF exact
-    // et l'affectation validée dans l'admin déterminent le groupe sportif.
+    // Ces deux calendriers féminins ont un groupe identifié. Les autres
+    // affectations restent liées aux identifiants validés dans l'administration.
+    const groupCategory = row.source === "district_fal" && /^9833:/.test(String(row.source_id))
+      && official.category_code === "U13F" ? "U13F"
+      : row.source === "fff" && fffTeamId === "2026_101544_U15F_5" ? "U15F"
+      : null;
+    if (groupCategory && entry?.active === 1 && entry.team_id === unassigned.id) {
+      const groups = (teams.results || []).filter(candidate =>
+        candidate.gender === "female"
+        && String(`${candidate.name} ${candidate.category}`).toUpperCase().split(/[^A-Z0-9]+/).includes(groupCategory)
+      );
+      if (groups.length === 1) {
+        const assigned = await env.DB.prepare(`UPDATE team_competitions SET team_id=?,updated_at=CURRENT_TIMESTAMP
+          WHERE id=? AND team_id=? AND active=1 RETURNING team_id`)
+          .bind(groups[0].id, entry.id, unassigned.id).first<{ team_id: number }>();
+        if (assigned) {
+          entry.team_id = assigned.team_id;
+          await env.DB.prepare("UPDATE matches SET team_id=? WHERE competition_team_id=? AND manually_created=0")
+            .bind(entry.team_id, entry.id).run();
+        }
+      }
+    }
     const team = entry ? (teams.results || []).find(candidate => candidate.id === entry.team_id) : null;
     changed += await upsertMatch(env, {
       ...row,
@@ -1332,24 +1363,34 @@ async function ingestMatches(request: Request, env: Env) {
   }
   const sourceResults = Array.isArray(body?.sources) ? body.sources : [];
   const syncStatus = sourceResults.some(source => source?.status === "error") ? "partial" : "success";
-  // Un ancien collecteur FAL utilisait un identifiant à trois segments. Après
-  // une collecte FFF complète, les plateaux absents du lot courant sont donc
-  // des doublons obsolètes. Les ajouts manuels utilisent une autre source.
-  let removedPlateauDuplicates = 0;
-  if (syncStatus === "success" && finalBatch) {
-    const suppliedPlateaux = body?.batch?.all_plateau_source_ids;
-    const currentPlateaux = Array.isArray(suppliedPlateaux)
-      ? suppliedPlateaux.map(value => String(value)).filter(Boolean)
-      : rows
-          .filter(row => row.source === "district_fal" && ["plateau", "animation"].includes(row.event_type))
-          .map(row => String(row.source_id));
-    if (currentPlateaux.length) {
-      const deleted = await env.DB.prepare(`DELETE FROM matches
-        WHERE source='district_fal' AND manually_created=0 AND (season_id=? OR season_id IS NULL)
-        AND event_type IN ('plateau','animation')
-        AND source_id NOT IN (${currentPlateaux.map(() => "?").join(",")})`)
-        .bind(seasonId, ...currentPlateaux).run();
-      removedPlateauDuplicates = Number(deleted.meta.changes || 0);
+  // Seule une collecte complète des matchs de la saison peut retirer les
+  // programmes obsolètes. Les scores, plateaux et ajouts manuels sont conservés.
+  let removedStaleMatches = 0;
+  const snapshot = body?.batch?.match_snapshot;
+  if (syncStatus === "success" && finalBatch && snapshot && Array.isArray(snapshot.ids)
+      && snapshot.ids.length && snapshot.ids.every(id => typeof id === "string" && /^\d+$/.test(id))
+      && new Set(snapshot.ids).size === snapshot.ids.length) {
+    const season = await env.DB.prepare("SELECT starts_on, date(ends_on, '+1 day') AS ends_before FROM seasons WHERE id=?")
+      .bind(seasonId).first<{ starts_on: string; ends_before: string }>();
+    if (season?.starts_on === snapshot.starts_on && season.ends_before === snapshot.ends_before) {
+      const ids = JSON.stringify(snapshot.ids);
+      const stored = await env.DB.prepare(`SELECT COUNT(*) AS count FROM matches
+        WHERE source='fff' AND season_id=? AND source_id IN (SELECT value FROM json_each(?))`)
+        .bind(seasonId, ids).first<{ count: number }>();
+      if (stored?.count === snapshot.ids.length) {
+        const removed = await env.DB.prepare(`DELETE FROM matches AS obsolete
+          WHERE source='fff' AND event_type='match' AND manually_created=0 AND season_id=?
+          AND starts_at>=? AND starts_at<? AND status IN ('scheduled','postponed')
+          AND home_score IS NULL AND away_score IS NULL
+          AND source_id NOT IN (SELECT value FROM json_each(?))
+          AND EXISTS (
+            SELECT 1 FROM matches current JOIN json_each(?) ids ON ids.value=current.source_id
+            WHERE current.source='fff' AND current.season_id=obsolete.season_id
+            AND current.competition_team_id=obsolete.competition_team_id
+          )`)
+          .bind(seasonId, snapshot.starts_on, snapshot.ends_before, ids, ids).run();
+        removedStaleMatches = Number(removed.meta.changes || 0);
+      }
     }
   }
   if (finalBatch) {
@@ -1382,7 +1423,7 @@ async function ingestMatches(request: Request, env: Env) {
   }
   return json({
     ok: true, received: rows.length, accepted, changed, discovered,
-    removed_plateau_duplicates: removedPlateauDuplicates, status: syncStatus,
+    removed_plateau_duplicates: 0, removed_stale_matches: removedStaleMatches, status: syncStatus,
     final: finalBatch
   });
 }
