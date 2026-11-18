@@ -1,7 +1,7 @@
 import { browserCollectStandings } from './standings-integrated.mjs';
 import { pathToFileURL } from 'node:url';
 import { browserCollectCalendarFallback, fetchCompleteMatches, isCompleteMatchCollection } from './fff-match-coverage.mjs';
-const SYNC_VERSION='2026.11.18-couverture-fff',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+const SYNC_VERSION='2026.11.18-calendriers-fff',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
 const endpoint=siteUrl+'/internal/sync/matches';
 const standingsEndpoint=siteUrl+'/internal/sync/standings';
@@ -719,6 +719,11 @@ async function fetchZenRows(targetUrls){
   const payloads=epreuvesPayloadFromZenRows(body);
   console.log(`FFF : ${payloads.matchMonths}/12 mois de matchs et ${payloads.falMonths}/12 mois de plateaux capturés.`);
   if(payloads.calendarResults.length)console.log(`FFF : calendriers d’équipe — ${payloads.calendarResults.map(({id,status,collections})=>`${id}: HTTP ${status}, ${collections} collection(s)`).join(' ; ')}.`);
+  for(const {id,coverage} of payloads.calendarResults){
+    if(/_U(?:15|18)F_/.test(id)&&coverage?.length){
+      console.log(`FFF : couverture SSR ${id} — ${JSON.stringify(coverage)}.`);
+    }
+  }
   console.log(`FFF : ${payloads.detailCount} détail(s) de match reçu(s), dont ${payloads.venueDetailCount} avec un terrain.`);
 
   try{

@@ -40,6 +40,10 @@ test('FFF : le calendrier U15F donne des matchs à importer malgré les refus me
   });
   const result = await evaluate({ querySelectorAll: () => [] }, { pathname: '/competition/club/550350-f-c-escalquens/club' }, request, []);
   assert.equal(request.mock.callCount(), 1);
+  assert.deepEqual(result.results[0].coverage[0], {
+    rows: 1, total: 1, next: false, filters: ['eqId'],
+    first: '2026-11-15', last: '2026-11-15', count: 1, weekendMatches: undefined
+  });
   const [row] = normalizeEpreuves(result.collections.flatMap(payload => payload['hydra:member']));
   assert.equal(row.source_id, '100');
   assert.equal(row.team_fff_id, '2026_101544_U15F_5');

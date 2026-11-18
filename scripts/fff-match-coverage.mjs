@@ -47,8 +47,8 @@ export async function browserCollectCalendarFallback(initialState, seasonYear, c
   const matchCollections = state => stateEntries(state)
     .filter(([key, value]) => /\/api\/(?:data\/)?matches\?/.test(key) && value?.status === 200
       && Array.isArray(value.body?.['hydra:member']))
-    .map(([, value]) => value.body);
-  const collections = matchCollections(initialState);
+    .map(([key, value]) => ({key, body: value.body}));
+  const collections = matchCollections(initialState).map(entry => entry.body);
   if (!fetchTeamCalendars) return {collections, results: []};
   const calendars = new Set();
   const teamIdPattern = new RegExp('^' + seasonYear + '_' + clubNo + '_[A-Z0-9]+_\\d+$');
@@ -80,8 +80,32 @@ export async function browserCollectCalendarFallback(initialState, seasonYear, c
         }
         const stateText = (await response.text()).match(/<script[^>]+id=["']ng-state["'][^>]*>([\s\S]*?)<\/script>/i)?.[1];
         const captured = stateText ? matchCollections(JSON.parse(stateText)) : [];
-        collections.push(...captured);
-        results.push({id, status: response.status, collections: captured.length});
+        collections.push(...captured.map(entry => entry.body));
+        const coverage = captured.map(({key, body}) => {
+          const params = new URLSearchParams(key.slice(key.indexOf('?') + 1).split('|')[0]);
+          const ownMatches = body['hydra:member'].flatMap(wrapper => {
+            const match = wrapper?.donneesFormatees || wrapper;
+            const sides = [match?.recevant, match?.visiteur];
+            if (!sides.some(side => side?.equipe?.id === id)) return [];
+            const matchId = String(match.maNo || wrapper.id || '');
+            const day = String(match.date || '').slice(0, 10);
+            return /^\d+$/.test(matchId) && /^\d{4}-\d{2}-\d{2}$/.test(day)
+              ? [{matchId, day}] : [];
+          }).sort((a, b) => a.day.localeCompare(b.day));
+          return {
+            rows: body['hydra:member'].length,
+            total: Number.isSafeInteger(body['hydra:totalItems']) ? body['hydra:totalItems'] : null,
+            next: Boolean(body['hydra:view']?.['hydra:next']),
+            filters: [...new Set([...params.keys()])].filter(name => /^[a-z0-9_]+$/i.test(name)),
+            first: ownMatches[0]?.day,
+            last: ownMatches.at(-1)?.day,
+            count: new Set(ownMatches.map(match => match.matchId)).size,
+            weekendMatches: id.includes('_U18F_')
+              ? ownMatches.filter(match => ['2026-11-07','2026-11-08','2026-11-14','2026-11-15'].includes(match.day))
+              : undefined
+          };
+        });
+        results.push({id, status: response.status, collections: captured.length, coverage});
       } catch {
         results.push({id, status: 0, collections: 0});
       }
