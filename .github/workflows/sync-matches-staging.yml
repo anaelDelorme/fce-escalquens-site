@@ -27,6 +27,7 @@ jobs:
       - name: Synchroniser les matchs en préproduction
         run: node scripts/sync-matches.mjs
         env:
+          FCE_ALLOW_PARTIAL_MATCH_IMPORT: 'true'
           FCE_SITE_URL: ${{ secrets.FCE_STAGING_SITE_URL }}
           FCE_SYNC_TOKEN: ${{ secrets.FCE_STAGING_SYNC_TOKEN }}
           ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}

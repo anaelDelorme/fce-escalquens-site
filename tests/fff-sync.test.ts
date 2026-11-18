@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { browserCollectCalendarFallback, fetchCompleteMatches } from '../scripts/fff-match-coverage.mjs';
-import { fetchZenRows, normalizeEpreuves, normalizeEpreuvesFal } from '../scripts/sync-matches.mjs';
+import { acceptsPartialImport, fetchZenRows, normalizeEpreuves, normalizeEpreuvesFal } from '../scripts/sync-matches.mjs';
 import worker from '../src/worker';
 import { TestDatabase } from './d1';
 
@@ -156,4 +156,13 @@ test('D1 : import partiel sans suppression, puis retrait des seuls matchs FFF ab
   assert.equal(DB.db.prepare(`SELECT t.slug FROM matches m JOIN teams t ON t.id=m.team_id WHERE m.source_id='9833:12:41646:3'`).get()?.slug, 'u13f-test');
   assert.equal(DB.db.prepare(`SELECT t.slug FROM matches m JOIN teams t ON t.id=m.team_id WHERE m.source_id='100'`).get()?.slug, 'u15f-test');
   assert.equal(DB.db.prepare('SELECT home_score FROM plateau_games').get()?.home_score, 0);
+});
+
+test('FFF : la préproduction accepte uniquement les imports de secours effectivement terminés', () => {
+  const state = { enabled: true, recoveredMatches: true, failures: [{ source: 'fff' }], accepted: 132, expected: 132 };
+  assert.equal(acceptsPartialImport(state), true);
+  assert.equal(acceptsPartialImport({ ...state, enabled: false }), false);
+  assert.equal(acceptsPartialImport({ ...state, recoveredMatches: false }), false);
+  assert.equal(acceptsPartialImport({ ...state, accepted: 131 }), false);
+  assert.equal(acceptsPartialImport({ ...state, failures: [...state.failures, { source: 'standings' }] }), false);
 });
