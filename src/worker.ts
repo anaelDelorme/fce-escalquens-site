@@ -2103,6 +2103,16 @@ export default {
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) { ctx.waitUntil(Promise.all([maintenance(env),...(env.TOURNAMENTS?[maintenance(tournamentEnv(env))]:[])])); },
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(request.url);
+    if (url.pathname === "/internal/sync/teams" && request.method === "GET") {
+      const supplied = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") || "";
+      if (!env.FCE_SYNC_TOKEN || !secureToken(supplied, env.FCE_SYNC_TOKEN)) {
+        return json({ error: "Jeton de synchronisation invalide" }, 401);
+      }
+      const teams = await env.DB.prepare(`SELECT DISTINCT fff_team_id FROM team_competitions
+        WHERE season_id=? AND active=1 AND fff_team_id<>''`)
+        .bind(await activeSeasonId(env)).all<{ fff_team_id: string }>();
+      return json({ teams: (teams.results || []).map(team => team.fff_team_id) });
+    }
     if (url.pathname === "/internal/sync/matches" && request.method === "POST") {
       return ingestMatches(request, env);
     }

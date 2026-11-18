@@ -125,7 +125,7 @@ export async function browserCollectCalendarFallback(initialState, seasonYear, c
       }
     }
   }));
-  return {collections, results};
+  return {collections, results, teamIds: [...calendars]};
 }
 
 // Sérialisé dans une session dédiée pour éviter la limite de la collecte principale.
@@ -159,4 +159,20 @@ export async function browserCollectTeamMonths(targets, fetchComplete) {
     }
   }));
   return results;
+}
+
+export function missingTeamMonthTargets(teamIds, periods, calendars, seasonYear, clubNo) {
+  const pattern = new RegExp('^' + seasonYear + '_' + clubNo + '_[A-Z0-9]+_\\d+$');
+  const teams = [...new Set(teamIds.filter(id => typeof id === 'string' && pattern.test(id)))].sort();
+  const covered = new Set(calendars.flatMap(result => (result.coverage || []).flatMap(({window}) =>
+    window ? [result.id + '/' + window.starts_on + '/' + window.ends_before] : [])));
+  return periods.flatMap(({start,end}) => {
+    const first = start.toISOString().slice(0,10), last = end.toISOString().slice(0,10);
+    return teams.flatMap(team => {
+      if (covered.has(team + '/' + first + '/' + last)) return [];
+      const query = new URLSearchParams({ idEquipe: team, dateDebut: start.toISOString(),
+        dateFin: end.toISOString(), itemsPerPage: '100', pagination: 'true' });
+      return [{team, month:first.slice(0,7), url:'https://epreuves.fff.fr/api/data/matches?' + query}];
+    });
+  });
 }

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { browserCollectCalendarFallback, browserCollectTeamMonths, fetchCompleteMatches } from '../scripts/fff-match-coverage.mjs';
+import { browserCollectCalendarFallback, browserCollectTeamMonths, fetchCompleteMatches, missingTeamMonthTargets } from '../scripts/fff-match-coverage.mjs';
 import { acceptsPartialImport, fetchZenRows, normalizeEpreuves, normalizeEpreuvesFal } from '../scripts/sync-matches.mjs';
 import worker from '../src/worker';
 import { TestDatabase } from './d1';
@@ -181,4 +181,17 @@ test('FFF : le calendrier U15F inclut mai et rejette les matchs hors équipe ou 
   const results = await evaluate(document, request, [makeTarget('2027-05'), makeTarget('2027-04')]);
   assert.equal(results.find(result => result.month === '2027-05').payload['hydra:totalItems'], 1);
   assert.equal(results.find(result => result.month === '2027-04').error, 'réponse non vérifiée');
+});
+
+test('FFF : planifie les mois manquants pour toutes les équipes de la saison', () => {
+  const u15 = '2026_101544_U15F_5';
+  const senior = '2026_101544_SEM_1';
+  const periods = [
+    {start: new Date('2027-04-01'), end: new Date('2027-04-30T23:59:59Z')},
+    {start: new Date('2027-05-01'), end: new Date('2027-05-31T23:59:59Z')}
+  ];
+  const covered = [{id: u15, coverage: [{window: {starts_on: '2027-04-01', ends_before: '2027-04-30'}}]}];
+  const targets = missingTeamMonthTargets([u15, senior, senior, '2025_101544_SEM_1', '2026_101545_SEM_1'], periods, covered, 2026, '101544');
+  assert.deepEqual(targets.map(({team, month}) => [team, month]), [[senior, '2027-04'], [senior, '2027-05'], [u15, '2027-05']]);
+  assert.equal(new URL(targets.at(-1)!.url).searchParams.get('dateFin'), '2027-05-31T23:59:59.000Z');
 });
