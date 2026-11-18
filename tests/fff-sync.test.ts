@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { browserCollectCalendarFallback, fetchCompleteMatches } from '../scripts/fff-match-coverage.mjs';
-import { normalizeEpreuves, normalizeEpreuvesFal } from '../scripts/sync-matches.mjs';
+import { fetchZenRows, normalizeEpreuves, normalizeEpreuvesFal } from '../scripts/sync-matches.mjs';
 import worker from '../src/worker';
 import { TestDatabase } from './d1';
 
@@ -47,6 +47,39 @@ test('FFF : le calendrier U15F donne des matchs à importer malgré les refus me
   const [row] = normalizeEpreuves(result.collections.flatMap(payload => payload['hydra:member']));
   assert.equal(row.source_id, '100');
   assert.equal(row.team_fff_id, '2026_101544_U15F_5');
+});
+
+test('FFF : une session principale sans calendriers déclenche une collecte isolée', async t => {
+  const originalKey = process.env.ZENROWS_API_KEY;
+  process.env.ZENROWS_API_KEY = 'local-test';
+  t.after(() => {
+    if (originalKey === undefined) delete process.env.ZENROWS_API_KEY;
+    else process.env.ZENROWS_API_KEY = originalKey;
+  });
+  const script = (id: string, status: number, body: unknown) =>
+    `<script id="${id}">${JSON.stringify({ status, body })}</script>`;
+  const calls: string[] = [];
+  t.mock.method(globalThis, 'fetch', async (url: URL) => {
+    const instructions = JSON.parse(url.searchParams.get('js_instructions')!);
+    const ready = instructions[3].wait_for;
+    calls.push(ready);
+    assert.doesNotThrow(() => new Function(instructions[2].evaluate));
+    if (ready.includes('sync-done')) {
+      return new Response(Array.from({ length: 12 }, (_, i) =>
+        script('fce-matches-' + i, 403, {}) + script('fce-fal-' + i, 200, { sites: [] })
+      ).join(''));
+    }
+    return new Response(script('fce-calendar-fallback', 200, {
+      collections: [collection([match])],
+      results: [{ id: '2026_101544_U15F_5', status: 200, collections: 1 }]
+    }));
+  });
+  const result = await fetchZenRows({ matches: [], fal: [], seasonYear: 2026 });
+  assert.deepEqual(calls, ['html[data-fce-sync-done="1"]', 'html[data-fce-calendars-done="1"]']);
+  assert.equal(result.matchMonths, 0);
+  assert.equal(result.falMonths, 12);
+  assert.equal(result.monthlyMatches['hydra:totalItems'], 0);
+  assert.deepEqual(normalizeEpreuves(result.matches['hydra:member']).map(row => row.source_id), ['100']);
 });
 
 test('FFF : l’épreuve 9833 garde son identifiant FAL et corrige sa catégorie', () => {

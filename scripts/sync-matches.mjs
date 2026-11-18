@@ -1,7 +1,7 @@
 import { browserCollectStandings } from './standings-integrated.mjs';
 import { pathToFileURL } from 'node:url';
 import { browserCollectCalendarFallback, fetchCompleteMatches, isCompleteMatchCollection } from './fff-match-coverage.mjs';
-const SYNC_VERSION='2026.11.18-calendriers-fff',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+const SYNC_VERSION='2026.11.18-calendriers-secours-fff',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
 const endpoint=siteUrl+'/internal/sync/matches';
 const standingsEndpoint=siteUrl+'/internal/sync/standings';
@@ -322,7 +322,7 @@ const epreuvesPayloadFromZenRows=body=>{
     failedMonthly
   };
 };
-async function fetchZenRows(targetUrls){
+export async function fetchZenRows(targetUrls){
   const apiKey=process.env.ZENROWS_API_KEY;
   if(!apiKey)throw new Error('ZENROWS_API_KEY absent');
   const clubPage=`https://epreuves.fff.fr/competition/club/${CLUB_CODE}-f-c-escalquens/club`;
@@ -694,29 +694,60 @@ async function fetchZenRows(targetUrls){
     document.body.replaceChildren(...fcePayloads);
     document.documentElement.setAttribute('data-fce-sync-done','1');
   })()`;
-  const instructions=[
-    {wait_for:'app-match app-matches-wrapper'},
-    {wait:500},
-    {evaluate:fetchScript},
-    {wait_for:'html[data-fce-sync-done="1"]'},
-    {wait:500}
-  ];
-  const url=new URL('https://api.zenrows.com/v1/');
-  url.searchParams.set('apikey',apiKey);
-  url.searchParams.set('url',clubPage);
-  url.searchParams.set('js_render','true');
-  url.searchParams.set('premium_proxy','true');
-  url.searchParams.set('proxy_country','fr');
-  url.searchParams.set('json_response','false');
-  url.searchParams.set('js_instructions',JSON.stringify(instructions));
-  const response=await fetch(url,{headers:{accept:'application/json'},redirect:'follow'});
-  const body=await response.text();
-  if(!response.ok)throw new Error(`ZenRows HTTP ${response.status}${body?` — ${body.replace(/\s+/g,' ').slice(0,180)}`:''}`);
-  const credits=response.headers.get('x-request-credits');
-  const cost=response.headers.get('x-request-cost');
-  if(credits)console.log(`ZenRows : ${credits} crédit(s) consommé(s).`);
-  if(cost)console.log(`ZenRows : coût indiqué ${cost}.`);
+  const runBrowser=async(evaluate,ready,label)=>{
+    const instructions=[
+      {wait_for:'app-match app-matches-wrapper'},
+      {wait:500},
+      {evaluate},
+      {wait_for:ready},
+      {wait:500}
+    ];
+    const url=new URL('https://api.zenrows.com/v1/');
+    url.searchParams.set('apikey',apiKey);
+    url.searchParams.set('url',clubPage);
+    url.searchParams.set('js_render','true');
+    url.searchParams.set('premium_proxy','true');
+    url.searchParams.set('proxy_country','fr');
+    url.searchParams.set('json_response','false');
+    url.searchParams.set('js_instructions',JSON.stringify(instructions));
+    const response=await fetch(url,{headers:{accept:'application/json'},redirect:'follow',signal:AbortSignal.timeout(90000)});
+    const body=await response.text();
+    if(!response.ok)throw new Error(`HTTP ${response.status}`);
+    const credits=response.headers.get('x-request-credits');
+    const cost=response.headers.get('x-request-cost');
+    if(credits)console.log(`${label} : ${credits} crédit(s) consommé(s).`);
+    if(cost)console.log(`${label} : coût indiqué ${cost}.`);
+    return body;
+  };
+  const body=await runBrowser(fetchScript,'html[data-fce-sync-done="1"]','ZenRows');
   const payloads=epreuvesPayloadFromZenRows(body);
+  if(payloads.matchMonths<12&&!payloads.calendarResults.some(result=>result.collections>0)){
+    console.log('FFF : calendriers d’équipe absents de la session principale, collecte isolée.');
+    const evaluate=`(async()=>{
+      let state=[];
+      try{state=JSON.parse(document.querySelector('#ng-state')?.textContent||'[]')}catch{}
+      const fallback=await (${browserCollectCalendarFallback.toString()})(state,${Number(targetUrls.seasonYear)},'${CLUB_NO}',true);
+      const output=document.createElement('script');
+      output.id='fce-calendar-fallback';
+      output.type='application/json';
+      output.textContent=JSON.stringify({status:200,body:fallback});
+      document.head.replaceChildren();
+      document.body.replaceChildren(output);
+      document.documentElement.setAttribute('data-fce-calendars-done','1');
+    })()`;
+    try{
+      const isolatedBody=await runBrowser(evaluate,'html[data-fce-calendars-done="1"]','ZenRows calendriers');
+      const isolated=epreuvesPayloadFromZenRows(isolatedBody);
+      payloads.matches=mergeMatchPayloads([isolated.matches,payloads.matches]);
+      payloads.calendarResults=isolated.calendarResults;
+      if(!isolated.calendarResults.some(result=>result.collections>0)){
+        console.log('::warning title=Calendriers FFF::La session isolée n’a renvoyé aucune collection d’équipe.');
+      }
+    }catch(error){
+      const status=String(error?.message||'').match(/^HTTP [0-9]{3}$/)?.[0]||'réponse indisponible';
+      console.log(`::warning title=Calendriers FFF::Collecte isolée en échec (${status}).`);
+    }
+  }
   console.log(`FFF : ${payloads.matchMonths}/12 mois de matchs et ${payloads.falMonths}/12 mois de plateaux capturés.`);
   if(payloads.calendarResults.length)console.log(`FFF : calendriers d’équipe — ${payloads.calendarResults.map(({id,status,collections})=>`${id}: HTTP ${status}, ${collections} collection(s)`).join(' ; ')}.`);
   for(const {id,coverage} of payloads.calendarResults){
