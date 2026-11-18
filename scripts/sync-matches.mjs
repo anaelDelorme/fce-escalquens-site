@@ -1,7 +1,7 @@
 import { browserCollectStandings } from './standings-integrated.mjs';
 import { pathToFileURL } from 'node:url';
 import { browserCollectCalendarFallback, browserCollectTeamMonths, fetchCompleteMatches, isCompleteMatchCollection, missingTeamMonthTargets } from './fff-match-coverage.mjs';
-const SYNC_VERSION='2026.11.18-programme-toutes-equipes',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+const SYNC_VERSION='2026.11.18-couverture-programme',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
 const endpoint=siteUrl+'/internal/sync/matches';
 const standingsEndpoint=siteUrl+'/internal/sync/standings';
@@ -781,9 +781,16 @@ export async function fetchZenRows(targetUrls){
         let html=raw;
         try{html=JSON.parse(raw)?.html||raw}catch{}
         const results=embeddedPayloadFromHtml(html,'fce-team-months')||[];
-        const collected=results.filter(result=>isCompleteMatchCollection(result.payload));
-        for(const result of results.filter(item=>item.error))console.log(`::warning title=Programme FFF::${result.team} ${result.month} — ${result.error}`);
-        return collected.map(result=>result.payload);
+        const byTarget=new Map(results.map(result=>[result.team+'/'+result.month,result]));
+        return batch.flatMap(({team,month})=>{
+          const result=byTarget.get(team+'/'+month);
+          if(isCompleteMatchCollection(result?.payload)&&result.payload['hydra:member'].length){
+            console.log(`FFF : ${team} ${month} — ${result.payload['hydra:totalItems']} match(s) confirmé(s).`);
+            return [result.payload];
+          }
+          console.log(`::warning title=Programme FFF::${team} ${month} — ${result?.error||'réponse non vérifiée'}`);
+          return [];
+        });
       }catch{
         console.log('::warning title=Programme FFF::Session complémentaire indisponible.');
         return [];
@@ -799,6 +806,14 @@ export async function fetchZenRows(targetUrls){
   console.log(`FFF : ${payloads.matchMonths}/12 mois de matchs et ${payloads.falMonths}/12 mois de plateaux capturés.`);
   if(payloads.calendarResults.length)console.log(`FFF : calendriers d’équipe — ${payloads.calendarResults.map(({id,status,collections})=>`${id}: HTTP ${status}, ${collections} collection(s)`).join(' ; ')}.`);
   for(const {id,coverage} of payloads.calendarResults){
+    const verifiedMonths=[...new Set((coverage||[]).flatMap(({window})=>{
+      if(!window||!window.starts_on.endsWith('-01'))return [];
+      const month=window.starts_on.slice(0,7);
+      const [year,number]=month.split('-').map(Number);
+      const lastDay=new Date(Date.UTC(year,number,0)).toISOString().slice(0,10);
+      return window.ends_before===lastDay?[month]:[];
+    }))].sort();
+    if(verifiedMonths.length)console.log(`FFF : ${id} — mois confirmés par le calendrier public : ${verifiedMonths.join(', ')}.`);
     if(/_U(?:15|18)F_/.test(id)&&coverage?.length){
       console.log(`FFF : couverture SSR ${id} — ${JSON.stringify(coverage)}.`);
     }

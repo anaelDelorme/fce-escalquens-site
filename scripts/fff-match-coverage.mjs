@@ -145,6 +145,7 @@ export async function browserCollectTeamMonths(targets, fetchComplete) {
           credentials: 'include', signal: AbortSignal.timeout(6000),
           headers: { Accept: 'application/json', 'X-Competition': String(token) }
         }));
+        if (!payload['hydra:member'].length) throw new Error('collection FFF vide');
         const relevant = payload['hydra:member'].every(wrapper => {
           const row = wrapper?.donneesFormatees || wrapper;
           return String(row?.date || '').slice(0, 7) === month
@@ -153,7 +154,7 @@ export async function browserCollectTeamMonths(targets, fetchComplete) {
         if (!relevant) throw new Error('réponse hors équipe ou hors mois');
         results.push({ team, month, payload });
       } catch (error) {
-        results.push({ team, month, error: /^Pagination FFF HTTP [0-9]{3}$/.test(error?.message)
+        results.push({ team, month, error: error?.message === 'collection FFF vide' || /^Pagination FFF HTTP [0-9]{3}$/.test(error?.message)
           ? error.message : 'réponse non vérifiée' });
       }
     }

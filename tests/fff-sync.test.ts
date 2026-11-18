@@ -183,6 +183,26 @@ test('FFF : le calendrier U15F inclut mai et rejette les matchs hors équipe ou 
   assert.equal(results.find(result => result.month === '2027-04').error, 'réponse non vérifiée');
 });
 
+test('FFF : une collection mensuelle vide et un refus restent sans couverture', async () => {
+  const team = '2026_101544_U15F_5';
+  const targets = ['2026-11', '2027-03', '2027-05'].map(month => ({
+    team, month, url: 'https://epreuves.fff.fr/api/data/matches?idEquipe=' + team + '&dateDebut=' + month + '-01'
+  }));
+  const evaluate = new Function('document', 'fetch', 'targets', `
+    return (${browserCollectTeamMonths.toString()})(targets,${fetchCompleteMatches.toString()});
+  `);
+  const document = {querySelector: () => ({textContent: JSON.stringify({VLJAXE: 'test'})})};
+  const request = async (url: string) => {
+    const month = new URL(url).searchParams.get('dateDebut')?.slice(0, 7);
+    if (month === '2027-05') return new Response('', {status: 403});
+    return Response.json(collection(month === '2026-11' ? [match] : []));
+  };
+  const results = await evaluate(document, request, targets);
+  assert.equal(results.find(result => result.month === '2026-11').payload['hydra:totalItems'], 1);
+  assert.deepEqual(results.find(result => result.month === '2027-03'), {team, month: '2027-03', error: 'collection FFF vide'});
+  assert.deepEqual(results.find(result => result.month === '2027-05'), {team, month: '2027-05', error: 'Pagination FFF HTTP 403'});
+});
+
 test('FFF : planifie les mois manquants pour toutes les équipes de la saison', () => {
   const u15 = '2026_101544_U15F_5';
   const senior = '2026_101544_SEM_1';
