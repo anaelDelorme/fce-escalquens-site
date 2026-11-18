@@ -1,7 +1,7 @@
 import { browserCollectStandings } from './standings-integrated.mjs';
 import { pathToFileURL } from 'node:url';
 import { browserCollectCalendarFallback, fetchCompleteMatches, isCompleteMatchCollection } from './fff-match-coverage.mjs';
-const SYNC_VERSION='2026.11.18-calendriers-secours-fff',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+const SYNC_VERSION='2026.11.18-fenetres-equipes-fff',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
 const endpoint=siteUrl+'/internal/sync/matches';
 const standingsEndpoint=siteUrl+'/internal/sync/standings';
@@ -1067,6 +1067,15 @@ async function collectEpreuvesFFF(){
     &&row.starts_at>=seasonStart&&row.starts_at<seasonEnd);
   const fullMatches=payloads.matchMonths===12&&matchIds.size>0&&seasonMatches.length===matchIds.size
     &&seasonMatches.every(row=>matchIds.has(row.source_id));
+  const importedTeams=new Map(seasonMatches.map(row=>[row.source_id,row.team_fff_id]));
+  const teamWindows=(payloads.calendarResults||[]).flatMap(result=>{
+    if(!/^\d{4}_101544_U18F_\d+$/.test(result.id))return [];
+    return (result.coverage||[]).flatMap(({window})=>window
+      &&window.starts_on>=seasonStart&&window.ends_before<=seasonEnd
+      &&window.ids.every(id=>importedTeams.get(id)===result.id)
+      ?[{...window,team_fff_id:result.id}]:[]);
+  });
+  if(teamWindows.length)console.log(`FFF : ${teamWindows.length} période(s) U18F vérifiée(s) pour le rapprochement.`);
   const incomplete=[];
   if(!fullMatches)incomplete.push(`matchs : ${payloads.matchMonths}/12 mois valides, ${seasonMatches.length} matchs exploitables`);
   if(payloads.falMonths!==12)incomplete.push(`plateaux : ${payloads.falMonths}/12 mois valides`);
@@ -1074,7 +1083,10 @@ async function collectEpreuvesFFF(){
   return {
     rows:[...seasonMatches,...plateaux],
     incomplete,
-    matchSnapshot:fullMatches?{starts_on:seasonStart,ends_before:seasonEnd,ids:[...matchIds]}:undefined
+    matchSnapshot:fullMatches||teamWindows.length
+      ?{starts_on:seasonStart,ends_before:seasonEnd,ids:fullMatches?[...matchIds]:[],
+        team_windows:teamWindows,seen_ids:[...importedTeams.keys()]}
+      :undefined
   };
 }
 async function collectDistrict(){const base='https://haute-garonne.fff.fr/football-animation-et-loisirs/',html=await fetchOk(base,'text',{accept:'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',referer:'https://haute-garonne.fff.fr/','sec-fetch-dest':'document','sec-fetch-mode':'navigate','sec-fetch-site':'same-origin','upgrade-insecure-requests':'1'}),match=html.match(/<div id=["']animation-data["'][^>]*>\s*([\s\S]*?)\s*<\/div>/i);if(!match)throw new Error('District : animation-data introuvable');const data=JSON.parse(match[1]),rows=[];for(const competition of data){if(!competition.clubs?.some(club=>Number(club.cl_no)===Number(CLUB_NO)&&Number(club.cl_cod)===Number(CLUB_CODE)))continue;for(const phase of competition.phases||[])for(const journey of phase.journees||[]){const sites=(phase.secteurs||[]).flatMap(sector=>sector.poules||[]).flatMap(pool=>pool.journees||[]).find(item=>item.fa_jo_no===journey.fa_jo_no)?.sites||[],site=sites.find(item=>Number(item.club_organisateur?.cl_no)===Number(CLUB_NO)||(item.equipes||[]).some(club=>Number(first(club.cl_no,club.club?.cl_no))===Number(CLUB_NO))),kind=phase.fa_mr_cod==='P'?'plateau':'animation';rows.push({source:'district_fal',source_id:`${competition.fa_ep_no}:${phase.fa_ph_no}:${journey.fa_jo_no}`,category:String(competition.fa_ca_lib||competition.fa_ca_cod||''),competition:`${competition.fa_ep_nom} · ${phase.fa_ph_lib}`,starts_at:iso(first(site?.fa_si_date,journey.fa_jo_date),first(site?.fa_si_ho_cod,journey.fa_ho_cod)),venue:text(first(site?.installation,site?.club_organisateur)),home_team:'FC Escalquens',away_team:kind==='plateau'?'Plateau – participants à confirmer':'Rencontre – adversaire à confirmer',status:site?.fa_si_cancelled?'cancelled':'scheduled',event_type:kind,source_url:`${base}?fal_id=${competition.fa_ep_no}&type=fa&clNo=${CLUB_NO}&clCod=${CLUB_CODE}&checkDate=false`,external_updated_at:competition.date_maj,raw_json:{competition:{id:competition.fa_ep_no,name:competition.fa_ep_nom},phase:{id:phase.fa_ph_no,name:phase.fa_ph_lib},journey,site:site||null}})}}return rows.filter(row=>row.starts_at)}

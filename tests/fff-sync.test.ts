@@ -35,15 +35,19 @@ test('FFF : le calendrier U15F donne des matchs à importer malgré les refus me
   `);
   const request = t.mock.fn(async url => {
     assert.equal(url, calendarUrl);
-    const state = [{ 'analog_GET|/api/data/matches?eqId=2026_101544_U15F_5': { status: 200, body: collection([match]) } }];
+    const state = [{
+      'analog_GET|/api/data/matches?eqId=2026_101544_U15F_5': { status: 200, body: collection([match]) },
+      'analog_GET|/api/data/matches?idEquipe=2026_101544_U15F_5&dateDebut=2026-11-01&dateFin=2026-11-30': { status: 200, body: collection([match]) }
+    }];
     return new Response(`<script id="ng-state">${JSON.stringify(state)}</script>`);
   });
   const result = await evaluate({ querySelectorAll: () => [] }, { pathname: '/competition/club/550350-f-c-escalquens/club' }, request, []);
   assert.equal(request.mock.callCount(), 1);
   assert.deepEqual(result.results[0].coverage[0], {
-    rows: 1, total: 1, next: false, filters: ['eqId'],
+    window: undefined, rows: 1, total: 1, next: false, filters: ['eqId'],
     first: '2026-11-15', last: '2026-11-15', count: 1, weekendMatches: undefined
   });
+  assert.deepEqual(result.results[0].coverage[1].window, { starts_on: '2026-11-01', ends_before: '2026-11-30', ids: ['100'] });
   const [row] = normalizeEpreuves(result.collections.flatMap(payload => payload['hydra:member']));
   assert.equal(row.source_id, '100');
   assert.equal(row.team_fff_id, '2026_101544_U15F_5');
@@ -123,10 +127,10 @@ test('D1 : import partiel sans suppression, puis retrait des seuls matchs FFF ab
   const u18 = { ...row, source_id: '200', team_fff_id: '2026_101544_U18F_12', category: 'U18F',
     official_team: { ...row.official_team, category_code: 'U18F', team_number: '2' } };
   const snapshot = { starts_on: '2026-07-01', ends_before: '2027-07-01', ids: ['100', '200'] };
-  const ingest = async (rows: unknown[], status: string, final = true) => {
+  const ingest = async (rows: unknown[], status: string, final = true, coverage: object = snapshot) => {
     const response = await worker.fetch(new Request('https://test.example/internal/sync/matches', {
       method: 'POST', headers: { authorization: 'Bearer test-sync', 'content-type': 'application/json' },
-      body: JSON.stringify({ rows, sources: [{ source: 'fff', status }], batch: { final, match_snapshot: snapshot } })
+      body: JSON.stringify({ rows, sources: [{ source: 'fff', status }], batch: { final, match_snapshot: coverage } })
     }), env, ctx);
     const data = await response.json() as any;
     assert.equal(response.status, 200, JSON.stringify(data));
@@ -137,7 +141,16 @@ test('D1 : import partiel sans suppression, puis retrait des seuls matchs FFF ab
   assert.equal(result.status, 'partial');
   assert.equal(result.removed_stale_matches, 0);
   assert.equal((await ingest([{ ...fal, plateau_games: [] }], 'ok', false)).removed_stale_matches, 0);
-  assert.equal((await ingest([u18], 'ok')).removed_stale_matches, 1);
+  const teamCoverage = {
+    ...snapshot, ids: [], seen_ids: ['100', '200'],
+    team_windows: [{ team_fff_id: u18.team_fff_id, starts_on: '2026-11-01', ends_before: '2026-11-30', ids: ['200'] }]
+  };
+  assert.equal((await ingest([], 'error', true, teamCoverage)).removed_stale_matches, 0);
+  assert.equal((await ingest([u18], 'error', false, teamCoverage)).removed_stale_matches, 0);
+  const reconciled = await ingest([], 'error', true, teamCoverage);
+  assert.equal(reconciled.status, 'partial');
+  assert.equal(reconciled.removed_stale_matches, 1);
+  assert.equal((await ingest([], 'error', true, teamCoverage)).removed_stale_matches, 0);
   assert.deepEqual(DB.db.prepare('SELECT source_id FROM matches ORDER BY source_id').all().map(item => item.source_id),
     ['100', '200', '202', '203', '204', '9833:12:41646:3', 'ancien']);
   assert.equal(DB.db.prepare(`SELECT t.slug FROM matches m JOIN teams t ON t.id=m.team_id WHERE m.source_id='9833:12:41646:3'`).get()?.slug, 'u13f-test');

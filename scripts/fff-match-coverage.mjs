@@ -92,7 +92,21 @@ export async function browserCollectCalendarFallback(initialState, seasonYear, c
             return /^\d+$/.test(matchId) && /^\d{4}-\d{2}-\d{2}$/.test(day)
               ? [{matchId, day}] : [];
           }).sort((a, b) => a.day.localeCompare(b.day));
+          const start = params.get('dateDebut') || '';
+          const end = params.get('dateFin') || '';
+          const dateBound = value => /^\d{4}-\d{2}-\d{2}(?:T.*)?$/.test(value) && Number.isFinite(Date.parse(value));
+          const ids = [...new Set(ownMatches.map(match => match.matchId))];
+          const starts_on = start.slice(0, 10), ends_before = end.slice(0, 10);
+          const verified = params.getAll('idEquipe').length === 1 && params.get('idEquipe') === id
+            && params.getAll('dateDebut').length === 1 && params.getAll('dateFin').length === 1
+            && [...params.keys()].every(name => ['idEquipe','dateDebut','dateFin','itemsPerPage','pagination','page'].includes(name))
+            && ['1', null].includes(params.get('page'))
+            && dateBound(start) && dateBound(end) && starts_on < ends_before
+            && ids.length > 0 && ids.length === body['hydra:member'].length && ids.length === body['hydra:totalItems']
+            && !body['hydra:view']?.['hydra:next']
+            && ownMatches.every(match => match.day >= starts_on && match.day <= ends_before);
           return {
+            window: verified ? {starts_on, ends_before, ids} : undefined,
             rows: body['hydra:member'].length,
             total: Number.isSafeInteger(body['hydra:totalItems']) ? body['hydra:totalItems'] : null,
             next: Boolean(body['hydra:view']?.['hydra:next']),

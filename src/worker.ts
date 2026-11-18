@@ -1253,7 +1253,13 @@ async function ingestMatches(request: Request, env: Env) {
     sources?: AnyRow[];
     batch?: {
       final?: boolean;
-      match_snapshot?: { starts_on: string; ends_before: string; ids: string[] };
+      match_snapshot?: {
+        starts_on: string;
+        ends_before: string;
+        ids: string[];
+        seen_ids?: string[];
+        team_windows?: { team_fff_id: string; starts_on: string; ends_before: string; ids: string[] }[];
+      };
     };
   }>().catch(() => null);
   const rows = body?.rows;
@@ -1363,8 +1369,7 @@ async function ingestMatches(request: Request, env: Env) {
   }
   const sourceResults = Array.isArray(body?.sources) ? body.sources : [];
   const syncStatus = sourceResults.some(source => source?.status === "error") ? "partial" : "success";
-  // Seule une collecte complète des matchs de la saison peut retirer les
-  // programmes obsolètes. Les scores, plateaux et ajouts manuels sont conservés.
+  // Rapprocher les programmes obsolètes uniquement sur une période vérifiée.
   let removedStaleMatches = 0;
   const snapshot = body?.batch?.match_snapshot;
   if (syncStatus === "success" && finalBatch && snapshot && Array.isArray(snapshot.ids)
@@ -1391,6 +1396,37 @@ async function ingestMatches(request: Request, env: Env) {
           .bind(seasonId, snapshot.starts_on, snapshot.ends_before, ids, ids).run();
         removedStaleMatches = Number(removed.meta.changes || 0);
       }
+    }
+  }
+  if (finalBatch && Array.isArray(snapshot?.team_windows) && Array.isArray(snapshot.seen_ids)
+      && snapshot.seen_ids.every(id => typeof id === "string" && /^\d+$/.test(id))) {
+    const season = await env.DB.prepare("SELECT starts_on, date(ends_on, '+1 day') AS ends_before FROM seasons WHERE id=?")
+      .bind(seasonId).first<{ starts_on: string; ends_before: string }>();
+    const seen = new Set(snapshot.seen_ids);
+    if (season) for (const window of snapshot.team_windows.slice(0, 100)) {
+      const date = /^\d{4}-\d{2}-\d{2}$/;
+      if (!window || !/^\d{4}_101544_U18F_\d+$/.test(window.team_fff_id)
+          || !date.test(window.starts_on) || !date.test(window.ends_before)
+          || window.starts_on < season.starts_on || window.ends_before > season.ends_before
+          || window.starts_on >= window.ends_before || !Array.isArray(window.ids)
+          || !window.ids.length || new Set(window.ids).size !== window.ids.length
+          || !window.ids.every(id => seen.has(id))) continue;
+      const team = entries.get(window.team_fff_id);
+      if (!team) continue;
+      const stored = await env.DB.prepare(`SELECT COUNT(*) AS count FROM matches
+        WHERE source='fff' AND season_id=? AND competition_team_id=?
+        AND source_id IN (SELECT value FROM json_each(?))`)
+        .bind(seasonId, team.id, JSON.stringify(window.ids)).first<{ count: number }>();
+      if (stored?.count !== window.ids.length) continue;
+      // Les deux jours aux bornes restent exclus, quel que soit le fuseau FFF.
+      const removed = await env.DB.prepare(`DELETE FROM matches
+        WHERE source='fff' AND event_type='match' AND manually_created=0
+        AND season_id=? AND competition_team_id=?
+        AND substr(starts_at,1,10)>? AND substr(starts_at,1,10)<?
+        AND status IN ('scheduled','postponed') AND home_score IS NULL AND away_score IS NULL
+        AND source_id NOT IN (SELECT value FROM json_each(?))`)
+        .bind(seasonId, team.id, window.starts_on, window.ends_before, JSON.stringify([...seen])).run();
+      removedStaleMatches += Number(removed.meta.changes || 0);
     }
   }
   if (finalBatch) {
