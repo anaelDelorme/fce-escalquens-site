@@ -1,7 +1,7 @@
 import { browserCollectStandings } from './standings-integrated.mjs';
 import { pathToFileURL } from 'node:url';
 import { browserCollectCalendarFallback, fetchCompleteMatches, isCompleteMatchCollection } from './fff-match-coverage.mjs';
-const SYNC_VERSION='2026.11.18-bilan-preprod-fff',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+const SYNC_VERSION='2026.11.18-import-secours-preprod-fff',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
 const endpoint=siteUrl+'/internal/sync/matches';
 const standingsEndpoint=siteUrl+'/internal/sync/standings';
@@ -1083,7 +1083,7 @@ async function collectEpreuvesFFF(){
   return {
     rows:[...seasonMatches,...plateaux],
     incomplete,
-    recoveredMatches:!fullMatches&&payloads.falMonths===12&&seasonMatches.length>0,
+    hasMatches:seasonMatches.length>0,
     matchSnapshot:fullMatches||teamWindows.length
       ?{starts_on:seasonStart,ends_before:seasonEnd,ids:fullMatches?[...matchIds]:[],
         team_windows:teamWindows,seen_ids:[...importedTeams.keys()]}
@@ -1284,16 +1284,16 @@ async function importMatchRows(rows,sources,matchSnapshot){
   return summary;
 }
 
-export function acceptsPartialImport({enabled,recoveredMatches,failures,accepted,expected}){
-  return enabled&&recoveredMatches&&failures.length===1&&failures[0].source==='fff'
+export function acceptsPartialImport({enabled,hasMatches,failures,accepted,expected}){
+  return enabled&&hasMatches&&failures.length===1&&failures[0].source==='fff'
     &&expected>0&&accepted===expected;
 }
 
 async function main(){
-  let rows=[],sources=[],matchSnapshot,recoveredMatches=false;
+  let rows=[],sources=[],matchSnapshot,hasMatches=false;
   try{
     const result=await collectEpreuvesFFF();
-    ({rows,matchSnapshot,recoveredMatches}=result);
+    ({rows,matchSnapshot,hasMatches}=result);
     sources.push(result.incomplete.length
       ?{source:'fff',status:'error',count:rows.length,error:result.incomplete.join(' ; ')}
       :{source:'fff',status:'ok',count:rows.length});
@@ -1326,7 +1326,7 @@ async function main(){
   const failures=sources.filter(item=>item.status==='error');
   const acceptedPartial=acceptsPartialImport({
     enabled:process.env.FCE_ALLOW_PARTIAL_MATCH_IMPORT==='true',
-    recoveredMatches,failures,accepted:importResult.accepted,expected:rows.length
+    hasMatches,failures,accepted:importResult.accepted,expected:rows.length
   });
   const annotation=acceptedPartial?'warning':'error';
   for(const source of failures)console.log(`::${annotation} title=Source ${source.source} incomplète::${String(source.error).replace(/\r?\n/g,' ')}`);

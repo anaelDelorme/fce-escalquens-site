@@ -159,10 +159,10 @@ test('D1 : import partiel sans suppression, puis retrait des seuls matchs FFF ab
 });
 
 test('FFF : la préproduction accepte uniquement les imports de secours effectivement terminés', () => {
-  const state = { enabled: true, recoveredMatches: true, failures: [{ source: 'fff' }], accepted: 132, expected: 132 };
+  const state = { enabled: true, hasMatches: true, failures: [{ source: 'fff', error: 'matchs : 0/12 mois valides, 62 matchs exploitables ; plateaux : 0/12 mois valides' }], accepted: 62, expected: 62 };
   assert.equal(acceptsPartialImport(state), true);
   assert.equal(acceptsPartialImport({ ...state, enabled: false }), false);
-  assert.equal(acceptsPartialImport({ ...state, recoveredMatches: false }), false);
-  assert.equal(acceptsPartialImport({ ...state, accepted: 131 }), false);
+  assert.equal(acceptsPartialImport({ ...state, hasMatches: false }), false);
+  assert.equal(acceptsPartialImport({ ...state, accepted: 61 }), false);
   assert.equal(acceptsPartialImport({ ...state, failures: [...state.failures, { source: 'standings' }] }), false);
 });
