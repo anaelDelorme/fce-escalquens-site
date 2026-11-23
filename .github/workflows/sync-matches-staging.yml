@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   sync:
-    if: ${{ !inputs.diagnostic_calendrier }}
+    if: ${{ !inputs.diagnostic_calendrier && !contains(github.event.head_commit.message, '[diagnostic FFF]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -47,7 +47,7 @@ jobs:
 
 
   diagnostic:
-    if: ${{ inputs.diagnostic_calendrier }}
+    if: ${{ inputs.diagnostic_calendrier || contains(github.event.head_commit.message, '[diagnostic FFF]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:

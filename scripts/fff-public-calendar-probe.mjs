@@ -107,7 +107,15 @@ export async function browserProbePublicCalendar(teamPath) {
           return [match.recevant, match.visiteur].some(side => String(side?.club?.clNo) === '101544')
             ? [{id: match.maNo, date: match.date}] : [];
         });
-        navigation.push({query, http, total: payload?.['hydra:totalItems'], own});
+        const members = payload?.['hydra:member'];
+        navigation.push({query, http, total: payload?.['hydra:totalItems'], own,
+          keys: Object.keys(payload || {}).slice(0, 12),
+          memberCount: Array.isArray(members) ? members.length : null,
+          next: Boolean(payload?.['hydra:view']?.['hydra:next']),
+          matches: Array.isArray(members) ? members.slice(0, 20).map(wrapper => {
+            const match = wrapper.donneesFormatees || wrapper;
+            return {id: match.maNo ?? wrapper.id, date: match.date};
+          }) : []});
       };
       const originalFetch = window.fetch;
       const originalOpen = XMLHttpRequest.prototype.open;
