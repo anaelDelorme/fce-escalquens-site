@@ -22,7 +22,7 @@ interface Env extends ShopEnv {
 type AnyRow = Record<string, any>;
 
 const tables = new Set([
-  "teams", "team_competitions", "training_sessions", "contacts", "tournaments",
+  "teams", "team_competitions", "training_sessions", "contacts", "contact_roles", "tournaments",
   "tournament_teams", "matches", "match_participants", "standings", "social_posts",
   "documents", "club_members", "team_staff", "admins", "venues",
   "competition_levels", "seasons", "sponsors", "site_media", "home_slides",
@@ -34,6 +34,7 @@ const editable: Record<string, string[]> = {
   teams: ["slug", "name", "category", "group_name", "level", "level_id", "gender", "fff_id", "photo_key", "description", "display_order", "active", "player_count"],
   team_competitions: ["team_id", "season_id", "name", "team_number", "fff_team_id", "category_code", "competition_name", "division", "pool", "level_id", "active", "display_order", "discovered_automatically", "last_seen_at"],
   training_sessions: ["team_id", "season_id", "category", "weekday", "starts_at", "ends_at", "venue", "venue_id", "address", "notes", "active"],
+  contact_roles: ["name"],
   contacts: ["name", "role", "category", "email", "phone", "published", "display_order", "responsibilities", "availability", "photo_key"],
   tournaments: ["slug", "name", "summary", "starts_on", "ends_on", "venue", "venue_id", "organizer", "categories", "registration_price", "registration_url", "tournify_url", "image_key", "poster_key", "rules_key", "status", "season_id"],
   tournament_teams: ["tournament_id", "team_id", "notes"],
@@ -94,6 +95,7 @@ const editable: Record<string, string[]> = {
 };
 
 const defaultOrder: Record<string, string> = {
+  contact_roles: "name COLLATE NOCASE ASC, id ASC",
   teams: "display_order ASC, name COLLATE NOCASE ASC",
   club_members: "full_name COLLATE NOCASE ASC",
   matches: "starts_at ASC",
@@ -180,6 +182,22 @@ function testGate(request: Request, env: Env) {
   );
 }
 
+const contactRolesSql = `(
+  SELECT json_group_array(json_object('id', role_id, 'code', code, 'name', name))
+  FROM (
+    SELECT r.id AS role_id, r.code, r.name
+    FROM contact_role_assignments a JOIN contact_roles r ON r.id = a.role_id
+    WHERE a.contact_id = c.id
+    ORDER BY r.name COLLATE NOCASE, r.id
+  )
+) AS roles_json`;
+
+function withContactRoles(row: AnyRow) {
+  const { roles_json, ...contact } = row;
+  const roles = JSON.parse(roles_json) as { id: number; code: string | null; name: string }[];
+  return { ...contact, role: contact.role || roles[0]?.code || roles[0]?.name || "", roles };
+}
+
 async function api(request: Request, env: Env, url: URL, trustedShopActor?: string) {
   const parts = url.pathname.split("/").filter(Boolean);
   const shopScope = url.pathname.startsWith('/admin-boutique/api/content/');
@@ -213,6 +231,13 @@ async function api(request: Request, env: Env, url: URL, trustedShopActor?: stri
     if (request.method === 'DELETE') return json({error:'Un emplacement média ne peut pas être supprimé.'},405);
   }
   if (shopScope && table === 'shop_settings' && (request.method === 'DELETE' || request.method === 'POST')) return json({error:'Les réglages doivent être modifiés, pas supprimés ou recréés.'},405);
+  if (table === "contact_roles" && request.method === "DELETE") {
+    return json({ error: "Les rôles de contacts peuvent être renommés." }, 405);
+  }
+  if (request.method === "GET" && table === "contacts") {
+    const rows = await env.DB.prepare(`SELECT c.*, ${contactRolesSql} FROM contacts c ORDER BY c.id LIMIT 1000`).all<AnyRow>();
+    return json(resultRows(rows).map(withContactRoles));
+  }
   if (request.method === "GET") {
     const order = defaultOrder[table] || "id ASC";
     const rows = await env.DB.prepare(`SELECT * FROM ${table}${table==='site_media' ? (shopScope ? " WHERE slot='shop_hero'" : " WHERE slot<>'shop_hero'") : ''} ORDER BY ${order} LIMIT 1000`).all();
@@ -238,6 +263,27 @@ async function api(request: Request, env: Env, url: URL, trustedShopActor?: stri
     return json({ ok: true });
   }
   const body = await request.json<Record<string, unknown>>().catch(() => ({}));
+
+  if (table === "contact_roles") {
+    body.name = typeof body.name === "string" ? body.name.trim() : "";
+    if (!body.name) return json({ error: "Le nom du rôle est obligatoire." }, 400);
+  }
+
+  let contactRoleIds: number[] | undefined;
+  if (table === "contacts") {
+    if ("role_ids" in body) {
+      if (!Array.isArray(body.role_ids) || !body.role_ids.every(value => Number.isSafeInteger(value) && value > 0)) {
+        return json({ error: "Sélection de rôles invalide." }, 400);
+      }
+      contactRoleIds = [...new Set<number>(body.role_ids)];
+      body.role = "";
+    } else if ("role" in body) {
+      // L’ancien champ remplace les affectations quand il est envoyé seul.
+      contactRoleIds = [];
+    } else if (request.method === "POST") {
+      body.role = "";
+    }
+  }
 
   if (table === "recruitment_posts") {
     body.title = String(body.title || "").trim();
@@ -305,12 +351,20 @@ async function api(request: Request, env: Env, url: URL, trustedShopActor?: stri
     await env.DB.prepare("UPDATE seasons SET active=0").run();
   }
   const bound = values.map(([, value]) => value !== null && typeof value === "object" ? JSON.stringify(value) : value);
+  const insertContactRoles = (contactId?: string) => env.DB.prepare(`
+    INSERT INTO contact_role_assignments (contact_id, role_id)
+    SELECT ${contactId === undefined ? "last_insert_rowid()" : "?"}, value FROM json_each(?)
+  `).bind(...(contactId === undefined ? [] : [contactId]), JSON.stringify(contactRoleIds));
+
   if (request.method === "POST") {
     const columns = values.map(([key]) => key);
     try {
-      const result = await env.DB.prepare(
+      const insert = env.DB.prepare(
         `INSERT INTO ${table} (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`
-      ).bind(...bound).run();
+      ).bind(...bound);
+      const result = contactRoleIds?.length
+        ? (await env.DB.batch([insert, insertContactRoles()]))[0]
+        : await insert.run();
       if (table === "shop_products" && Number(body.featured) === 1) {
         await env.DB.prepare("UPDATE shop_products SET featured=0,updated_at=CURRENT_TIMESTAMP WHERE id<>?")
           .bind(result.meta.last_row_id).run();
@@ -338,9 +392,19 @@ async function api(request: Request, env: Env, url: URL, trustedShopActor?: stri
   if (request.method === "PUT" && id) {
     const timestamp = table === "match_participants" ? "" : ", updated_at=CURRENT_TIMESTAMP";
     try {
-      await env.DB.prepare(
+      const update = env.DB.prepare(
         `UPDATE ${table} SET ${values.map(([key]) => `${key}=?`).join(",")}${timestamp} WHERE id=?`
-      ).bind(...bound, id).run();
+      ).bind(...bound, id);
+      if (contactRoleIds !== undefined) {
+        const changes = [
+          update,
+          env.DB.prepare("DELETE FROM contact_role_assignments WHERE contact_id=?").bind(id)
+        ];
+        if (contactRoleIds.length) changes.push(insertContactRoles(id));
+        await env.DB.batch(changes);
+      } else {
+        await update.run();
+      }
       if (table === "shop_products") await priceLabelStatement(env.DB,Number(id),true).run();
       if (table === "team_competitions" && body.team_id !== undefined) {
         await env.DB.prepare("UPDATE matches SET team_id=?,updated_at=CURRENT_TIMESTAMP WHERE competition_team_id=?")
@@ -786,12 +850,13 @@ async function pageData(env: Env, url: URL) {
 
   if (page === "mecenat") {
     const [contacts, sponsors, media, packages] = await env.DB.batch<AnyRow>([
-      env.DB.prepare("SELECT name,role,email,phone,display_order FROM contacts WHERE published=1 ORDER BY display_order,name COLLATE NOCASE"),
+      env.DB.prepare(`SELECT c.name,c.role,c.email,c.phone,c.display_order,${contactRolesSql}
+        FROM contacts c WHERE c.published=1 ORDER BY c.display_order,c.name COLLATE NOCASE`),
       env.DB.prepare("SELECT name,logo_key,website_url,tier FROM sponsors WHERE active=1 ORDER BY display_order,name COLLATE NOCASE"),
       env.DB.prepare("SELECT slot,object_key,alt_text FROM site_media WHERE slot IN ('sponsor_hero','sponsor_project')"),
       env.DB.prepare("SELECT id,name,price_label,benefits,featured,display_order FROM sponsor_packages WHERE active=1 ORDER BY display_order,id")
     ]);
-    return publicJson({ contacts: resultRows(contacts), sponsors: resultRows(sponsors), site_media: resultRows(media), packages: resultRows(packages) });
+    return publicJson({ contacts: resultRows(contacts).map(withContactRoles), sponsors: resultRows(sponsors), site_media: resultRows(media), packages: resultRows(packages) });
   }
 
   if (page === "shop") {
@@ -882,11 +947,12 @@ async function pageData(env: Env, url: URL) {
           LIMIT 1
         )
       ) AS photo_key,
-      c.display_order
+      c.display_order,
+      ${contactRolesSql}
       FROM contacts c
       WHERE c.published=1
       ORDER BY c.display_order,c.name COLLATE NOCASE`).all<AnyRow>();
-    return publicJson({ contacts: resultRows(rows) });
+    return publicJson({ contacts: resultRows(rows).map(withContactRoles) });
   }
 
   return publicJson({ error: "Page de données inconnue" }, 404);
@@ -899,6 +965,8 @@ async function cachedPageData(request: Request, env: Env, url: URL, ctx: Executi
     || url.pathname === "/api/page/shop"
     || url.pathname === "/api/page/social-assets"
     || url.pathname === "/api/page/tournaments"
+    || url.pathname === "/api/page/contacts"
+    || url.pathname === "/api/page/mecenat"
   ) {
     const response = await pageData(env, url);
     const headers = new Headers(response.headers);

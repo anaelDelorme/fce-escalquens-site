@@ -22,14 +22,16 @@ function draw(category=''){
   const rows=contacts.filter(row=>!category||row.category===category);
   const list=document.querySelector('#contact-list');
   list.dataset.count=String(rows.length);
-  list.innerHTML=rows.map(row=>`
+  list.innerHTML=rows.map(row=>{
+    const roles=row.roles?.length?row.roles.map(item=>item.name):[role(row.role)].filter(Boolean);
+    return `
     <article class="contact-card">
       <div class="contact-card-head">
         <div class="contact-avatar">${avatar(row)}</div>
         <div class="contact-identity">
           <small class="contact-category">${esc(row.category||'Club')}</small>
           <h2>${esc(row.name)}</h2>
-          <b class="contact-role">${esc(role(row.role))}</b>
+          ${roles.length?`<ul class="contact-roles">${roles.map(name=>`<li class="contact-role">${esc(name)}</li>`).join('')}</ul>`:''}
         </div>
       </div>
       ${row.responsibilities?`<p class="contact-responsibilities">${esc(row.responsibilities)}</p>`:''}
@@ -38,7 +40,7 @@ function draw(category=''){
         ${row.phone?`<a class="contact-action" href="tel:${encodeURIComponent(String(row.phone).replace(/\s/g,''))}"><span aria-hidden="true">☎</span><b>Appeler</b><small>${esc(row.phone)}</small></a>`:''}
       </div>
       ${row.availability?`<p class="contact-availability"><span>Disponibilités</span>${esc(row.availability)}</p>`:''}
-    </article>`).join('')||'<div class="empty-state"><b>Aucun contact dans cette rubrique.</b><p>Choisissez une autre section ou utilisez l’adresse générale du club.</p></div>';
+    </article>`}).join('')||'<div class="empty-state"><b>Aucun contact dans cette rubrique.</b><p>Choisissez une autre section ou utilisez l’adresse générale du club.</p></div>';
 }
 fetch('/api/page/contacts').then(async response=>{
   const data=await response.json();
