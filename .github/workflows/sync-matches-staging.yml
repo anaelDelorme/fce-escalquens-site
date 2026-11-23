@@ -2,6 +2,13 @@ name: Synchroniser les matchs — préproduction
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - staging
+    paths:
+      - 'scripts/sync-matches.mjs'
+      - 'scripts/fff-*.mjs'
+      - 'scripts/standings-integrated.mjs'
 
 concurrency:
   group: sync-matches-staging
@@ -16,7 +23,7 @@ jobs:
       - name: Récupérer le code staging
         uses: actions/checkout@v7
         with:
-          ref: staging
+          ref: ${{ github.event_name == 'push' && github.sha || 'staging' }}
 
       - name: Installer Node
         uses: actions/setup-node@v7

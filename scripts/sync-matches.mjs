@@ -1,7 +1,8 @@
 import { browserCollectStandings, verified2026 } from './standings-integrated.mjs';
 import { pathToFileURL } from 'node:url';
+import { dofaMatchCollections, fetchDofaPools, fetchDofaSeason } from './fff-dofa.mjs';
 import { browserCollectCompetitionMatches, browserCollectCalendarFallback, browserCollectTeamMonths, fetchCompleteMatches, isCompleteMatchCollection, missingTeamMonthTargets } from './fff-match-coverage.mjs';
-const SYNC_VERSION='2026.11.23-calendriers-competitions',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+const SYNC_VERSION='2026.11.23-saison-entiere',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
 const endpoint=siteUrl+'/internal/sync/matches';
 const standingsEndpoint=siteUrl+'/internal/sync/standings';
@@ -97,7 +98,7 @@ export const mergeMatchPayloads=payloads=>{
         const sides=[row.recevant,row.visiteur];
         const complete=sides.every(side=>side?.club?.nom||side?.club?.nomAbr);
         const result=[true,1,'1','true'].includes(row.joue) && sides.every(side=>side?.buts!=null);
-        return Number(complete)*100+Number(result)*50+venueScore(value);
+        return Number(complete)*100+Number(result)*50+Number(!value?.dofa)*20+venueScore(value);
       };
       if(!previous||quality(wrapper)>=quality(previous))unique.set(id,wrapper);
     }
@@ -321,6 +322,7 @@ const epreuvesPayloadFromZenRows=body=>{
   return {
     matches:mergeMatchPayloads([...(fallback.collections||[]),...matchPayloads,...detailPayloads]),fal:mergeFalPayloads(falPayloads),
     monthlyMatches:mergeMatchPayloads(matchPayloads),calendarResults:fallback.results||[],calendarTeamIds:fallback.teamIds||[],
+    calendarPoolPaths:fallback.poolPaths||[],
     matchMonths:matchPayloads.length,falMonths:falPayloads.length,
     detailCount:detailPayloads.length,venueDetailCount:venueDetails,
     falGamePayloads,
@@ -735,21 +737,6 @@ export async function fetchZenRows(targetUrls){
     console.log('::warning title=Collecte FFF::Session principale indisponible, recours aux calendriers publics.');
     payloads=epreuvesPayloadFromZenRows('');
   }
-  if(payloads.matchMonths<12&&targetUrls.teamPeriods?.length){
-    const evaluate=embeddedBrowserResult('fce-competitions',
-      `(${browserCollectCompetitionMatches.toString()})('${CLUB_NO}',${JSON.stringify(knownCompetitions(targetUrls.seasonYear))})`);
-    try{
-      const body=await runFffBrowser(evaluate,'html[data-fce-extra-done="1"]','ZenRows compétitions');
-      const html=zenRowsHtml(body);
-      const result=embeddedPayloadFromHtml(html,'fce-competitions');
-      if(result){
-        payloads.matches=mergeMatchPayloads([payloads.matches,...result.collections]);
-        console.log(`FFF : ${result.answered}/${result.targeted} calendriers de poule reçus.`);
-      }
-    }catch{
-      console.log('::warning title=Calendriers FFF::Session des poules indisponible.');
-    }
-  }
   let registeredTeams=[];
   if(payloads.matchMonths<12&&targetUrls.teamPeriods?.length){
     try{
@@ -785,6 +772,7 @@ export async function fetchZenRows(targetUrls){
       payloads.matches=mergeMatchPayloads([isolated.matches,payloads.matches]);
       payloads.calendarResults.push(...isolated.calendarResults.filter(result=>!answeredTeams.has(result.id)));
       payloads.calendarTeamIds.push(...isolated.calendarTeamIds);
+      payloads.calendarPoolPaths.push(...isolated.calendarPoolPaths);
       if(!isolated.calendarResults.some(result=>result.collections>0)){
         console.log('::warning title=Calendriers FFF::La session isolée n’a renvoyé aucune collection d’équipe.');
       }
@@ -794,6 +782,25 @@ export async function fetchZenRows(targetUrls){
     }
   }
   if(payloads.matchMonths<12&&targetUrls.teamPeriods?.length){
+    const evaluate=embeddedBrowserResult('fce-competitions',
+      `(${browserCollectCompetitionMatches.toString()})('${CLUB_NO}',${JSON.stringify(knownCompetitions(targetUrls.seasonYear))},${JSON.stringify(payloads.calendarPoolPaths)})`);
+    try{
+      const body=await runFffBrowser(evaluate,'html[data-fce-extra-done="1"]','ZenRows compétitions');
+      const html=zenRowsHtml(body);
+      const result=embeddedPayloadFromHtml(html,'fce-competitions');
+      if(result){
+        payloads.matches=mergeMatchPayloads([payloads.matches,...result.collections]);
+        payloads.calendarPoolPaths.push(...(result.poolPaths||[]));
+        console.log(`FFF : ${result.answered}/${result.targeted} calendriers de poule reçus.`);
+      }
+    }catch{
+      console.log('::warning title=Calendriers FFF::Session des poules indisponible.');
+    }
+  }
+  const matchRequests=payloads.failedMonthly.filter(item=>item.id.startsWith('fce-matches-'));
+  const matchesForbidden=matchRequests.length===12&&matchRequests.every(item=>item.status===403);
+  if(matchesForbidden)console.log('FFF : 12 refus HTTP 403 sur l’API Épreuves ; collecte des mois par équipe ignorée sur ce même service.');
+  if(payloads.matchMonths<12&&targetUrls.teamPeriods?.length&&!matchesForbidden){
     const teamIds=[...payloads.calendarTeamIds,...payloads.calendarResults.map(result=>result.id),
       ...normalizeEpreuves(payloadItems(payloads.matches)).map(row=>row.team_fff_id)];
     teamIds.push(...registeredTeams);
@@ -1132,7 +1139,36 @@ async function collectEpreuvesFFF(){
       return `https://epreuves.fff.fr/api/fal/cdg/${DISTRICT_NO}/club/${CLUB_NO}/sites?${query}`;
     })
   };
-  const {payloads,transport}=await fetchEpreuves(targetUrls);
+  const requestDofa=url=>fetch(url,{
+    headers:{accept:'application/ld+json, application/json'},
+    signal:AbortSignal.timeout(7000)
+  });
+  const dofaClub=fetchDofaSeason({clubNo:CLUB_NO,seasonYear},requestDofa);
+  let payloads,transport;
+  try{
+    ({payloads,transport}=await fetchEpreuves(targetUrls));
+  }catch(error){
+    const dofa=await dofaClub;
+    if(!dofa.rows.length)throw error;
+    console.log(`::warning title=FFF Épreuves::${String(error.message).replace(/\r?\n/g,' ')}`);
+    payloads=epreuvesPayloadFromZenRows('');
+    transport='DOFA';
+  }
+
+  const dofa=await dofaClub;
+  if(!dofa.complete&&payloads.matchMonths<12){
+    const poolPaths=[...knownCompetitions(seasonYear),...(payloads.calendarPoolPaths||[]).map(pool=>pool.path)];
+    const pools=await fetchDofaPools(CLUB_NO,poolPaths,requestDofa);
+    dofa.rows.push(...pools.rows);
+    dofa.errors.push(...pools.errors);
+    console.log(`FFF DOFA : ${pools.answered}/${pools.targeted} poules ont livré des matchs.`);
+  }
+  if(dofa.errors.length)console.log(`FFF DOFA : ${[...new Set(dofa.errors)].slice(0,10).join(' ; ')}.`);
+  const referenceRows=normalizeEpreuves(payloadItems(payloads.matches));
+  const additions=dofaMatchCollections(dofa.rows,{clubNo:CLUB_NO,clubCode:CLUB_CODE,seasonYear},referenceRows);
+  const merged=mergeMatchPayloads([additions,payloads.matches]);
+  console.log(`FFF DOFA : ${additions['hydra:member'].length}/${dofa.rows.length} rencontres de la saison exploitables (${dofa.origin}), ${merged['hydra:member'].length-payloadItems(payloads.matches).length} inédites.`);
+  payloads.matches=merged;
 
   if(!payloads.standings?.length&&process.env.ZENROWS_API_KEY){
     await collectStandingsSeparately(payloads,seasonYear);
@@ -1182,6 +1218,12 @@ async function collectEpreuvesFFF(){
   const seasonStart=`${seasonYear}-07-01`,seasonEnd=`${seasonYear+1}-07-01`;
   const seasonMatches=matches.filter(row=>Number.isFinite(Date.parse(row.starts_at))
     &&row.starts_at>=seasonStart&&row.starts_at<seasonEnd);
+  const byCategory=Map.groupBy(seasonMatches,row=>row.category||'Sans catégorie');
+  for(const [category,rows] of byCategory){
+    const dates=rows.map(row=>row.starts_at.slice(0,10)).sort();
+    const months=[...new Set(dates.map(date=>date.slice(0,7)))];
+    console.log(`FFF saison ${category} : ${rows.length} matchs du ${dates[0]} au ${dates.at(-1)} (mois avec matchs : ${months.join(', ')}).`);
+  }
   const fullMatches=payloads.matchMonths===12&&matchIds.size>0&&seasonMatches.length===matchIds.size
     &&seasonMatches.every(row=>matchIds.has(row.source_id));
   const importedTeams=new Map(seasonMatches.map(row=>[row.source_id,row.team_fff_id]));

@@ -48,8 +48,21 @@ export async function browserCollectCalendarFallback(initialState, seasonYear, c
     .filter(([key, value]) => /\/api\/(?:data\/)?matches\?/.test(key) && value?.status === 200
       && Array.isArray(value.body?.['hydra:member']))
     .map(([key, value]) => ({key, body: value.body}));
+  const pools = new Map();
+  const discoverPools = (raw, teamId) => {
+    const html = String(raw || '').replace(/\\\//g, '/');
+    for (const [prefix] of html.matchAll(/\/competition\/engagement\/\d+[\w-]*\/phase\/\d+\/\d+(?=[/?#"'\s<]|$)/g)) {
+      const path = prefix + '/resultats-et-calendrier';
+      if (!pools.has(path)) pools.set(path, new Set());
+      if (teamId) pools.get(path).add(teamId);
+    }
+  };
+  const discoveredPools = () => [...pools].map(([path, teams]) => ({path, teamIds: [...teams].sort()}))
+    .sort((a, b) => a.path.localeCompare(b.path));
+  discoverPools(document.documentElement?.outerHTML);
+  discoverPools(JSON.stringify(initialState));
   const collections = matchCollections(initialState).map(entry => entry.body);
-  if (!fetchTeamCalendars) return {collections, results: []};
+  if (!fetchTeamCalendars) return {collections, results: [], poolPaths: discoveredPools()};
   const calendars = new Set();
   const teamIdPattern = new RegExp('^' + seasonYear + '_' + clubNo + '_[A-Z0-9]+_\\d+$');
   const addTeam = id => {
@@ -79,7 +92,9 @@ export async function browserCollectCalendarFallback(initialState, seasonYear, c
           results.push({id, status: response.status, collections: 0});
           continue;
         }
-        const stateText = (await response.text()).match(/<script[^>]+id=["']ng-state["'][^>]*>([\s\S]*?)<\/script>/i)?.[1];
+        const html = await response.text();
+        discoverPools(html, id);
+        const stateText = html.match(/<script[^>]+id=["']ng-state["'][^>]*>([\s\S]*?)<\/script>/i)?.[1];
         const captured = stateText ? matchCollections(JSON.parse(stateText)) : [];
         collections.push(...captured.map(entry => entry.body));
         const coverage = captured.map(({key, body}) => {
@@ -126,7 +141,7 @@ export async function browserCollectCalendarFallback(initialState, seasonYear, c
       }
     }
   }));
-  return {collections, results, teamIds: [...calendars]};
+  return {collections, results, teamIds: [...calendars], poolPaths: discoveredPools()};
 }
 
 // Sérialisé dans une session dédiée pour éviter la limite de la collecte principale.
@@ -181,33 +196,42 @@ export function missingTeamMonthTargets(teamIds, periods, calendars, seasonYear,
 
 // Les calendriers de poule utilisent le rendu public de la FFF. Les lignes
 // récupérées sont des ajouts et ne constituent pas une preuve de couverture.
-export async function browserCollectCompetitionMatches(clubNo, knownCompetitions) {
-  const paths = new Set();
-  const addPath = raw => {
-    const path = String(raw || '').match(/\/competition\/engagement\/[\w-]+\/phase\/\d+\/\d+/)?.[0];
-    if (path) paths.add(path + '/resultats-et-calendrier');
+export async function browserCollectCompetitionMatches(clubNo, knownCompetitions, discoveredPools = []) {
+  const paths = new Map();
+  const addPath = (raw, teamIds = []) => {
+    const prefix = String(raw || '').match(/\/competition\/engagement\/\d+[\w-]*\/phase\/\d+\/\d+(?=[/?#"'\s<]|$)/)?.[0];
+    if (!prefix) return;
+    const path = prefix + '/resultats-et-calendrier';
+    if (!paths.has(path)) paths.set(path, new Set());
+    for (const teamId of teamIds) paths.get(path).add(teamId);
   };
   for (const link of document.querySelectorAll('a[href*="/competition/engagement/"]')) {
     addPath(link.getAttribute('href'));
   }
   const stateText = document.querySelector('#ng-state')?.textContent || '';
-  for (const path of stateText.matchAll(/\/competition\/engagement\/[\w-]+\/phase\/\d+\/\d+/g)) addPath(path[0]);
-  knownCompetitions.forEach(addPath);
-  const pending = paths.values();
+  for (const path of stateText.replace(/\\\//g, '/').matchAll(/\/competition\/engagement\/\d+[\w-]*\/phase\/\d+\/\d+(?=[/?#"'\s<]|$)/g)) addPath(path[0]);
+  for (const path of knownCompetitions) addPath(path);
+  for (const {path, teamIds} of discoveredPools) addPath(path, teamIds);
+  const pending = paths.keys();
   const collections = [];
+  const pools = [];
   let answered = 0;
   await Promise.all(Array.from({length: Math.min(6, paths.size)}, async () => {
     for (const path of pending) {
+      const pool = {path, teamIds: [...paths.get(path)].sort(), status: 0, matchIds: []};
+      pools.push(pool);
       try {
         const response = await fetch(path, {
           credentials: 'include', headers: {Accept: 'text/html'}, signal: AbortSignal.timeout(5000)
         });
+        pool.status = response.status;
         if (!response.ok) continue;
         const html = await response.text();
         const raw = html.match(/<script[^>]+id=["']ng-state["'][^>]*>([\s\S]*?)<\/script>/i)?.[1];
         if (!raw) continue;
         const state = JSON.parse(raw);
         answered++;
+        const ownIds = new Set();
         for (const root of Array.isArray(state) ? state : [state]) {
           for (const [key, value] of Object.entries(root || {})) {
             if (!/\/api\/(?:data\/)?matches\?/.test(key) || value?.status !== 200) continue;
@@ -219,12 +243,19 @@ export async function browserCollectCompetitionMatches(clubNo, knownCompetitions
                 String(side?.club?.clNo) === clubNo || side?.equipe?.id?.split('_')[1] === clubNo);
             });
             if (own.length) collections.push({'hydra:member': own});
+            for (const wrapper of own) {
+              const match = wrapper?.donneesFormatees || wrapper;
+              const id = match?.maNo || wrapper?.id;
+              if (id) ownIds.add(String(id));
+            }
           }
         }
+        pool.matchIds = [...ownIds].sort();
       } catch {
         // Les autres poules restent exploitables.
       }
     }
   }));
-  return {collections, targeted: paths.size, answered};
+  const poolPaths = [...paths].map(([path, teams]) => ({path, teamIds: [...teams].sort()}));
+  return {collections, targeted: paths.size, answered, poolPaths, pools};
 }
