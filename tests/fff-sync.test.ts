@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { browserCollectCalendarFallback, browserCollectTeamMonths, fetchCompleteMatches, missingTeamMonthTargets } from '../scripts/fff-match-coverage.mjs';
-import { acceptsPartialImport, fetchZenRows, normalizeEpreuves, normalizeEpreuvesFal } from '../scripts/sync-matches.mjs';
+import { browserCollectCompetitionMatches, browserCollectCalendarFallback, browserCollectTeamMonths, fetchCompleteMatches, missingTeamMonthTargets } from '../scripts/fff-match-coverage.mjs';
+import { acceptsPartialImport, fetchZenRows, mergeMatchPayloads, normalizeEpreuves, normalizeEpreuvesFal } from '../scripts/sync-matches.mjs';
 import worker from '../src/worker';
 import { TestDatabase } from './d1';
 
@@ -214,4 +214,71 @@ test('FFF : planifie les mois manquants pour toutes les équipes de la saison', 
   const targets = missingTeamMonthTargets([u15, senior, senior, '2025_101544_SEM_1', '2026_101545_SEM_1'], periods, covered, 2026, '101544');
   assert.deepEqual(targets.map(({team, month}) => [team, month]), [[senior, '2027-04'], [senior, '2027-05'], [u15, '2027-05']]);
   assert.equal(new URL(targets.at(-1)!.url).searchParams.get('dateFin'), '2027-05-31T23:59:59.000Z');
+});
+
+test('FFF : les calendriers de poule complètent les calendriers club avec les seuls matchs d’Escalquens', async () => {
+  const played = {...match, maNo: 102, joue: true,
+    recevant: {...match.recevant, buts: 0}, visiteur: {...match.visiteur, buts: 2}};
+  const otherClub = {...match, maNo: 999, recevant: {club: {clNo: 23}}};
+  const evaluate = new Function('document', 'fetch', 'known', `
+    return (${browserCollectCompetitionMatches.toString()})('101544', known);
+  `);
+  const response = (rows: unknown[]) => new Response(
+    `<script id="ng-state">${JSON.stringify({
+      'analog_GET|/api/data/matches?phase=1': {status: 200, body: collection(rows)}
+    })}</script>`
+  );
+  const requests: string[] = [];
+  const result = await evaluate({
+    querySelectorAll: () => [{getAttribute: () => '/competition/engagement/10-u15/phase/1/2/classement'}],
+    querySelector: () => ({textContent: '"/competition/engagement/20-u18/phase/1/3/accueil"'})
+  }, async (path: string) => {
+    requests.push(path);
+    if (path.includes('/10-u15/')) return response([played, otherClub]);
+    if (path.includes('/20-u18/')) return response([{...match, maNo: 103}]);
+    return new Response('', {status: 403});
+  }, [
+    '/competition/engagement/10-u15/phase/1/2/classement',
+    '/competition/engagement/30-seniors/phase/1/5/classement'
+  ]);
+  assert.ok(requests.every(path => path.endsWith('/resultats-et-calendrier')));
+  assert.equal(result.targeted, 3);
+  assert.equal(result.answered, 2);
+  const merged = mergeMatchPayloads([collection([match]), ...result.collections,
+    collection([{...played, joue: '0', terrain: {nom: 'Stade'}}])]);
+  const rows = normalizeEpreuves(merged['hydra:member']);
+  assert.deepEqual(rows.map(row => row.source_id).sort(), ['100', '102', '103']);
+  const finalScore = rows.find(row => row.source_id === '102');
+  assert.deepEqual([finalScore?.status, finalScore?.home_score, finalScore?.away_score], ['finished', 0, 2]);
+});
+
+test('FFF : le classement d’une poule reste disponible lorsque celui d’une autre poule échoue', async () => {
+  const { Window } = await import('happy-dom');
+  const { browserCollectStandings } = await import('../scripts/standings-integrated.mjs');
+  const origin = 'https://epreuves.fff.fr';
+  const window = new Window({url: origin + '/competition/club/550350-f-c-escalquens/club'});
+  try {
+    const paths = ['/competition/engagement/10-u15/phase/1/2/classement',
+      '/competition/engagement/20-u18/phase/1/3/classement'];
+    window.document.body.innerHTML = paths.map(path => `<a href="${path}">Compétition</a>`).join('');
+    const standings = `<table><thead><tr><th>Pos</th><th>Équipe</th><th>Pts</th><th>J</th></tr></thead>
+      <tbody><tr><td>1</td><td><a href="/equipe/2026_101544_U15F_5">FC Escalquens</a></td><td>9</td><td>3</td></tr>
+      <tr><td>2</td><td>Adversaire</td><td>3</td><td>3</td></tr></tbody></table>`;
+    const evaluate = new Function('document', 'location', 'DOMParser', 'fetch', 'paths', `
+      return (${browserCollectStandings.toString()})([], '101544', '550350', 2026, paths);
+    `);
+    await evaluate(window.document, window.location, window.DOMParser, async (url: string) => {
+      if (url === window.location.href) return new Response(window.document.documentElement.outerHTML);
+      if (url.endsWith(paths[0])) return new Response(standings);
+      return new Response('', {status: 503});
+    }, paths);
+    const read = (id: string) => JSON.parse(window.document.getElementById(id)?.textContent || '{}').body;
+    assert.deepEqual(read('fce-standings').map((row: {points: number}) => row.points), [9, 3]);
+    const meta = read('fce-standings-meta');
+    assert.equal(meta.detected, 2);
+    assert.equal(meta.parsed, 1);
+    assert.ok(meta.results.some((row: {status: number}) => row.status === 503));
+  } finally {
+    await window.close();
+  }
 });

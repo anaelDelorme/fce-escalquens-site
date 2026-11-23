@@ -41,7 +41,7 @@ export function isCompleteMatchCollection(payload) {
 
 // Serialized into the browser session. SSR responses supply positive evidence
 // even when requests to the competition API fail inside that session.
-export async function browserCollectCalendarFallback(initialState, seasonYear, clubNo, fetchTeamCalendars) {
+export async function browserCollectCalendarFallback(initialState, seasonYear, clubNo, fetchTeamCalendars, knownTeams = []) {
   const stateEntries = state => (Array.isArray(state) ? state : [state])
     .flatMap(root => Object.entries(root || {}));
   const matchCollections = state => stateEntries(state)
@@ -66,8 +66,9 @@ export async function browserCollectCalendarFallback(initialState, seasonYear, c
     const teamIds = JSON.stringify(value.body).matchAll(new RegExp('\\b' + seasonYear + '_' + clubNo + '_[A-Z0-9]+_\\d+\\b', 'g'));
     for (const [id] of teamIds) addTeam(id);
   }
+  knownTeams.forEach(addTeam);
   const ordered = [...calendars].sort((a, b) => Number(!a.includes('F_')) - Number(!b.includes('F_')));
-  const pending = ordered.slice(0, 16).values();
+  const pending = ordered.values();
   const results = [];
   await Promise.all(Array.from({length: Math.min(4, ordered.length)}, async () => {
     for (const id of pending) {
@@ -176,4 +177,54 @@ export function missingTeamMonthTargets(teamIds, periods, calendars, seasonYear,
       return [{team, month:first.slice(0,7), url:'https://epreuves.fff.fr/api/data/matches?' + query}];
     });
   });
+}
+
+// Les calendriers de poule utilisent le rendu public de la FFF. Les lignes
+// récupérées sont des ajouts et ne constituent pas une preuve de couverture.
+export async function browserCollectCompetitionMatches(clubNo, knownCompetitions) {
+  const paths = new Set();
+  const addPath = raw => {
+    const path = String(raw || '').match(/\/competition\/engagement\/[\w-]+\/phase\/\d+\/\d+/)?.[0];
+    if (path) paths.add(path + '/resultats-et-calendrier');
+  };
+  for (const link of document.querySelectorAll('a[href*="/competition/engagement/"]')) {
+    addPath(link.getAttribute('href'));
+  }
+  const stateText = document.querySelector('#ng-state')?.textContent || '';
+  for (const path of stateText.matchAll(/\/competition\/engagement\/[\w-]+\/phase\/\d+\/\d+/g)) addPath(path[0]);
+  knownCompetitions.forEach(addPath);
+  const pending = paths.values();
+  const collections = [];
+  let answered = 0;
+  await Promise.all(Array.from({length: Math.min(6, paths.size)}, async () => {
+    for (const path of pending) {
+      try {
+        const response = await fetch(path, {
+          credentials: 'include', headers: {Accept: 'text/html'}, signal: AbortSignal.timeout(5000)
+        });
+        if (!response.ok) continue;
+        const html = await response.text();
+        const raw = html.match(/<script[^>]+id=["']ng-state["'][^>]*>([\s\S]*?)<\/script>/i)?.[1];
+        if (!raw) continue;
+        const state = JSON.parse(raw);
+        answered++;
+        for (const root of Array.isArray(state) ? state : [state]) {
+          for (const [key, value] of Object.entries(root || {})) {
+            if (!/\/api\/(?:data\/)?matches\?/.test(key) || value?.status !== 200) continue;
+            const members = value.body?.['hydra:member'];
+            if (!Array.isArray(members)) continue;
+            const own = members.filter(wrapper => {
+              const match = wrapper?.donneesFormatees || wrapper;
+              return [match?.recevant, match?.visiteur].some(side =>
+                String(side?.club?.clNo) === clubNo || side?.equipe?.id?.split('_')[1] === clubNo);
+            });
+            if (own.length) collections.push({'hydra:member': own});
+          }
+        }
+      } catch {
+        // Les autres poules restent exploitables.
+      }
+    }
+  }));
+  return {collections, targeted: paths.size, answered};
 }
