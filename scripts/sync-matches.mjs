@@ -396,20 +396,43 @@ async function collectPublishedPoolWeeks(pools){
   const pending=selected.values();
   const merged=[];
   const reports=[];
-  const evaluate=embeddedBrowserResult('fce-pool-weeks',`(${browserCollectPublishedWeeks.toString()})('${CLUB_NO}')`);
+  const read=async(pool,direction)=>{
+    const evaluate=embeddedBrowserResult('fce-pool-weeks',
+      `(${browserCollectPublishedWeeks.toString()})('${CLUB_NO}',55000,'${direction}')`);
+    const body=await runFffBrowser(evaluate,'html[data-fce-extra-done="1"]','ZenRows semaines',pool.path);
+    const data=embeddedPayloadFromHtml(zenRowsHtml(body),'fce-pool-weeks');
+    if(!data)throw new Error('aucun résultat de navigation');
+    return data;
+  };
   await Promise.all(Array.from({length:Math.min(4,selected.length)},async()=>{
     for(const pool of pending){
       try{
-        const body=await runFffBrowser(evaluate,'html[data-fce-extra-done="1"]','ZenRows semaines',pool.path);
-        const data=embeddedPayloadFromHtml(zenRowsHtml(body),'fce-pool-weeks');
-        if(!data)throw new Error('aucun résultat de navigation');
-        const matches=normalizeEpreuves(payloadItems(mergeMatchPayloads(data.collections||[])));
+        const future=await read(pool,'future');
+        const expectedWeeks=new Set(future.expectedWeeks);
+        const verifiedWeeks=new Set(future.verifiedWeeks);
+        const collections=[...(future.collections||[])];
+        const failures=[...(future.failures||[])];
+        // Une session neuve évite que l'application serve en mémoire les
+        // semaines déjà traversées avant de revenir à l'automne.
+        const missingPast=future.expectedWeeks?.some(week=>week<future.initialWeek&&!verifiedWeeks.has(week));
+        if(missingPast){
+          try{
+            const past=await read(pool,'past');
+            for(const week of past.expectedWeeks||[])expectedWeeks.add(week);
+            for(const week of past.verifiedWeeks||[])verifiedWeeks.add(week);
+            collections.push(...(past.collections||[]));
+            failures.push(...(past.failures||[]));
+          }catch{
+            failures.push('collecte des semaines passées indisponible');
+          }
+        }
+        const matches=normalizeEpreuves(payloadItems(mergeMatchPayloads(collections)));
         const days=matches.map(row=>row.starts_at.slice(0,10)).sort();
-        const verified=data.verifiedWeeks?.length||0,expected=data.expectedWeeks?.length||0;
+        const verified=verifiedWeeks.size,expected=expectedWeeks.size;
         reports.push({path:pool.path,verified,expected,matches:matches.length});
-        merged.push(...(data.collections||[]));
+        merged.push(...collections);
         console.log(`FFF semaines ${pool.path} : ${verified}/${expected} semaines vérifiées, ${matches.length} matchs du club${days.length?` du ${days[0]} au ${days.at(-1)}`:''}.`);
-        if(data.failures?.length)console.log(`::warning title=Semaines FFF::${pool.path} — ${data.failures.join(' ; ')}.`);
+        if(failures.length&&verified<expected)console.log(`::warning title=Semaines FFF::${pool.path} — ${failures.join(' ; ')}`);
       }catch(error){
         console.log(`::warning title=Semaines FFF::${pool.path} — ${error?.message?.match(/^HTTP \d{3}$/)?.[0]||'session indisponible'}.`);
       }

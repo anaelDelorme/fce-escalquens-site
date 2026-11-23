@@ -1,8 +1,8 @@
 // La FFF ne précharge que la semaine sélectionnée. Les autres collections
 // proviennent des requêtes déclenchées par ses boutons de navigation publics.
-export async function browserCollectPublishedWeeks(clubNo, maxDuration = 55000) {
+export async function browserCollectPublishedWeeks(clubNo, maxDuration = 55000, direction = 'season') {
   const collections = [], expectedWeeks = [], verifiedWeeks = [], failures = [];
-  const result = {collections, expectedWeeks, verifiedWeeks, failures};
+  const result = {collections, expectedWeeks, verifiedWeeks, failures, initialWeek: ''};
   const pool = location.pathname.match(/\/engagement\/(\d+)(?:-[\w-]+)?\/phase\/(\d+)\/(\d+)\/resultats-et-calendrier\/?$/);
   if (!pool) {
     failures.push('Page de poule non reconnue.');
@@ -102,6 +102,7 @@ export async function browserCollectPublishedWeeks(clubNo, maxDuration = 55000) 
     failures.push('Semaine initiale absente de la page publique.');
     return result;
   }
+  result.initialWeek = expectedWeeks[current];
 
   const deadline = Date.now() + maxDuration;
   const originalFetch = window.fetch;
@@ -190,7 +191,8 @@ export async function browserCollectPublishedWeeks(clubNo, maxDuration = 55000) 
     // Le programme restant est prioritaire, puis la navigation remonte
     // jusqu'aux premières semaines qui manquent à l'historique.
     const last = expectedWeeks.length - 1;
-    for (const target of [last, 0]) {
+    const destinations = direction === 'past' ? [0] : direction === 'future' ? [last] : [last, 0];
+    for (const target of destinations) {
       while (current !== target && readWeeks.size < expectedWeeks.length) {
         if (!await move(Math.sign(target - current))) break;
       }

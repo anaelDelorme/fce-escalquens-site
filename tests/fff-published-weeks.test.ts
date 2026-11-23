@@ -23,14 +23,14 @@ const collection = (index: number) => ({
   'hydra:member': [match(index), {...match(index).donneesFormatees, maNo: 123, recevant: {club: {clNo: 54}}}]
 });
 
-function calendarDocument(window: Window, total = weekStarts.length) {
+function calendarDocument(window: Window, total = weekStarts.length, initial = 0) {
   const state = {
     ['analog_GET|' + weeksPath]: {status: 200, body: {
       'hydra:totalItems': total, 'hydra:member': weekStarts.map((start, index) => ({
         dateDebut: start + 'T00:00:00Z', dateFin: weekEnds[index] + 'T00:00:00Z'
       }))
     }},
-    ['analog_GET|' + requestFor(0)]: {status: 200, body: collection(0)}
+    ['analog_GET|' + requestFor(initial)]: {status: 200, body: collection(initial)}
   };
   window.document.body.innerHTML = '<button>navigation suivante</button><script id="ng-state"></script>';
   window.document.querySelector('#ng-state')!.textContent = JSON.stringify(state);
@@ -99,4 +99,29 @@ test('FFF : la liste tronquée des semaines ne valide aucune couverture', async 
   assert.deepEqual(result.expectedWeeks, []);
   assert.deepEqual(result.verifiedWeeks, []);
   assert.match(result.failures[0], /semaines absente ou incomplète/);
+});
+
+test('FFF : la collecte vers le passé conserve la semaine initiale et laisse les semaines futures à une autre session', async t => {
+  const window = new Window({url: page});
+  t.after(() => window.close());
+  calendarDocument(window, weekStarts.length, 1);
+  const previous = window.document.createElement('button');
+  previous.textContent = 'navigation précédente';
+  window.document.body.prepend(previous);
+  const next = window.document.querySelectorAll('button')[1];
+  const evaluate = new Function('window', 'document', 'location', 'XMLHttpRequest',
+    "return (" + browserCollectPublishedWeeks.toString() + ")('101544', 1000, 'past');");
+  const requests: string[] = [];
+  const browser = {fetch: async (resource: string) => {
+    requests.push(resource);
+    return Response.json(collection(resource === requestFor(0) ? 0 : 2));
+  }};
+  previous.onclick = () => { void browser.fetch(requestFor(0)); };
+  next.onclick = () => { void browser.fetch(requestFor(2)); };
+  const result = await evaluate(browser, window.document, window.location, class Xhr {});
+  assert.equal(result.initialWeek, weekStarts[1]);
+  assert.deepEqual(result.expectedWeeks, weekStarts);
+  assert.deepEqual(result.verifiedWeeks, weekStarts.slice(0, 2));
+  assert.deepEqual(result.failures, []);
+  assert.deepEqual(requests, [requestFor(0)]);
 });
