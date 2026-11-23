@@ -1326,7 +1326,7 @@ async function ingestMatches(request: Request, env: Env) {
         ends_before: string;
         ids: string[];
         seen_ids?: string[];
-        team_windows?: { team_fff_id: string; starts_on: string; ends_before: string; ids: string[] }[];
+        team_windows?: { team_fff_id: string; competition?: string; starts_on: string; ends_before: string; ids: string[] }[];
       };
     };
   }>().catch(() => null);
@@ -1481,19 +1481,34 @@ async function ingestMatches(request: Request, env: Env) {
           || !window.ids.every(id => seen.has(id))) continue;
       const team = entries.get(window.team_fff_id);
       if (!team) continue;
+      const competition = window.competition ?? null;
+      if (competition !== null && (typeof competition !== "string" || !competition.trim())) continue;
       const stored = await env.DB.prepare(`SELECT COUNT(*) AS count FROM matches
         WHERE source='fff' AND season_id=? AND competition_team_id=?
+        AND (? IS NULL OR competition=?)
         AND source_id IN (SELECT value FROM json_each(?))`)
-        .bind(seasonId, team.id, JSON.stringify(window.ids)).first<{ count: number }>();
+        .bind(seasonId, team.id, competition, competition, JSON.stringify(window.ids)).first<{ count: number }>();
       if (stored?.count !== window.ids.length) continue;
-      // Les deux jours aux bornes restent exclus, quel que soit le fuseau FFF.
-      const removed = await env.DB.prepare(`DELETE FROM matches
+      // Les semaines de poule fournissent des bornes civiles inclusives/exclusives.
+      const removed = await env.DB.prepare(`DELETE FROM matches AS obsolete
         WHERE source='fff' AND event_type='match' AND manually_created=0
         AND season_id=? AND competition_team_id=?
-        AND substr(starts_at,1,10)>? AND substr(starts_at,1,10)<?
+        AND substr(starts_at,1,10) ${competition ? ">=" : ">"} ? AND substr(starts_at,1,10)<?
+        AND (? IS NULL OR competition=?)
         AND status IN ('scheduled','postponed') AND home_score IS NULL AND away_score IS NULL
-        AND source_id NOT IN (SELECT value FROM json_each(?))`)
-        .bind(seasonId, team.id, window.starts_on, window.ends_before, JSON.stringify([...seen])).run();
+        AND source_id NOT IN (SELECT value FROM json_each(?))
+        AND (source_id NOT IN (SELECT value FROM json_each(?)) OR (? IS NOT NULL AND EXISTS (
+          SELECT 1 FROM matches AS confirmed
+          WHERE confirmed.source='fff' AND confirmed.season_id=obsolete.season_id
+          AND confirmed.competition_team_id=obsolete.competition_team_id
+          AND confirmed.competition=obsolete.competition
+          AND confirmed.source_id IN (SELECT value FROM json_each(?))
+          AND substr(confirmed.starts_at,1,10)=substr(obsolete.starts_at,1,10)
+          AND trim(confirmed.home_team)=trim(obsolete.home_team) COLLATE NOCASE
+          AND trim(confirmed.away_team)=trim(obsolete.away_team) COLLATE NOCASE
+        )))`)
+        .bind(seasonId, team.id, window.starts_on, window.ends_before, competition, competition,
+          JSON.stringify(window.ids), JSON.stringify([...seen]), competition, JSON.stringify(window.ids)).run();
       removedStaleMatches += Number(removed.meta.changes || 0);
     }
   }
@@ -1794,19 +1809,11 @@ async function ingestStandings(
     };
 
 
-  const statements=[
-    env.DB
-      .prepare(`
-        DELETE FROM standings
-
-        WHERE
-          source='fff'
-          AND season_id=?
-      `)
-      .bind(
-        seasonId
-      )
-  ];
+  const phaseIds = [...new Set(rows.filter(row => row?.source === "fff" && row.phase_id && row.team_name)
+    .map(row => String(row.phase_id)))];
+  const statements = [env.DB.prepare(`DELETE FROM standings
+    WHERE source='fff' AND season_id=? AND phase_id IN (SELECT value FROM json_each(?))`)
+    .bind(seasonId, JSON.stringify(phaseIds))];
 
 
   let accepted=0;
