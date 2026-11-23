@@ -196,7 +196,7 @@ export function missingTeamMonthTargets(teamIds, periods, calendars, seasonYear,
 
 // Les calendriers de poule utilisent le rendu public de la FFF. Les lignes
 // récupérées sont des ajouts et ne constituent pas une preuve de couverture.
-export async function browserCollectCompetitionMatches(clubNo, knownCompetitions, discoveredPools = []) {
+export async function browserCollectCompetitionMatches(clubNo, knownCompetitions, discoveredPools = [], discovery = {}) {
   const paths = new Map();
   const addPath = (raw, teamIds = []) => {
     const prefix = String(raw || '').match(/\/competition\/engagement\/\d+[\w-]*\/phase\/\d+\/\d+(?=[/?#"'\s<]|$)/)?.[0];
@@ -212,18 +212,60 @@ export async function browserCollectCompetitionMatches(clubNo, knownCompetitions
   for (const path of stateText.replace(/\\\//g, '/').matchAll(/\/competition\/engagement\/\d+[\w-]*\/phase\/\d+\/\d+(?=[/?#"'\s<]|$)/g)) addPath(path[0]);
   for (const path of knownCompetitions) addPath(path);
   for (const {path, teamIds} of discoveredPools) addPath(path, teamIds);
+  const requestPage = path => fetch(path, {
+    credentials: 'include', headers: {Accept: 'text/html'}, signal: AbortSignal.timeout(5000)
+  });
+  const hub = {status: 0, candidates: [], expanded: 0};
+  const seasonCategories = new Set(discovery.categories || []);
+  if (discovery.organisation && seasonCategories.size) {
+    try {
+      const response = await requestPage(discovery.organisation);
+      hub.status = response.status;
+      if (response.ok) {
+        const html = (await response.text()).replace(/\\\//g, '/');
+        const candidates = new Map();
+        const known = new Set([...paths.keys()].map(path => path.split('/phase/')[0]));
+        for (const link of html.matchAll(/(\/competition\/engagement\/\d+[\w-]*)(?:\/phase\/\d+\/\d+)?/gi)) {
+          const slug = link[1].replace(/.*\/\d+-?/, '');
+          const age = slug.match(/(?:^|-)u-?(\d{1,2})(f)?(?:-|$)/i);
+          const female = age?.[2] || /(?:^|-)(?:f|fem[a-z]*)(?:-|$)/i.test(slug);
+          const category = age ? 'U' + age[1] + (female ? 'F' : '') : '';
+          if (!seasonCategories.has(category)) continue;
+          addPath(link[0]);
+          if (!candidates.has(link[1]) || link[0] === link[1]) candidates.set(link[1], link[0]);
+        }
+        hub.candidates = [...candidates.keys()];
+        const pendingCompetitions = [...candidates].filter(([root]) => !known.has(root)).values();
+        await Promise.all(Array.from({length: Math.min(4, candidates.size)}, async () => {
+          for (const [root, path] of pendingCompetitions) {
+            try {
+              const page = await requestPage(path);
+              if (!page.ok) continue;
+              const source = (await page.text()).replace(/\\\//g, '/');
+              for (const [pool] of source.matchAll(/\/competition\/engagement\/\d+[\w-]*\/phase\/\d+\/\d+(?=[/?#"\x27\s<]|$)/g)) {
+                if (pool.split('/phase/')[0] === root) addPath(pool);
+              }
+              hub.expanded++;
+            } catch {
+              // Les autres compétitions du portail restent indépendantes.
+            }
+          }
+        }));
+      }
+    } catch {
+      // La découverte club et équipe reste disponible.
+    }
+  }
   const pending = paths.keys();
   const collections = [];
   const pools = [];
   let answered = 0;
   await Promise.all(Array.from({length: Math.min(6, paths.size)}, async () => {
     for (const path of pending) {
-      const pool = {path, teamIds: [...paths.get(path)].sort(), status: 0, matchIds: []};
+      const pool = {path, teamIds: [...paths.get(path)].sort(), status: 0, matchIds: [], endpoints: []};
       pools.push(pool);
       try {
-        const response = await fetch(path, {
-          credentials: 'include', headers: {Accept: 'text/html'}, signal: AbortSignal.timeout(5000)
-        });
+        const response = await requestPage(path);
         pool.status = response.status;
         if (!response.ok) continue;
         const html = await response.text();
@@ -231,31 +273,37 @@ export async function browserCollectCompetitionMatches(clubNo, knownCompetitions
         if (!raw) continue;
         const state = JSON.parse(raw);
         answered++;
-        const ownIds = new Set();
+        const matches = new Map();
+        const visit = (value, depth = 0) => {
+          if (!value || typeof value !== 'object' || depth > 12) return;
+          const match = value.donneesFormatees || value;
+          if (match.recevant && match.visiteur) {
+            const id = String(match.maNo || value.id || '');
+            if (/^\d+$/.test(id) && [match.recevant, match.visiteur].some(side =>
+              String(side?.club?.clNo) === clubNo || side?.equipe?.id?.split('_')[1] === clubNo)) {
+              matches.set(id, value);
+            }
+            return;
+          }
+          for (const child of Object.values(value)) visit(child, depth + 1);
+        };
+        const endpoints = new Set();
         for (const root of Array.isArray(state) ? state : [state]) {
           for (const [key, value] of Object.entries(root || {})) {
-            if (!/\/api\/(?:data\/)?matches\?/.test(key) || value?.status !== 200) continue;
-            const members = value.body?.['hydra:member'];
-            if (!Array.isArray(members)) continue;
-            const own = members.filter(wrapper => {
-              const match = wrapper?.donneesFormatees || wrapper;
-              return [match?.recevant, match?.visiteur].some(side =>
-                String(side?.club?.clNo) === clubNo || side?.equipe?.id?.split('_')[1] === clubNo);
-            });
-            if (own.length) collections.push({'hydra:member': own});
-            for (const wrapper of own) {
-              const match = wrapper?.donneesFormatees || wrapper;
-              const id = match?.maNo || wrapper?.id;
-              if (id) ownIds.add(String(id));
-            }
+            if (value?.status !== 200 || !value.body) continue;
+            const path = key.match(/\/api\/[\w/-]+/)?.[0];
+            if (path) endpoints.add(path);
+            visit(value.body);
           }
         }
-        pool.matchIds = [...ownIds].sort();
+        if (matches.size) collections.push({'hydra:member': [...matches.values()]});
+        pool.matchIds = [...matches.keys()].sort();
+        pool.endpoints = [...endpoints].sort();
       } catch {
         // Les autres poules restent exploitables.
       }
     }
   }));
   const poolPaths = [...paths].map(([path, teams]) => ({path, teamIds: [...teams].sort()}));
-  return {collections, targeted: paths.size, answered, poolPaths, pools};
+  return {collections, targeted: paths.size, answered, poolPaths, pools, hub};
 }

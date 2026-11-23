@@ -29,8 +29,8 @@ test('FFF : le calendrier U15F découvre une nouvelle phase publiée et transmet
   const matches = await scanPool({querySelectorAll: () => [], querySelector: () => null}, async (url: string) => {
     if (url !== competitionPath(laterPool)) return new Response('', {status: 404});
     const body = {'hydra:member': [
-      {maNo: 81234567, date: '2027-05-29', recevant: {equipe: {id: teamId}}},
-      {maNo: 89999999, date: '2027-06-05', recevant: {club: {clNo: 54}}}
+      {maNo: 81234567, date: '2027-05-29', recevant: {equipe: {id: teamId}}, visiteur: {club: {clNo: 54}}},
+      {maNo: 89999999, date: '2027-06-05', recevant: {club: {clNo: 54}}, visiteur: {club: {clNo: 25}}}
     ]};
     const state = {'analog_GET|/api/data/matches?phase=2': {status: 200, body}};
     return new Response('<script id="ng-state">' + JSON.stringify(state) + '</script>');
@@ -38,6 +38,31 @@ test('FFF : le calendrier U15F découvre une nouvelle phase publiée et transmet
   assert.equal(matches.targeted, 2);
   assert.equal(matches.answered, 1);
   assert.deepEqual(matches.pools.find((pool: {path: string}) => pool.path === competitionPath(laterPool)), {
-    path: competitionPath(laterPool), teamIds: [teamId], status: 200, matchIds: ['81234567']
+    path: competitionPath(laterPool), teamIds: [teamId], status: 200, matchIds: ['81234567'], endpoints: ['/api/data/matches']
   });
+});
+
+test('FFF : le portail de Ligue découvre une nouvelle compétition et lit les journées imbriquées', async () => {
+  const root = '/competition/engagement/499999-u15-fem-r1';
+  const pool = root + '/phase/1/2';
+  const read = new Function('document', 'fetch', 'organisation',
+    'return (' + browserCollectCompetitionMatches.toString() + ")('101544', [], [], {organisation, categories:['U15F']});");
+  const requests: string[] = [];
+  const result = await read({querySelectorAll: () => [], querySelector: () => null}, async (url: string) => {
+    requests.push(url);
+    if (url === '/ligue-et-district/14') return new Response(
+      `<a href="${root}">U15 Fem R1</a><a href="/competition/engagement/123-u15-district">U15 District</a>`);
+    if (url === root) return new Response(`<a href="${pool}/classement">Groupe 2</a>`);
+    const state = {
+      'analog_GET|/api/journees?competition=499999': {status: 200, body: {journees: [{matches: [
+        {donneesFormatees: {maNo: 81234567, date: '2027-05-29',
+          recevant: {club: {clNo: 101544}}, visiteur: {club: {clNo: 54}}}}
+      ]}]}}
+    };
+    return new Response('<script id="ng-state">' + JSON.stringify(state) + '</script>');
+  }, '/ligue-et-district/14');
+  assert.deepEqual(requests, ['/ligue-et-district/14', root, pool + '/resultats-et-calendrier']);
+  assert.equal(result.answered, 1);
+  assert.deepEqual(result.pools[0].matchIds, ['81234567']);
+  assert.deepEqual(result.pools[0].endpoints, ['/api/journees']);
 });

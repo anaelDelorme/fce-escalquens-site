@@ -2,7 +2,7 @@ import { browserCollectStandings, verified2026 } from './standings-integrated.mj
 import { pathToFileURL } from 'node:url';
 import { dofaMatchCollections, fetchDofaPools, fetchDofaSeason } from './fff-dofa.mjs';
 import { browserCollectCompetitionMatches, browserCollectCalendarFallback, browserCollectTeamMonths, fetchCompleteMatches, isCompleteMatchCollection, missingTeamMonthTargets } from './fff-match-coverage.mjs';
-const SYNC_VERSION='2026.11.23-saison-entiere',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+const SYNC_VERSION='2026.11.23-phases-ligue',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
 const endpoint=siteUrl+'/internal/sync/matches';
 const standingsEndpoint=siteUrl+'/internal/sync/standings';
@@ -782,8 +782,11 @@ export async function fetchZenRows(targetUrls){
     }
   }
   if(payloads.matchMonths<12&&targetUrls.teamPeriods?.length){
+    const categories=[...new Set([...registeredTeams,...payloads.calendarTeamIds]
+      .map(id=>id.split('_')[2]).filter(value=>/^U\d{1,2}F?$/.test(value||'')))];
+    const discovery={organisation:'/ligue-et-district/14',categories};
     const evaluate=embeddedBrowserResult('fce-competitions',
-      `(${browserCollectCompetitionMatches.toString()})('${CLUB_NO}',${JSON.stringify(knownCompetitions(targetUrls.seasonYear))},${JSON.stringify(payloads.calendarPoolPaths)})`);
+      `(${browserCollectCompetitionMatches.toString()})('${CLUB_NO}',${JSON.stringify(knownCompetitions(targetUrls.seasonYear))},${JSON.stringify(payloads.calendarPoolPaths)},${JSON.stringify(discovery)})`);
     try{
       const body=await runFffBrowser(evaluate,'html[data-fce-extra-done="1"]','ZenRows compétitions');
       const html=zenRowsHtml(body);
@@ -792,6 +795,10 @@ export async function fetchZenRows(targetUrls){
         payloads.matches=mergeMatchPayloads([payloads.matches,...result.collections]);
         payloads.calendarPoolPaths.push(...(result.poolPaths||[]));
         console.log(`FFF : ${result.answered}/${result.targeted} calendriers de poule reçus.`);
+        if(result.hub)console.log(`FFF portail Occitanie : HTTP ${result.hub.status}, ${result.hub.candidates.length} compétitions pertinentes, ${result.hub.expanded} examinées.`);
+        const youthPools=(result.pools||[]).filter(pool=>/u15.*(?:fem|territoire-f|u15f)/i.test(pool.path)
+          ||pool.teamIds.some(id=>id.includes('_U15F_')));
+        for(const pool of youthPools)console.log(`FFF poule U15F : ${pool.path} — ${pool.matchIds.length} match(s), ${pool.endpoints.join(', ')}.`);
       }
     }catch{
       console.log('::warning title=Calendriers FFF::Session des poules indisponible.');

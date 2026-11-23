@@ -1397,29 +1397,29 @@ async function ingestMatches(request: Request, env: Env) {
       ).run();
       refreshedEntries.add(fffTeamId);
     }
-    // Ces deux calendriers féminins ont un groupe identifié. Les autres
-    // affectations restent liées aux identifiants validés dans l'administration.
+    // Le même groupe U15F peut disputer plusieurs compétitions et changer
+    // d'identifiant fédéral entre deux phases.
     const groupCategory = row.source === "district_fal" && /^9833:/.test(String(row.source_id))
       && official.category_code === "U13F" ? "U13F"
-      : row.source === "fff" && fffTeamId === "2026_101544_U15F_5" ? "U15F"
-      : null;
-    if (groupCategory && entry?.active === 1 && entry.team_id === unassigned.id) {
-      const groups = (teams.results || []).filter(candidate =>
-        candidate.gender === "female"
-        && String(`${candidate.name} ${candidate.category}`).toUpperCase().split(/[^A-Z0-9]+/).includes(groupCategory)
-      );
-      if (groups.length === 1) {
-        const assigned = await env.DB.prepare(`UPDATE team_competitions SET team_id=?,updated_at=CURRENT_TIMESTAMP
-          WHERE id=? AND team_id=? AND active=1 RETURNING team_id`)
-          .bind(groups[0].id, entry.id, unassigned.id).first<{ team_id: number }>();
-        if (assigned) {
-          entry.team_id = assigned.team_id;
-          await env.DB.prepare("UPDATE matches SET team_id=? WHERE competition_team_id=? AND manually_created=0")
-            .bind(entry.team_id, entry.id).run();
-        }
+      : row.source === "fff" && (official.category_code === "U15F" || /^\d{4}_101544_U15F_\d+$/.test(fffTeamId))
+        ? "U15F"
+        : null;
+    const groups = groupCategory ? (teams.results || []).filter(candidate =>
+      candidate.gender === "female"
+      && String(`${candidate.name} ${candidate.category}`).toUpperCase().split(/[^A-Z0-9]+/).includes(groupCategory)
+    ) : [];
+    const group = groups.length === 1 ? groups[0] : null;
+    if (group && entry?.active === 1 && entry.team_id === unassigned.id) {
+      const assigned = await env.DB.prepare(`UPDATE team_competitions SET team_id=?,updated_at=CURRENT_TIMESTAMP
+        WHERE id=? AND team_id=? AND active=1 RETURNING team_id`)
+        .bind(group.id, entry.id, unassigned.id).first<{ team_id: number }>();
+      if (assigned) {
+        entry.team_id = assigned.team_id;
+        await env.DB.prepare("UPDATE matches SET team_id=? WHERE competition_team_id=? AND manually_created=0")
+          .bind(entry.team_id, entry.id).run();
       }
     }
-    const team = entry ? (teams.results || []).find(candidate => candidate.id === entry.team_id) : null;
+    const team = entry ? (teams.results || []).find(candidate => candidate.id === entry.team_id) : group;
     changed += await upsertMatch(env, {
       ...row,
       team_id: team?.id ?? null,

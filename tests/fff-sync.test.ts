@@ -156,6 +156,13 @@ test('D1 : import partiel sans suppression, puis retrait des seuls matchs FFF ab
   assert.equal(DB.db.prepare(`SELECT t.slug FROM matches m JOIN teams t ON t.id=m.team_id WHERE m.source_id='9833:12:41646:3'`).get()?.slug, 'u13f-test');
   assert.equal(DB.db.prepare(`SELECT t.slug FROM matches m JOIN teams t ON t.id=m.team_id WHERE m.source_id='100'`).get()?.slug, 'u15f-test');
   assert.equal(DB.db.prepare('SELECT home_score FROM plateau_games').get()?.home_score, 0);
+  await ingest([
+    {...row, source_id: '205', team_fff_id: '2026_101544_U15F_11', starts_at: '2027-05-29T14:30:00+02:00'},
+    {...row, source_id: '206', team_fff_id: '', starts_at: '2027-05-22T14:30:00+02:00'}
+  ], 'error', false);
+  const spring = DB.db.prepare(`SELECT t.slug FROM matches m JOIN teams t ON t.id=m.team_id
+    WHERE m.source_id IN ('205','206') ORDER BY m.source_id`).all();
+  assert.deepEqual(spring.map(row => row.slug), ['u15f-test', 'u15f-test']);
 });
 
 test('FFF : la préproduction accepte uniquement les imports de secours effectivement terminés', () => {
