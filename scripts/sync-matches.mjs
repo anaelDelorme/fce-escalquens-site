@@ -2,8 +2,9 @@ import { browserCollectStandings, verified2026 } from './standings-integrated.mj
 import { pathToFileURL } from 'node:url';
 import { dofaMatchCollections, fetchDofaPools, fetchDofaSeason } from './fff-dofa.mjs';
 import { browserProbePublicCalendar } from './fff-public-calendar-probe.mjs';
+import { browserCollectPublishedWeeks } from './fff-published-weeks.mjs';
 import { browserCollectCompetitionMatches, browserCollectCalendarFallback, browserCollectTeamMonths, fetchCompleteMatches, isCompleteMatchCollection, missingTeamMonthTargets } from './fff-match-coverage.mjs';
-const SYNC_VERSION='2026.11.23-phases-ligue',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
+const SYNC_VERSION='2026.11.23-semaines-publiees',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
 const endpoint=siteUrl+'/internal/sync/matches';
 const standingsEndpoint=siteUrl+'/internal/sync/standings';
@@ -386,6 +387,36 @@ async function diagnosePublicCalendar(){
   }catch(error){
     console.log(`::warning title=Calendrier public FFF::Diagnostic indisponible (${error?.message?.match(/^HTTP \d{3}$/)?.[0]||'échec de la session'}).`);
   }
+}
+
+async function collectPublishedPoolWeeks(pools){
+  const selected=pools.filter(pool=>pool.publishedWeeks>1&&(pool.matchIds.length||pool.teamIds.length));
+  // Les poules déjà liées à nos équipes passent avant les liens de navigation génériques.
+  selected.sort((first,second)=>Number(Boolean(second.teamIds.length))-Number(Boolean(first.teamIds.length)));
+  const pending=selected.values();
+  const merged=[];
+  const reports=[];
+  const evaluate=embeddedBrowserResult('fce-pool-weeks',`(${browserCollectPublishedWeeks.toString()})('${CLUB_NO}')`);
+  await Promise.all(Array.from({length:Math.min(4,selected.length)},async()=>{
+    for(const pool of pending){
+      try{
+        const body=await runFffBrowser(evaluate,'html[data-fce-extra-done="1"]','ZenRows semaines',pool.path);
+        const data=embeddedPayloadFromHtml(zenRowsHtml(body),'fce-pool-weeks');
+        if(!data)throw new Error('aucun résultat de navigation');
+        const matches=normalizeEpreuves(payloadItems(mergeMatchPayloads(data.collections||[])));
+        const days=matches.map(row=>row.starts_at.slice(0,10)).sort();
+        const verified=data.verifiedWeeks?.length||0,expected=data.expectedWeeks?.length||0;
+        reports.push({path:pool.path,verified,expected,matches:matches.length});
+        merged.push(...(data.collections||[]));
+        console.log(`FFF semaines ${pool.path} : ${verified}/${expected} semaines vérifiées, ${matches.length} matchs du club${days.length?` du ${days[0]} au ${days.at(-1)}`:''}.`);
+        if(data.failures?.length)console.log(`::warning title=Semaines FFF::${pool.path} — ${data.failures.join(' ; ')}.`);
+      }catch(error){
+        console.log(`::warning title=Semaines FFF::${pool.path} — ${error?.message?.match(/^HTTP \d{3}$/)?.[0]||'session indisponible'}.`);
+      }
+    }
+  }));
+  console.log(`FFF calendrier publié : ${reports.filter(report=>report.expected>0&&report.verified===report.expected).length}/${selected.length} poules parcourues intégralement.`);
+  return merged;
 }
 
 async function collectStandingsSeparately(payloads, seasonYear){
@@ -813,6 +844,8 @@ export async function fetchZenRows(targetUrls){
         const youthPools=(result.pools||[]).filter(pool=>/u15.*(?:fem|territoire-f|u15f)/i.test(pool.path)
           ||pool.teamIds.some(id=>id.includes('_U15F_')));
         for(const pool of youthPools)console.log(`FFF poule U15F : ${pool.path} — ${pool.matchIds.length} match(s), ${pool.endpoints.join(', ')}.`);
+        const weeks=await collectPublishedPoolWeeks(result.pools||[]);
+        payloads.matches=mergeMatchPayloads([payloads.matches,...weeks]);
       }
     }catch{
       console.log('::warning title=Calendriers FFF::Session des poules indisponible.');

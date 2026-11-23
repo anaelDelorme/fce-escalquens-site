@@ -262,7 +262,7 @@ export async function browserCollectCompetitionMatches(clubNo, knownCompetitions
   let answered = 0;
   await Promise.all(Array.from({length: Math.min(6, paths.size)}, async () => {
     for (const path of pending) {
-      const pool = {path, teamIds: [...paths.get(path)].sort(), status: 0, matchIds: [], endpoints: []};
+      const pool = {path, teamIds: [...paths.get(path)].sort(), status: 0, matchIds: [], endpoints: [], publishedWeeks: 0};
       pools.push(pool);
       try {
         const response = await requestPage(path);
@@ -293,6 +293,9 @@ export async function browserCollectCompetitionMatches(clubNo, knownCompetitions
             if (value?.status !== 200 || !value.body) continue;
             const path = key.match(/\/api\/data\/[\w/-]+/)?.[0];
             if (path) endpoints.add(path);
+            if (path?.endsWith('/semaines') && Array.isArray(value.body['hydra:member'])) {
+              pool.publishedWeeks = value.body['hydra:member'].length;
+            }
             visit(value.body);
           }
         }

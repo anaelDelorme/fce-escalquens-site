@@ -38,7 +38,7 @@ test('FFF : le calendrier U15F découvre une nouvelle phase publiée et transmet
   assert.equal(matches.targeted, 2);
   assert.equal(matches.answered, 1);
   assert.deepEqual(matches.pools.find((pool: {path: string}) => pool.path === competitionPath(laterPool)), {
-    path: competitionPath(laterPool), teamIds: [teamId], status: 200, matchIds: ['81234567'], endpoints: ['/api/data/matches']
+    path: competitionPath(laterPool), teamIds: [teamId], status: 200, matchIds: ['81234567'], endpoints: ['/api/data/matches'], publishedWeeks: 0
   });
 });
 

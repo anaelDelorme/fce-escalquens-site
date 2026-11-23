@@ -21,9 +21,9 @@ concurrency:
 
 jobs:
   sync:
-    if: ${{ !inputs.diagnostic_calendrier && !contains(github.event.head_commit.message, '[diagnostic FFF]') }}
+    if: ${{ !inputs.diagnostic_calendrier }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Récupérer le code staging
@@ -47,7 +47,7 @@ jobs:
 
 
   diagnostic:
-    if: ${{ inputs.diagnostic_calendrier || contains(github.event.head_commit.message, '[diagnostic FFF]') }}
+    if: ${{ inputs.diagnostic_calendrier }}
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:

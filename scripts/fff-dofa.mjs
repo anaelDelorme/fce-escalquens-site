@@ -193,7 +193,7 @@ export async function fetchDofaPools(clubNo, poolPaths, request) {
     attempted.push({rows, errors});
     // Un refus sur le même hôte et la même ressource ne justifie pas
     // une rafale de requêtes vers toutes les autres poules.
-    if (errors.length && errors.every(error => error.endsWith('HTTP 403'))) {
+    if (errors.length && errors.every(error => /HTTP 403|fetch failed|timeout/i.test(error))) {
       return {rows, errors, targeted: pools.length, answered: 0};
     }
   }
