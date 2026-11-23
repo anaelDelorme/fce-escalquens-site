@@ -67,24 +67,26 @@ test('FFF : le contrôle natif lit toutes les semaines publiées, même si mai s
   assert.equal(browser.fetch, request);
 });
 
-test('FFF : une semaine incomplète arrête la navigation et conserve les données déjà vérifiées', async t => {
+test('FFF : une semaine incomplète conserve ses rencontres exploitables et la navigation se poursuit', async t => {
   const window = new Window({url: page});
   t.after(() => window.close());
   calendarDocument(window);
   const evaluate = new Function('window', 'document', 'location', 'XMLHttpRequest',
     "return (" + browserCollectPublishedWeeks.toString() + ")('101544');");
-  const request = async () => Response.json({...collection(1), 'hydra:totalItems': 3});
+  const request = async (resource: string) => resource === requestFor(1)
+    ? Response.json({...collection(1), 'hydra:totalItems': 3})
+    : Response.json({...collection(2), 'hydra:totalItems': '2'});
   const browser = {fetch: request};
   let clicks = 0;
   window.document.querySelector('button')!.onclick = () => {
     clicks++;
-    void browser.fetch(requestFor(1));
+    void browser.fetch(requestFor(clicks));
   };
   const result = await evaluate(browser, window.document, window.location, class Xhr {});
-  assert.deepEqual(result.verifiedWeeks, [weekStarts[0]]);
-  assert.equal(result.collections.length, 1);
-  assert.match(result.failures[0], /2026-11-30.*incomplète/);
-  assert.equal(clicks, 1);
+  assert.deepEqual(result.verifiedWeeks, [weekStarts[0], weekStarts[2]]);
+  assert.equal(result.collections.length, 3);
+  assert.match(result.failures[0], /2026-11-30.*incomplète.*2\/3 lignes/);
+  assert.equal(clicks, 2);
 });
 
 test('FFF : la liste tronquée des semaines ne valide aucune couverture', async t => {

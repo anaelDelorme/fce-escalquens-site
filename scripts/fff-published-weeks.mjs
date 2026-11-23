@@ -49,24 +49,44 @@ export async function browserCollectPublishedWeeks(clubNo, maxDuration = 55000) 
       return start;
     } catch { return null; }
   };
-  const verify = (week, payload) => {
+  const collected = new Set(), readWeeks = new Set();
+  const collect = (week, payload) => {
     const members = payload?.['hydra:member'];
-    if (!Array.isArray(members) || payload['hydra:totalItems'] !== members.length || payload['hydra:view']?.['hydra:next']) return false;
+    if (!Array.isArray(members)) return 'aucune liste de rencontres dans la réponse';
+    readWeeks.add(week);
+    const total = Number(payload['hydra:totalItems']);
+    const next = Boolean(payload['hydra:view']?.['hydra:next']);
     const ids = new Set(), own = [];
+    let invalid = 0, outside = 0;
     for (const wrapper of members) {
       const match = wrapper?.donneesFormatees || wrapper;
-      const id = String(match?.maNo || wrapper?.id || '');
+      const id = String(match?.maNo || wrapper?.id || wrapper?.['@id'] || '').match(/^\d+$|(?<=\/)\d+$/)?.[0];
       const day = String(match?.date || '').slice(0, 10);
-      if (!/^\d+$/.test(id) || ids.has(id) || (day && (day < week || day > dates.get(week)))) return false;
+      if (!id || ids.has(id)) {
+        invalid++;
+        continue;
+      }
       ids.add(id);
-      if ([match?.recevant, match?.visiteur].some(side =>
-        String(side?.club?.clNo) === String(clubNo) || side?.equipe?.id?.split('_')[1] === String(clubNo))) own.push(wrapper);
+      if (day && (day < week || day > dates.get(week))) {
+        outside++;
+        continue;
+      }
+      const isClub = [match?.recevant, match?.visiteur].some(side =>
+        String(side?.club?.clNo) === String(clubNo) || side?.equipe?.id?.split('_')[1] === String(clubNo));
+      if (isClub && day && !collected.has(id)) {
+        collected.add(id);
+        own.push(match.maNo ? wrapper : {...wrapper, donneesFormatees: {...match, maNo: id}});
+      }
     }
-    if (!verifiedWeeks.includes(week)) {
-      verifiedWeeks.push(week);
-      if (own.length) collections.push({'hydra:member': own});
-    }
-    return true;
+    if (own.length) collections.push({'hydra:member': own});
+    if (total !== members.length || next || invalid || outside) return [
+      `${members.length}/${Number.isFinite(total) ? total : '?'} lignes`,
+      next ? 'page suivante annoncée' : '',
+      invalid ? `${invalid} identifiants invalides ou répétés` : '',
+      outside ? `${outside} dates hors semaine` : ''
+    ].filter(Boolean).join(', ');
+    if (!verifiedWeeks.includes(week)) verifiedWeeks.push(week);
+    return '';
   };
 
   let current = -1;
@@ -74,7 +94,7 @@ export async function browserCollectPublishedWeeks(clubNo, maxDuration = 55000) 
     const request = key.split('|').find(part => part.startsWith(matchPath + '?'));
     const week = request && matchWeek(request);
     if (week) {
-      if (Number(entry?.status) === 200) verify(week, entry.body);
+      if (Number(entry?.status) === 200) collect(week, entry.body);
       current = expectedWeeks.indexOf(week);
     }
   }
@@ -90,12 +110,15 @@ export async function browserCollectPublishedWeeks(clubNo, maxDuration = 55000) 
   const targets = new WeakMap();
   let receive = () => {};
   window.fetch = async function(resource, options) {
-    const response = await originalFetch.call(this, resource, options);
     const week = matchWeek(resource);
+    const onResponse = receive;
+    const response = await originalFetch.call(this, resource, options);
     if (week) {
-      const onResponse = receive;
-      if (!response.ok) onResponse(week, response.status);
-      else response.clone().json().then(body => onResponse(week, response.status, body), () => onResponse(week, response.status));
+      let body;
+      try {
+        if (response.ok) body = await response.clone().json();
+      } catch {}
+      onResponse(week, response.status, body);
     }
     return response;
   };
@@ -121,10 +144,16 @@ export async function browserCollectPublishedWeeks(clubNo, maxDuration = 55000) 
   const move = async direction => {
     const week = expectedWeeks[current + direction];
     const expectedLabel = direction === 1 ? 'navigation suivante' : 'navigation précédente';
-    const button = [...document.querySelectorAll('button, [role="button"]')].find(element =>
+    const findButton = () => [...document.querySelectorAll('button, [role="button"]')].find(element =>
       [element.textContent, element.getAttribute('aria-label'), element.getAttribute('title')].some(value =>
         String(value || '').replace(/\s+/g, ' ').trim().toLocaleLowerCase('fr') === expectedLabel)
       && !element.disabled && element.getAttribute('aria-disabled') !== 'true');
+    let button = findButton();
+    const availableBy = Math.min(Date.now() + 800, deadline);
+    while (!button && Date.now() < availableBy) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      button = findButton();
+    }
     if (!button) {
       failures.push(week + ' : navigation indisponible.');
       return false;
@@ -137,30 +166,33 @@ export async function browserCollectPublishedWeeks(clubNo, maxDuration = 55000) 
     const response = await new Promise(resolve => {
       const timeout = setTimeout(() => resolve(null), remaining);
       receive = (receivedWeek, status, body) => {
-        if (receivedWeek !== week) return;
+        const index = expectedWeeks.indexOf(receivedWeek);
+        if (Math.sign(index - current) !== direction) return;
         clearTimeout(timeout);
-        resolve({status, body});
+        resolve({status, body, receivedWeek, index});
       };
       button.click();
     });
     receive = () => {};
-    if (!response || response.status !== 200 || !verify(week, response.body)) {
-      failures.push(week + (response ? response.status === 200 ? ' : collection incomplète.' : ' : HTTP ' + response.status + '.'
-        : ' : aucune réponse de la navigation.'));
+    if (!response || response.status !== 200) {
+      failures.push(week + (response ? ' : HTTP ' + response.status + '.' : ' : aucune réponse de la navigation.'));
       return false;
     }
-    current += direction;
+    const issue = collect(response.receivedWeek, response.body);
+    if (issue) failures.push(response.receivedWeek + ' : collection incomplète (' + issue + ').');
+    if (!Array.isArray(response.body?.['hydra:member'])) return false;
+    current = response.index;
     await new Promise(resolve => setTimeout(resolve, 50));
     return true;
   };
 
   try {
-    // Parcourir d'abord l'extrémité la plus proche limite les allers-retours.
+    // Le programme restant est prioritaire, puis la navigation remonte
+    // jusqu'aux premières semaines qui manquent à l'historique.
     const last = expectedWeeks.length - 1;
-    const closest = current <= last - current ? 0 : last;
-    for (const target of [closest, last - closest]) {
-      while (current !== target && verifiedWeeks.length < expectedWeeks.length) {
-        if (!await move(Math.sign(target - current))) return result;
+    for (const target of [last, 0]) {
+      while (current !== target && readWeeks.size < expectedWeeks.length) {
+        if (!await move(Math.sign(target - current))) break;
       }
     }
   } finally {
