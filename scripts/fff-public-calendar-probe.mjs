@@ -88,5 +88,67 @@ export async function browserProbePublicCalendar(teamPath) {
       return null;
     }
   }));
-  return {path: path.pathname, status, controls, windows, weeks, bundles: bundles.filter(Boolean)};
+  const navigation = [];
+  if (page === document) {
+    const next = [...document.querySelectorAll('button, [role="button"]')].find(button =>
+      /^navigation suivante$/i.test(safeText(button.textContent || button.getAttribute('aria-label'))));
+    if (next && !next.disabled) {
+      const targetUrl = request => {
+        try {
+          const target = new URL(request, location.origin);
+          return target.origin === location.origin && target.pathname === '/api/data/matches' ? target : null;
+        } catch { return null; }
+      };
+      const collect = (target, http, payload) => {
+        const allowed = ['cpNo','phNo','gpNo','dateDebut','dateFin','itemsPerPage','pagination','page'];
+        const query = Object.fromEntries([...target.searchParams].filter(([key]) => allowed.includes(key)));
+        const own = (payload?.['hydra:member'] || []).flatMap(wrapper => {
+          const match = wrapper.donneesFormatees || wrapper;
+          return [match.recevant, match.visiteur].some(side => String(side?.club?.clNo) === '101544')
+            ? [{id: match.maNo, date: match.date}] : [];
+        });
+        navigation.push({query, http, total: payload?.['hydra:totalItems'], own});
+      };
+      const originalFetch = window.fetch;
+      const originalOpen = XMLHttpRequest.prototype.open;
+      const originalSend = XMLHttpRequest.prototype.send;
+      const targets = new WeakMap();
+      window.fetch = async function(resource, options) {
+        const response = await originalFetch.call(this, resource, options);
+        const target = targetUrl(resource?.url || resource);
+        if (target) {
+          let body;
+          try { if (response.ok) body = await response.clone().json(); } catch {}
+          collect(target, response.status, body);
+        }
+        return response;
+      };
+      XMLHttpRequest.prototype.open = function(method, request, ...args) {
+        const target = targetUrl(request);
+        if (target) targets.set(this, target);
+        return originalOpen.call(this, method, request, ...args);
+      };
+      XMLHttpRequest.prototype.send = function(...args) {
+        const target = targets.get(this);
+        if (target) this.addEventListener('loadend', () => {
+          let body;
+          try { body = this.responseType === 'json' ? this.response : JSON.parse(this.responseText); } catch {}
+          collect(target, this.status, body);
+        }, {once: true});
+        return originalSend.apply(this, args);
+      };
+      try {
+        next.click();
+        for (let attempt = 0; attempt < 25 && !navigation.length; attempt++) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+      } finally {
+        window.fetch = originalFetch;
+        XMLHttpRequest.prototype.open = originalOpen;
+        XMLHttpRequest.prototype.send = originalSend;
+      }
+    }
+  }
+  return {path: path.pathname, status, controls, windows, weeks, bundles: bundles.filter(Boolean),
+    navigation, urlAfter: safeHref(location.href)};
 }

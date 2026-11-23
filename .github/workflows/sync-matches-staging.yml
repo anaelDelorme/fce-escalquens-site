@@ -2,6 +2,11 @@ name: Synchroniser les matchs — préproduction
 
 on:
   workflow_dispatch:
+    inputs:
+      diagnostic_calendrier:
+        description: Tester la navigation publique du calendrier U15F
+        type: boolean
+        default: false
   push:
     branches:
       - staging
@@ -16,6 +21,7 @@ concurrency:
 
 jobs:
   sync:
+    if: ${{ !inputs.diagnostic_calendrier && !contains(github.event.head_commit.message, '[diagnostic FFF]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -35,8 +41,24 @@ jobs:
         run: node scripts/sync-matches.mjs
         env:
           FCE_ALLOW_PARTIAL_MATCH_IMPORT: 'true'
-          FCE_FFF_PROBE: 'true'
           FCE_SITE_URL: ${{ secrets.FCE_STAGING_SITE_URL }}
           FCE_SYNC_TOKEN: ${{ secrets.FCE_STAGING_SYNC_TOKEN }}
           ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
 
+
+  diagnostic:
+    if: ${{ inputs.diagnostic_calendrier || contains(github.event.head_commit.message, '[diagnostic FFF]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'push' && github.sha || 'staging' }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Tester le passage à la semaine suivante
+        run: node scripts/sync-matches.mjs --diagnostic-calendrier
+        env:
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}

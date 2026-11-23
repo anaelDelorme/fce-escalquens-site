@@ -1522,8 +1522,11 @@ async function main(){
 }
 
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
-  console.log(`Collecteur FCE ${SYNC_VERSION}`);
-  if(!siteUrl||!token)throw new Error('Secrets FCE_SITE_URL ou FCE_SYNC_TOKEN manquants');
-  const diagnostic=process.env.FCE_FFF_PROBE==='true'?diagnosePublicCalendar():Promise.resolve();
-  try{await main()}catch(error){await reportFailure(error);throw error}finally{await diagnostic}
+  if(process.argv.includes('--diagnostic-calendrier')){
+    await diagnosePublicCalendar();
+  }else{
+    console.log(`Collecteur FCE ${SYNC_VERSION}`);
+    if(!siteUrl||!token)throw new Error('Secrets FCE_SITE_URL ou FCE_SYNC_TOKEN manquants');
+    try{await main()}catch(error){await reportFailure(error);throw error}
+  }
 }
