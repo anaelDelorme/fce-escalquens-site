@@ -291,7 +291,7 @@ export async function browserCollectCompetitionMatches(clubNo, knownCompetitions
         for (const root of Array.isArray(state) ? state : [state]) {
           for (const [key, value] of Object.entries(root || {})) {
             if (value?.status !== 200 || !value.body) continue;
-            const path = key.match(/\/api\/[\w/-]+/)?.[0];
+            const path = key.match(/\/api\/data\/[\w/-]+/)?.[0];
             if (path) endpoints.add(path);
             visit(value.body);
           }

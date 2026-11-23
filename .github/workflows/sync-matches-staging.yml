@@ -35,6 +35,7 @@ jobs:
         run: node scripts/sync-matches.mjs
         env:
           FCE_ALLOW_PARTIAL_MATCH_IMPORT: 'true'
+          FCE_FFF_PROBE: 'true'
           FCE_SITE_URL: ${{ secrets.FCE_STAGING_SITE_URL }}
           FCE_SYNC_TOKEN: ${{ secrets.FCE_STAGING_SYNC_TOKEN }}
           ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}

@@ -1,6 +1,7 @@
 import { browserCollectStandings, verified2026 } from './standings-integrated.mjs';
 import { pathToFileURL } from 'node:url';
 import { dofaMatchCollections, fetchDofaPools, fetchDofaSeason } from './fff-dofa.mjs';
+import { browserProbePublicCalendar } from './fff-public-calendar-probe.mjs';
 import { browserCollectCompetitionMatches, browserCollectCalendarFallback, browserCollectTeamMonths, fetchCompleteMatches, isCompleteMatchCollection, missingTeamMonthTargets } from './fff-match-coverage.mjs';
 const SYNC_VERSION='2026.11.23-phases-ligue',CLUB_NO='101544',CLUB_CODE='550350',DISTRICT_NO='86';
 const siteUrl=process.env.FCE_SITE_URL?.replace(/\/$/,'');
@@ -333,12 +334,13 @@ const epreuvesPayloadFromZenRows=body=>{
     failedMonthly
   };
 };
-async function runFffBrowser(evaluate,ready,label){
+async function runFffBrowser(evaluate,ready,label, pagePath){
   const apiKey=process.env.ZENROWS_API_KEY;
   if(!apiKey)throw new Error('ZENROWS_API_KEY absent');
-  const clubPage=`https://epreuves.fff.fr/competition/club/${CLUB_CODE}-f-c-escalquens/club`;
+  const clubBase=`https://epreuves.fff.fr/competition/club/${CLUB_CODE}-f-c-escalquens`;
+  const clubPage=pagePath?.startsWith('/competition/')?new URL(pagePath,clubBase).href:clubBase+(pagePath||'/club');
   const instructions=[
-    {wait_for:'app-match app-matches-wrapper'},
+    {wait_for:pagePath?'#ng-state':'app-match app-matches-wrapper'},
     {wait:500},
     {evaluate},
     {wait_for:ready},
@@ -373,6 +375,18 @@ const embeddedBrowserResult=(id,expression)=>`(async()=>{
   document.body.replaceChildren(output);
   document.documentElement.setAttribute('data-fce-extra-done','1');
 })()`;
+
+async function diagnosePublicCalendar(){
+  const path='/competition/engagement/461480-u15-fem-r1/phase/1/3/resultats-et-calendrier';
+  const evidence=embeddedBrowserResult('fce-calendar-probe',`(${browserProbePublicCalendar.toString()})()`);
+  try{
+    const body=await runFffBrowser(evidence,'html[data-fce-extra-done="1"]','ZenRows diagnostic calendrier',path);
+    const probe=embeddedPayloadFromHtml(zenRowsHtml(body),'fce-calendar-probe');
+    console.log(`FFF diagnostic calendrier public : ${JSON.stringify(probe)}`);
+  }catch(error){
+    console.log(`::warning title=Calendrier public FFF::Diagnostic indisponible (${error?.message?.match(/^HTTP \d{3}$/)?.[0]||'échec de la session'}).`);
+  }
+}
 
 async function collectStandingsSeparately(payloads, seasonYear){
   const teamIds=[...new Set(normalizeEpreuves(payloadItems(payloads.matches)).map(row=>row.team_fff_id).filter(Boolean))];
@@ -1510,5 +1524,6 @@ async function main(){
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
   console.log(`Collecteur FCE ${SYNC_VERSION}`);
   if(!siteUrl||!token)throw new Error('Secrets FCE_SITE_URL ou FCE_SYNC_TOKEN manquants');
-  try{await main()}catch(error){await reportFailure(error);throw error}
+  const diagnostic=process.env.FCE_FFF_PROBE==='true'?diagnosePublicCalendar():Promise.resolve();
+  try{await main()}catch(error){await reportFailure(error);throw error}finally{await diagnostic}
 }

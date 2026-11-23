@@ -54,7 +54,7 @@ test('FFF : le portail de Ligue découvre une nouvelle compétition et lit les j
       `<a href="${root}">U15 Fem R1</a><a href="/competition/engagement/123-u15-district">U15 District</a>`);
     if (url === root) return new Response(`<a href="${pool}/classement">Groupe 2</a>`);
     const state = {
-      'analog_GET|/api/journees?competition=499999': {status: 200, body: {journees: [{matches: [
+      'analog_GET|/api/data/journees?competition=499999': {status: 200, body: {journees: [{matches: [
         {donneesFormatees: {maNo: 81234567, date: '2027-05-29',
           recevant: {club: {clNo: 101544}}, visiteur: {club: {clNo: 54}}}}
       ]}]}}
@@ -64,5 +64,5 @@ test('FFF : le portail de Ligue découvre une nouvelle compétition et lit les j
   assert.deepEqual(requests, ['/ligue-et-district/14', root, pool + '/resultats-et-calendrier']);
   assert.equal(result.answered, 1);
   assert.deepEqual(result.pools[0].matchIds, ['81234567']);
-  assert.deepEqual(result.pools[0].endpoints, ['/api/journees']);
+  assert.deepEqual(result.pools[0].endpoints, ['/api/data/journees']);
 });

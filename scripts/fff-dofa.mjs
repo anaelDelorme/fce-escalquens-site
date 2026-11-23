@@ -77,7 +77,9 @@ function kickoff(date, time) {
   const clock = String(time || '').match(/^([01]?\d|2[0-3])[:h]([0-5]\d)(?::[0-5]\d)?$/i);
   if (clock) {
     const day = value.slice(0, 10);
-    const offset = parisOffset.formatToParts(new Date(day + 'T12:00:00Z')).find(part => part.type === 'timeZoneName')?.value.slice(3);
+    const noon = new Date(day + 'T12:00:00Z');
+    if (!Number.isFinite(noon.getTime())) return null;
+    const offset = parisOffset.formatToParts(noon).find(part => part.type === 'timeZoneName')?.value.slice(3);
     return {date: `${day}T${clock[1].padStart(2, '0')}:${clock[2]}:00${offset || ''}`, confirmed: true};
   }
   const hasTime = /T(?!00:00)\d{2}:\d{2}/.test(value);
@@ -152,10 +154,9 @@ async function tryDofaPath(path, query, request, errors) {
     try {
       const rows = await fetchDofaPages(origin + path + '?' + query, request);
       if (rows.length) return rows;
-      errors.push(`${path}: réponse vide`);
+      errors.push(`${new URL(origin).hostname}${path}: réponse vide`);
     } catch (error) {
-      errors.push(`${path}: ${error.message}`);
-      if (error.message === 'HTTP 403') break;
+      errors.push(`${new URL(origin).hostname}${path}: ${error.message}`);
     }
   }
   return [];
