@@ -163,6 +163,28 @@ test('D1 : import partiel sans suppression, puis retrait des seuls matchs FFF ab
   const spring = DB.db.prepare(`SELECT t.slug FROM matches m JOIN teams t ON t.id=m.team_id
     WHERE m.source_id IN ('205','206') ORDER BY m.source_id`).all();
   assert.deepEqual(spring.map(row => row.slug), ['u15f-test', 'u15f-test']);
+
+  const pool = {...u18, competition: 'Féminines U18 à 8 CA Tlse 31 · POULE UNIQUE',
+    starts_at: '2026-11-29T13:00:00+01:00', away_team: 'Cazères US', source_id: '301'};
+  const otherCup = {...pool, source_id: '303', competition: 'Coupe U18F'};
+  await ingest([pool, {...pool, source_id: '302'}, otherCup], 'error', false);
+  const poolCoverage = {...snapshot, ids: [], seen_ids: ['301', '302'],
+    team_windows: [{team_fff_id: pool.team_fff_id, competition: pool.competition,
+      starts_on: '2026-11-23', ends_before: '2026-11-30', ids: ['301']}]};
+  assert.equal((await ingest([], 'error', true, poolCoverage)).removed_stale_matches, 1);
+  assert.deepEqual(DB.db.prepare("SELECT source_id FROM matches WHERE source_id >= '301' AND source_id <= '303' ORDER BY source_id")
+    .all().map(row => row.source_id), ['301', '303']);
+
+  const standing = {source: 'fff', team_fff_id: '2026_101544_U15F_5', team_name: 'Escalquens', position: 1};
+  const standingsImport = async (rows: object[]) => worker.fetch(new Request('https://test.example/internal/sync/standings', {
+    method: 'POST', headers: {authorization: 'Bearer test-sync'}, body: JSON.stringify({rows})
+  }), env, ctx);
+  const territory = {...standing, phase_id: '455739-u15-territoire-f:1:6', points: 10};
+  const regional = {...standing, phase_id: '461480-u15-fem-r1:1:3', points: 0};
+  assert.equal((await standingsImport([territory])).status, 200);
+  assert.equal((await standingsImport([regional])).status, 200);
+  assert.equal((await standingsImport([{...regional, points: 3}])).status, 200);
+  assert.deepEqual(DB.db.prepare('SELECT points FROM standings ORDER BY phase_id').all().map(row => row.points), [10, 3]);
 });
 
 test('FFF : la préproduction accepte uniquement les imports de secours effectivement terminés', () => {

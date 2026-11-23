@@ -389,7 +389,7 @@ async function diagnosePublicCalendar(){
   }
 }
 
-async function collectPublishedPoolWeeks(pools){
+async function collectPublishedPoolWeeks(pools, teamWindows){
   const selected=pools.filter(pool=>pool.publishedWeeks>1&&(pool.matchIds.length||pool.teamIds.length));
   // Les poules déjà liées à nos équipes passent avant les liens de navigation génériques.
   selected.sort((first,second)=>Number(Boolean(second.teamIds.length))-Number(Boolean(first.teamIds.length)));
@@ -427,6 +427,19 @@ async function collectPublishedPoolWeeks(pools){
           }
         }
         const matches=normalizeEpreuves(payloadItems(mergeMatchPayloads(collections)));
+        if(pool.path.includes('/454552-feminines-u18-a-8-ca-tlse-31/phase/1/1/')){
+          const entries=Map.groupBy(matches.filter(row=>/^\d{4}_101544_U18F_\d+$/.test(row.team_fff_id)
+            &&row.competition),row=>row.team_fff_id+'|'+row.competition);
+          for(const rows of entries.values()){
+            for(const week of verifiedWeeks){
+              const end=new Date(Date.parse(week)+7*86400000).toISOString().slice(0,10);
+              const ids=rows.filter(row=>row.starts_at.slice(0,10)>=week&&row.starts_at.slice(0,10)<end)
+                .map(row=>row.source_id);
+              if(ids.length)teamWindows.push({team_fff_id:rows[0].team_fff_id,competition:rows[0].competition,
+                starts_on:week,ends_before:end,ids});
+            }
+          }
+        }
         const days=matches.map(row=>row.starts_at.slice(0,10)).sort();
         const verified=verifiedWeeks.size,expected=expectedWeeks.size;
         reports.push({path:pool.path,verified,expected,matches:matches.length});
@@ -443,10 +456,17 @@ async function collectPublishedPoolWeeks(pools){
 }
 
 async function collectStandingsSeparately(payloads, seasonYear){
-  const teamIds=[...new Set(normalizeEpreuves(payloadItems(payloads.matches)).map(row=>row.team_fff_id).filter(Boolean))];
+  const matches=normalizeEpreuves(payloadItems(payloads.matches));
+  const teamIds=[...new Set(matches.map(row=>row.team_fff_id).filter(Boolean))];
+  const matchesById=new Map(matches.map(row=>[row.source_id,row]));
+  const poolLabels=Object.fromEntries((payloads.pools||[]).flatMap(pool=>{
+    const label=pool.matchIds.map(id=>matchesById.get(id)?.official_team?.pool).find(Boolean);
+    return label?[[pool.path,label]]:[];
+  }));
+  const competitions=[...new Set([...knownCompetitions(seasonYear),...(payloads.calendarPoolPaths||[]).map(pool=>pool.path)])];
   const saved=[{id:'fce-matches-all',status:200,body:teamIds}];
   const evaluate=`(async()=>{
-    await (${browserCollectStandings.toString()})(${JSON.stringify(saved)},'${CLUB_NO}','${CLUB_CODE}',${seasonYear},${JSON.stringify(knownCompetitions(seasonYear))});
+    await (${browserCollectStandings.toString()})(${JSON.stringify(saved)},'${CLUB_NO}','${CLUB_CODE}',${seasonYear},${JSON.stringify(competitions)},${JSON.stringify(poolLabels)});
     document.head.replaceChildren();
     document.body.replaceChildren(...document.querySelectorAll('script[id^="fce-standings"]'));
     document.documentElement.setAttribute('data-fce-extra-done','1');
@@ -862,12 +882,14 @@ export async function fetchZenRows(targetUrls){
       if(result){
         payloads.matches=mergeMatchPayloads([payloads.matches,...result.collections]);
         payloads.calendarPoolPaths.push(...(result.poolPaths||[]));
+        payloads.pools=result.pools||[];
         console.log(`FFF : ${result.answered}/${result.targeted} calendriers de poule reçus.`);
         if(result.hub)console.log(`FFF portail Occitanie : HTTP ${result.hub.status}, ${result.hub.candidates.length} compétitions pertinentes, ${result.hub.expanded} examinées.`);
         const youthPools=(result.pools||[]).filter(pool=>/u15.*(?:fem|territoire-f|u15f)/i.test(pool.path)
           ||pool.teamIds.some(id=>id.includes('_U15F_')));
         for(const pool of youthPools)console.log(`FFF poule U15F : ${pool.path} — ${pool.matchIds.length} match(s), ${pool.endpoints.join(', ')}.`);
-        const weeks=await collectPublishedPoolWeeks(result.pools||[]);
+        payloads.poolTeamWindows=[];
+        const weeks=await collectPublishedPoolWeeks(result.pools||[],payloads.poolTeamWindows);
         payloads.matches=mergeMatchPayloads([payloads.matches,...weeks]);
       }
     }catch{
@@ -1311,6 +1333,8 @@ async function collectEpreuvesFFF(){
       &&window.ids.every(id=>importedTeams.get(id)===result.id)
       ?[{...window,team_fff_id:result.id}]:[]);
   });
+  teamWindows.push(...(payloads.poolTeamWindows||[]).filter(window=>window.starts_on>=seasonStart
+    &&window.ends_before<=seasonEnd&&window.ids.every(id=>importedTeams.get(id)===window.team_fff_id)));
   if(teamWindows.length)console.log(`FFF : ${teamWindows.length} période(s) U18F vérifiée(s) pour le rapprochement.`);
   const incomplete=[];
   if(!fullMatches)incomplete.push(`matchs : ${payloads.matchMonths}/12 mois valides, ${seasonMatches.length} matchs exploitables`);

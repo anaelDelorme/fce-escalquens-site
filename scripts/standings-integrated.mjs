@@ -13,7 +13,7 @@ export const verified2026=[
   '/competition/engagement/454409-senior-departemental-5-11teamsports/phase/1/5/classement'
 ];
 
-export async function browserCollectStandings(_saved, clubNo, clubCode, seasonStartYear, knownCompetitions = []) {
+export async function browserCollectStandings(_saved, clubNo, clubCode, seasonStartYear, knownCompetitions = [], poolLabels = {}) {
   const targets=new Map();
   const directTeamTargets=new Map();
 
@@ -270,29 +270,9 @@ export async function browserCollectStandings(_saved, clubNo, clubCode, seasonSt
   }catch{}
 
 
-  /*
-   * Filet de sécurité temporaire pour la saison 2026-2027.
-   *
-   * Ces engagements ont été vérifiés manuellement sur la page FFF.
-   * Ils complètent la découverte dynamique mais ne la remplacent pas.
-   *
-   * À partir de la saison suivante ce fallback n'est plus utilisé.
-   */
-  if(Number(seasonStartYear)===2026){
-
-
-
-
-    const before=
-      targets.size;
-
-    knownCompetitions
-      .forEach(addTarget);
-
-    discovery.fallback=
-      targets.size-before;
-  }
-
+  const before = targets.size;
+  knownCompetitions.forEach(addTarget);
+  discovery.fallback = targets.size - before;
 
   const normalizeHeader=value=>
     String(value||'')
@@ -470,7 +450,7 @@ export async function browserCollectStandings(_saved, clubNo, clubCode, seasonSt
         ||'';
 
 
-      if(!poolLabel){
+      if(!/^poule\s+[\w -]+$/i.test(poolLabel)){
 
         const possible=[
           ...doc.querySelectorAll(
@@ -491,8 +471,8 @@ export async function browserCollectStandings(_saved, clubNo, clubCode, seasonSt
               /^poule\b/i.test(value)
           );
 
-        poolLabel=
-          possible||`Poule ${target.pool}`;
+        const calendarPath=new URL(target.url).pathname.replace(/\/classement$/, '/resultats-et-calendrier');
+        poolLabel=poolLabels[calendarPath]||possible||`Poule ${target.pool}`;
       }
 
 
