@@ -62,3 +62,20 @@
 .tournament-summary-rich ul{display:grid;gap:6px;margin:2px 0 0;padding:0;list-style:none}
 .tournament-summary-rich li{position:relative;padding-left:18px}
 .tournament-summary-rich li::before{content:"";position:absolute;left:1px;top:.72em;width:7px;height:7px;border-radius:50%;background:var(--gold);box-shadow:0 0 0 2px rgba(103,16,29,.09)}
+
+.contact-roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.contact-roles .contact-role {
+  padding: 3px 8px;
+  border: 1px solid #e5d8da;
+  border-radius: 10px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}

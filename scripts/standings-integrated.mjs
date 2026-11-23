@@ -1,4 +1,19 @@
-export async function browserCollectStandings(_saved, clubNo, clubCode, seasonStartYear) {
+export const verified2026=[
+  '/competition/engagement/454584-coupe-du-district-u14/phase/1/3/classement',
+  '/competition/engagement/455739-u15-territoire-f/phase/1/6/classement',
+  '/competition/engagement/454583-coupe-du-district-u15/phase/1/11/classement',
+  '/competition/engagement/454576-coupe-du-conseil-departemental-nord/phase/1/1/classement',
+  '/competition/engagement/454557-coupe-feminines-u15f-foot-a-8/phase/1/1/classement',
+  '/competition/engagement/455737-u18-territoire-f/phase/1/8/classement',
+  '/competition/engagement/454541-u15-district-b/phase/1/3/classement',
+  '/competition/engagement/454537-u15-territoire/phase/1/2/classement',
+  '/competition/engagement/454545-u14-district-a/phase/1/2/classement',
+  '/competition/engagement/454552-feminines-u18-a-8-ca-tlse-31/phase/1/1/classement',
+  '/competition/engagement/454408-senior-departemental-4-11teamsports/phase/1/3/classement',
+  '/competition/engagement/454409-senior-departemental-5-11teamsports/phase/1/5/classement'
+];
+
+export async function browserCollectStandings(_saved, clubNo, clubCode, seasonStartYear, knownCompetitions = []) {
   const targets=new Map();
   const directTeamTargets=new Map();
 
@@ -231,6 +246,7 @@ export async function browserCollectStandings(_saved, clubNo, clubCode, seasonSt
         location.href,
         {
           credentials:'include',
+          signal:AbortSignal.timeout(5000),
           headers:{
             Accept:
               'text/html,application/xhtml+xml'
@@ -264,26 +280,13 @@ export async function browserCollectStandings(_saved, clubNo, clubCode, seasonSt
    */
   if(Number(seasonStartYear)===2026){
 
-    const verified2026=[
-      '/competition/engagement/454584-coupe-du-district-u14/phase/1/3/classement',
-      '/competition/engagement/455739-u15-territoire-f/phase/1/6/classement',
-      '/competition/engagement/454583-coupe-du-district-u15/phase/1/11/classement',
-      '/competition/engagement/454576-coupe-du-conseil-departemental-nord/phase/1/1/classement',
-      '/competition/engagement/454557-coupe-feminines-u15f-foot-a-8/phase/1/1/classement',
-      '/competition/engagement/455737-u18-territoire-f/phase/1/8/classement',
-      '/competition/engagement/454541-u15-district-b/phase/1/3/classement',
-      '/competition/engagement/454537-u15-territoire/phase/1/2/classement',
-      '/competition/engagement/454545-u14-district-a/phase/1/2/classement',
-      '/competition/engagement/454552-feminines-u18-a-8-ca-tlse-31/phase/1/1/classement',
-      '/competition/engagement/454408-senior-departemental-4-11teamsports/phase/1/3/classement',
-      '/competition/engagement/454409-senior-departemental-5-11teamsports/phase/1/5/classement'
-    ];
+
 
 
     const before=
       targets.size;
 
-    verified2026
+    knownCompetitions
       .forEach(addTarget);
 
     discovery.fallback=
@@ -323,7 +326,16 @@ export async function browserCollectStandings(_saved, clubNo, clubCode, seasonSt
   const diagnostics=[];
 
 
-  for(const target of targets.values()){
+  const collectConcurrently=async(items, collect)=>{
+    const pending=items.values();
+    return (await Promise.all(Array.from({length:Math.min(items.length,4)},async()=>{
+      const results=[];
+      for(const item of pending)results.push(await collect(item));
+      return results;
+    }))).flat();
+  };
+
+  diagnostics.push(...await collectConcurrently([...targets.values()], async target=>{
 
     const diagnostic={
       url:target.url,
@@ -339,6 +351,7 @@ export async function browserCollectStandings(_saved, clubNo, clubCode, seasonSt
         target.url,
         {
           credentials:'include',
+          signal:AbortSignal.timeout(5000),
           headers:{
             Accept:'text/html,application/xhtml+xml'
           }
@@ -406,8 +419,7 @@ export async function browserCollectStandings(_saved, clubNo, clubCode, seasonSt
         diagnostic.error=
           'Pas de tableau de classement';
 
-        diagnostics.push(diagnostic);
-        continue;
+        return diagnostic;
       }
 
 
@@ -683,10 +695,8 @@ export async function browserCollectStandings(_saved, clubNo, clubCode, seasonSt
     }
 
 
-    diagnostics.push(
-      diagnostic
-    );
-  }
+    return diagnostic;
+  }));
 
 
 
@@ -697,8 +707,8 @@ export async function browserCollectStandings(_saved, clubNo, clubCode, seasonSt
         .map(item=>String(item.team_fff_id))
     );
 
-  for(const target of directTeamTargets.values()){
-    if(parsedTeamIds.has(target.team_fff_id))continue;
+  const remainingTeams=[...directTeamTargets.values()].filter(target=>!parsedTeamIds.has(target.team_fff_id));
+  diagnostics.push(...await collectConcurrently(remainingTeams, async target=>{
 
     const diagnostic={
       url:target.url,
@@ -714,6 +724,7 @@ export async function browserCollectStandings(_saved, clubNo, clubCode, seasonSt
         target.url,
         {
           credentials:'include',
+          signal:AbortSignal.timeout(5000),
           headers:{Accept:'text/html,application/xhtml+xml'}
         }
       );
@@ -741,8 +752,7 @@ export async function browserCollectStandings(_saved, clubNo, clubCode, seasonSt
 
       if(!selected){
         diagnostic.error='Pas de tableau de classement';
-        diagnostics.push(diagnostic);
-        continue;
+        return diagnostic;
       }
 
       const headers=selected.headers;
@@ -821,8 +831,8 @@ export async function browserCollectStandings(_saved, clubNo, clubCode, seasonSt
       diagnostic.error=String(error?.message||error);
     }
 
-    diagnostics.push(diagnostic);
-  }
+    return diagnostic;
+  }));
 
 
   const append=(id,data)=>{

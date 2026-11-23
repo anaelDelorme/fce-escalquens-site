@@ -22,7 +22,7 @@ interface Env extends ShopEnv {
 type AnyRow = Record<string, any>;
 
 const tables = new Set([
-  "teams", "team_competitions", "training_sessions", "contacts", "tournaments",
+  "teams", "team_competitions", "training_sessions", "contacts", "contact_roles", "tournaments",
   "tournament_teams", "matches", "match_participants", "standings", "social_posts",
   "documents", "club_members", "team_staff", "admins", "venues",
   "competition_levels", "seasons", "sponsors", "site_media", "home_slides",
@@ -34,6 +34,7 @@ const editable: Record<string, string[]> = {
   teams: ["slug", "name", "category", "group_name", "level", "level_id", "gender", "fff_id", "photo_key", "description", "display_order", "active", "player_count"],
   team_competitions: ["team_id", "season_id", "name", "team_number", "fff_team_id", "category_code", "competition_name", "division", "pool", "level_id", "active", "display_order", "discovered_automatically", "last_seen_at"],
   training_sessions: ["team_id", "season_id", "category", "weekday", "starts_at", "ends_at", "venue", "venue_id", "address", "notes", "active"],
+  contact_roles: ["name"],
   contacts: ["name", "role", "category", "email", "phone", "published", "display_order", "responsibilities", "availability", "photo_key"],
   tournaments: ["slug", "name", "summary", "starts_on", "ends_on", "venue", "venue_id", "organizer", "categories", "registration_price", "registration_url", "tournify_url", "image_key", "poster_key", "rules_key", "status", "season_id"],
   tournament_teams: ["tournament_id", "team_id", "notes"],
@@ -94,6 +95,7 @@ const editable: Record<string, string[]> = {
 };
 
 const defaultOrder: Record<string, string> = {
+  contact_roles: "name COLLATE NOCASE ASC, id ASC",
   teams: "display_order ASC, name COLLATE NOCASE ASC",
   club_members: "full_name COLLATE NOCASE ASC",
   matches: "starts_at ASC",
@@ -180,6 +182,22 @@ function testGate(request: Request, env: Env) {
   );
 }
 
+const contactRolesSql = `(
+  SELECT json_group_array(json_object('id', role_id, 'code', code, 'name', name))
+  FROM (
+    SELECT r.id AS role_id, r.code, r.name
+    FROM contact_role_assignments a JOIN contact_roles r ON r.id = a.role_id
+    WHERE a.contact_id = c.id
+    ORDER BY r.name COLLATE NOCASE, r.id
+  )
+) AS roles_json`;
+
+function withContactRoles(row: AnyRow) {
+  const { roles_json, ...contact } = row;
+  const roles = JSON.parse(roles_json) as { id: number; code: string | null; name: string }[];
+  return { ...contact, role: contact.role || roles[0]?.code || roles[0]?.name || "", roles };
+}
+
 async function api(request: Request, env: Env, url: URL, trustedShopActor?: string) {
   const parts = url.pathname.split("/").filter(Boolean);
   const shopScope = url.pathname.startsWith('/admin-boutique/api/content/');
@@ -213,6 +231,13 @@ async function api(request: Request, env: Env, url: URL, trustedShopActor?: stri
     if (request.method === 'DELETE') return json({error:'Un emplacement média ne peut pas être supprimé.'},405);
   }
   if (shopScope && table === 'shop_settings' && (request.method === 'DELETE' || request.method === 'POST')) return json({error:'Les réglages doivent être modifiés, pas supprimés ou recréés.'},405);
+  if (table === "contact_roles" && request.method === "DELETE") {
+    return json({ error: "Les rôles de contacts peuvent être renommés." }, 405);
+  }
+  if (request.method === "GET" && table === "contacts") {
+    const rows = await env.DB.prepare(`SELECT c.*, ${contactRolesSql} FROM contacts c ORDER BY c.id LIMIT 1000`).all<AnyRow>();
+    return json(resultRows(rows).map(withContactRoles));
+  }
   if (request.method === "GET") {
     const order = defaultOrder[table] || "id ASC";
     const rows = await env.DB.prepare(`SELECT * FROM ${table}${table==='site_media' ? (shopScope ? " WHERE slot='shop_hero'" : " WHERE slot<>'shop_hero'") : ''} ORDER BY ${order} LIMIT 1000`).all();
@@ -238,6 +263,27 @@ async function api(request: Request, env: Env, url: URL, trustedShopActor?: stri
     return json({ ok: true });
   }
   const body = await request.json<Record<string, unknown>>().catch(() => ({}));
+
+  if (table === "contact_roles") {
+    body.name = typeof body.name === "string" ? body.name.trim() : "";
+    if (!body.name) return json({ error: "Le nom du rôle est obligatoire." }, 400);
+  }
+
+  let contactRoleIds: number[] | undefined;
+  if (table === "contacts") {
+    if ("role_ids" in body) {
+      if (!Array.isArray(body.role_ids) || !body.role_ids.every(value => Number.isSafeInteger(value) && value > 0)) {
+        return json({ error: "Sélection de rôles invalide." }, 400);
+      }
+      contactRoleIds = [...new Set<number>(body.role_ids)];
+      body.role = "";
+    } else if ("role" in body) {
+      // L’ancien champ remplace les affectations quand il est envoyé seul.
+      contactRoleIds = [];
+    } else if (request.method === "POST") {
+      body.role = "";
+    }
+  }
 
   if (table === "recruitment_posts") {
     body.title = String(body.title || "").trim();
@@ -305,12 +351,20 @@ async function api(request: Request, env: Env, url: URL, trustedShopActor?: stri
     await env.DB.prepare("UPDATE seasons SET active=0").run();
   }
   const bound = values.map(([, value]) => value !== null && typeof value === "object" ? JSON.stringify(value) : value);
+  const insertContactRoles = (contactId?: string) => env.DB.prepare(`
+    INSERT INTO contact_role_assignments (contact_id, role_id)
+    SELECT ${contactId === undefined ? "last_insert_rowid()" : "?"}, value FROM json_each(?)
+  `).bind(...(contactId === undefined ? [] : [contactId]), JSON.stringify(contactRoleIds));
+
   if (request.method === "POST") {
     const columns = values.map(([key]) => key);
     try {
-      const result = await env.DB.prepare(
+      const insert = env.DB.prepare(
         `INSERT INTO ${table} (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`
-      ).bind(...bound).run();
+      ).bind(...bound);
+      const result = contactRoleIds?.length
+        ? (await env.DB.batch([insert, insertContactRoles()]))[0]
+        : await insert.run();
       if (table === "shop_products" && Number(body.featured) === 1) {
         await env.DB.prepare("UPDATE shop_products SET featured=0,updated_at=CURRENT_TIMESTAMP WHERE id<>?")
           .bind(result.meta.last_row_id).run();
@@ -338,9 +392,19 @@ async function api(request: Request, env: Env, url: URL, trustedShopActor?: stri
   if (request.method === "PUT" && id) {
     const timestamp = table === "match_participants" ? "" : ", updated_at=CURRENT_TIMESTAMP";
     try {
-      await env.DB.prepare(
+      const update = env.DB.prepare(
         `UPDATE ${table} SET ${values.map(([key]) => `${key}=?`).join(",")}${timestamp} WHERE id=?`
-      ).bind(...bound, id).run();
+      ).bind(...bound, id);
+      if (contactRoleIds !== undefined) {
+        const changes = [
+          update,
+          env.DB.prepare("DELETE FROM contact_role_assignments WHERE contact_id=?").bind(id)
+        ];
+        if (contactRoleIds.length) changes.push(insertContactRoles(id));
+        await env.DB.batch(changes);
+      } else {
+        await update.run();
+      }
       if (table === "shop_products") await priceLabelStatement(env.DB,Number(id),true).run();
       if (table === "team_competitions" && body.team_id !== undefined) {
         await env.DB.prepare("UPDATE matches SET team_id=?,updated_at=CURRENT_TIMESTAMP WHERE competition_team_id=?")
@@ -786,12 +850,13 @@ async function pageData(env: Env, url: URL) {
 
   if (page === "mecenat") {
     const [contacts, sponsors, media, packages] = await env.DB.batch<AnyRow>([
-      env.DB.prepare("SELECT name,role,email,phone,display_order FROM contacts WHERE published=1 ORDER BY display_order,name COLLATE NOCASE"),
+      env.DB.prepare(`SELECT c.name,c.role,c.email,c.phone,c.display_order,${contactRolesSql}
+        FROM contacts c WHERE c.published=1 ORDER BY c.display_order,c.name COLLATE NOCASE`),
       env.DB.prepare("SELECT name,logo_key,website_url,tier FROM sponsors WHERE active=1 ORDER BY display_order,name COLLATE NOCASE"),
       env.DB.prepare("SELECT slot,object_key,alt_text FROM site_media WHERE slot IN ('sponsor_hero','sponsor_project')"),
       env.DB.prepare("SELECT id,name,price_label,benefits,featured,display_order FROM sponsor_packages WHERE active=1 ORDER BY display_order,id")
     ]);
-    return publicJson({ contacts: resultRows(contacts), sponsors: resultRows(sponsors), site_media: resultRows(media), packages: resultRows(packages) });
+    return publicJson({ contacts: resultRows(contacts).map(withContactRoles), sponsors: resultRows(sponsors), site_media: resultRows(media), packages: resultRows(packages) });
   }
 
   if (page === "shop") {
@@ -882,11 +947,12 @@ async function pageData(env: Env, url: URL) {
           LIMIT 1
         )
       ) AS photo_key,
-      c.display_order
+      c.display_order,
+      ${contactRolesSql}
       FROM contacts c
       WHERE c.published=1
       ORDER BY c.display_order,c.name COLLATE NOCASE`).all<AnyRow>();
-    return publicJson({ contacts: resultRows(rows) });
+    return publicJson({ contacts: resultRows(rows).map(withContactRoles) });
   }
 
   return publicJson({ error: "Page de données inconnue" }, 404);
@@ -899,6 +965,8 @@ async function cachedPageData(request: Request, env: Env, url: URL, ctx: Executi
     || url.pathname === "/api/page/shop"
     || url.pathname === "/api/page/social-assets"
     || url.pathname === "/api/page/tournaments"
+    || url.pathname === "/api/page/contacts"
+    || url.pathname === "/api/page/mecenat"
   ) {
     const response = await pageData(env, url);
     const headers = new Headers(response.headers);
@@ -1156,7 +1224,7 @@ async function upsertMatch(env: Env, row: AnyRow) {
         raw_json: JSON.stringify(game.raw_json || game)
       }));
     const existingResult = await env.DB.prepare(`SELECT source_game_id,display_order,home_team,away_team,
-      home_score,away_score,status,home_logo_url,away_logo_url
+      home_score,away_score,status,home_logo_url,away_logo_url,raw_json
       FROM plateau_games WHERE plateau_match_id=? ORDER BY display_order,id`).bind(stored.id).all<AnyRow>();
     const existing = (existingResult.results || []).map(game => ({
       source_game_id: String(game.source_game_id || ""),
@@ -1167,10 +1235,21 @@ async function upsertMatch(env: Env, row: AnyRow) {
       away_score: game.away_score === null || game.away_score === undefined ? null : Number(game.away_score),
       status: String(game.status || "scheduled"),
       home_logo_url: String(game.home_logo_url || ""),
-      away_logo_url: String(game.away_logo_url || "")
+      away_logo_url: String(game.away_logo_url || ""),
+      raw_json: String(game.raw_json || "{}")
     }));
+    // Une page FFF peut ne plus publier les résultats déjà acquis.
+    for (const scored of existing) {
+      if (scored.home_score === null || scored.away_score === null) continue;
+      const index = incoming.findIndex(game => game.source_game_id === scored.source_game_id);
+      if (index < 0) incoming.push({ ...scored, display_order: incoming.length });
+      else if (incoming[index].home_score === null || incoming[index].away_score === null) {
+        incoming[index] = { ...incoming[index], home_score: scored.home_score, away_score: scored.away_score, status: scored.status };
+      }
+    }
+    const existingComparable = existing.map(({ raw_json: _rawJson, ...game }) => game);
     const incomingComparable = incoming.map(({ raw_json: _rawJson, ...game }) => game);
-    if (JSON.stringify(existing) !== JSON.stringify(incomingComparable)) {
+    if (JSON.stringify(existingComparable) !== JSON.stringify(incomingComparable)) {
       const statements = [env.DB.prepare("DELETE FROM plateau_games WHERE plateau_match_id=?").bind(stored.id)];
       for (const game of incoming) {
         statements.push(env.DB.prepare(`INSERT INTO plateau_games(
@@ -1242,7 +1321,13 @@ async function ingestMatches(request: Request, env: Env) {
     sources?: AnyRow[];
     batch?: {
       final?: boolean;
-      all_plateau_source_ids?: string[];
+      match_snapshot?: {
+        starts_on: string;
+        ends_before: string;
+        ids: string[];
+        seen_ids?: string[];
+        team_windows?: { team_fff_id: string; starts_on: string; ends_before: string; ids: string[] }[];
+      };
     };
   }>().catch(() => null);
   const rows = body?.rows;
@@ -1251,7 +1336,7 @@ async function ingestMatches(request: Request, env: Env) {
   const finalBatch = !batchMode || body?.batch?.final === true;
   const [seasonId, teams, unassigned] = await Promise.all([
     activeSeasonId(env),
-    env.DB.prepare("SELECT id,name,category FROM teams WHERE active=1").all<AnyRow>(),
+    env.DB.prepare("SELECT id,name,category,gender FROM teams WHERE active=1").all<AnyRow>(),
     env.DB.prepare("SELECT id FROM teams WHERE slug='fff-equipes-a-affecter' LIMIT 1").first<{ id: number }>()
   ]);
   if (!seasonId || !unassigned?.id) return json({ error: "Saison active ou groupe technique FFF manquant : appliquez les migrations D1." }, 409);
@@ -1312,9 +1397,29 @@ async function ingestMatches(request: Request, env: Env) {
       ).run();
       refreshedEntries.add(fffTeamId);
     }
-    // Aucune déduction par le libellé U15/U15F : seul l'identifiant FFF exact
-    // et l'affectation validée dans l'admin déterminent le groupe sportif.
-    const team = entry ? (teams.results || []).find(candidate => candidate.id === entry.team_id) : null;
+    // Le même groupe U15F peut disputer plusieurs compétitions et changer
+    // d'identifiant fédéral entre deux phases.
+    const groupCategory = row.source === "district_fal" && /^9833:/.test(String(row.source_id))
+      && official.category_code === "U13F" ? "U13F"
+      : row.source === "fff" && (official.category_code === "U15F" || /^\d{4}_101544_U15F_\d+$/.test(fffTeamId))
+        ? "U15F"
+        : null;
+    const groups = groupCategory ? (teams.results || []).filter(candidate =>
+      candidate.gender === "female"
+      && String(`${candidate.name} ${candidate.category}`).toUpperCase().split(/[^A-Z0-9]+/).includes(groupCategory)
+    ) : [];
+    const group = groups.length === 1 ? groups[0] : null;
+    if (group && entry?.active === 1 && entry.team_id === unassigned.id) {
+      const assigned = await env.DB.prepare(`UPDATE team_competitions SET team_id=?,updated_at=CURRENT_TIMESTAMP
+        WHERE id=? AND team_id=? AND active=1 RETURNING team_id`)
+        .bind(group.id, entry.id, unassigned.id).first<{ team_id: number }>();
+      if (assigned) {
+        entry.team_id = assigned.team_id;
+        await env.DB.prepare("UPDATE matches SET team_id=? WHERE competition_team_id=? AND manually_created=0")
+          .bind(entry.team_id, entry.id).run();
+      }
+    }
+    const team = entry ? (teams.results || []).find(candidate => candidate.id === entry.team_id) : group;
     changed += await upsertMatch(env, {
       ...row,
       team_id: team?.id ?? null,
@@ -1332,24 +1437,64 @@ async function ingestMatches(request: Request, env: Env) {
   }
   const sourceResults = Array.isArray(body?.sources) ? body.sources : [];
   const syncStatus = sourceResults.some(source => source?.status === "error") ? "partial" : "success";
-  // Un ancien collecteur FAL utilisait un identifiant à trois segments. Après
-  // une collecte FFF complète, les plateaux absents du lot courant sont donc
-  // des doublons obsolètes. Les ajouts manuels utilisent une autre source.
-  let removedPlateauDuplicates = 0;
-  if (syncStatus === "success" && finalBatch) {
-    const suppliedPlateaux = body?.batch?.all_plateau_source_ids;
-    const currentPlateaux = Array.isArray(suppliedPlateaux)
-      ? suppliedPlateaux.map(value => String(value)).filter(Boolean)
-      : rows
-          .filter(row => row.source === "district_fal" && ["plateau", "animation"].includes(row.event_type))
-          .map(row => String(row.source_id));
-    if (currentPlateaux.length) {
-      const deleted = await env.DB.prepare(`DELETE FROM matches
-        WHERE source='district_fal' AND manually_created=0 AND (season_id=? OR season_id IS NULL)
-        AND event_type IN ('plateau','animation')
-        AND source_id NOT IN (${currentPlateaux.map(() => "?").join(",")})`)
-        .bind(seasonId, ...currentPlateaux).run();
-      removedPlateauDuplicates = Number(deleted.meta.changes || 0);
+  // Rapprocher les programmes obsolètes uniquement sur une période vérifiée.
+  let removedStaleMatches = 0;
+  const snapshot = body?.batch?.match_snapshot;
+  if (syncStatus === "success" && finalBatch && snapshot && Array.isArray(snapshot.ids)
+      && snapshot.ids.length && snapshot.ids.every(id => typeof id === "string" && /^\d+$/.test(id))
+      && new Set(snapshot.ids).size === snapshot.ids.length) {
+    const season = await env.DB.prepare("SELECT starts_on, date(ends_on, '+1 day') AS ends_before FROM seasons WHERE id=?")
+      .bind(seasonId).first<{ starts_on: string; ends_before: string }>();
+    if (season?.starts_on === snapshot.starts_on && season.ends_before === snapshot.ends_before) {
+      const ids = JSON.stringify(snapshot.ids);
+      const stored = await env.DB.prepare(`SELECT COUNT(*) AS count FROM matches
+        WHERE source='fff' AND season_id=? AND source_id IN (SELECT value FROM json_each(?))`)
+        .bind(seasonId, ids).first<{ count: number }>();
+      if (stored?.count === snapshot.ids.length) {
+        const removed = await env.DB.prepare(`DELETE FROM matches AS obsolete
+          WHERE source='fff' AND event_type='match' AND manually_created=0 AND season_id=?
+          AND starts_at>=? AND starts_at<? AND status IN ('scheduled','postponed')
+          AND home_score IS NULL AND away_score IS NULL
+          AND source_id NOT IN (SELECT value FROM json_each(?))
+          AND EXISTS (
+            SELECT 1 FROM matches current JOIN json_each(?) ids ON ids.value=current.source_id
+            WHERE current.source='fff' AND current.season_id=obsolete.season_id
+            AND current.competition_team_id=obsolete.competition_team_id
+          )`)
+          .bind(seasonId, snapshot.starts_on, snapshot.ends_before, ids, ids).run();
+        removedStaleMatches = Number(removed.meta.changes || 0);
+      }
+    }
+  }
+  if (finalBatch && Array.isArray(snapshot?.team_windows) && Array.isArray(snapshot.seen_ids)
+      && snapshot.seen_ids.every(id => typeof id === "string" && /^\d+$/.test(id))) {
+    const season = await env.DB.prepare("SELECT starts_on, date(ends_on, '+1 day') AS ends_before FROM seasons WHERE id=?")
+      .bind(seasonId).first<{ starts_on: string; ends_before: string }>();
+    const seen = new Set(snapshot.seen_ids);
+    if (season) for (const window of snapshot.team_windows.slice(0, 100)) {
+      const date = /^\d{4}-\d{2}-\d{2}$/;
+      if (!window || !/^\d{4}_101544_U18F_\d+$/.test(window.team_fff_id)
+          || !date.test(window.starts_on) || !date.test(window.ends_before)
+          || window.starts_on < season.starts_on || window.ends_before > season.ends_before
+          || window.starts_on >= window.ends_before || !Array.isArray(window.ids)
+          || !window.ids.length || new Set(window.ids).size !== window.ids.length
+          || !window.ids.every(id => seen.has(id))) continue;
+      const team = entries.get(window.team_fff_id);
+      if (!team) continue;
+      const stored = await env.DB.prepare(`SELECT COUNT(*) AS count FROM matches
+        WHERE source='fff' AND season_id=? AND competition_team_id=?
+        AND source_id IN (SELECT value FROM json_each(?))`)
+        .bind(seasonId, team.id, JSON.stringify(window.ids)).first<{ count: number }>();
+      if (stored?.count !== window.ids.length) continue;
+      // Les deux jours aux bornes restent exclus, quel que soit le fuseau FFF.
+      const removed = await env.DB.prepare(`DELETE FROM matches
+        WHERE source='fff' AND event_type='match' AND manually_created=0
+        AND season_id=? AND competition_team_id=?
+        AND substr(starts_at,1,10)>? AND substr(starts_at,1,10)<?
+        AND status IN ('scheduled','postponed') AND home_score IS NULL AND away_score IS NULL
+        AND source_id NOT IN (SELECT value FROM json_each(?))`)
+        .bind(seasonId, team.id, window.starts_on, window.ends_before, JSON.stringify([...seen])).run();
+      removedStaleMatches += Number(removed.meta.changes || 0);
     }
   }
   if (finalBatch) {
@@ -1382,7 +1527,7 @@ async function ingestMatches(request: Request, env: Env) {
   }
   return json({
     ok: true, received: rows.length, accepted, changed, discovered,
-    removed_plateau_duplicates: removedPlateauDuplicates, status: syncStatus,
+    removed_plateau_duplicates: 0, removed_stale_matches: removedStaleMatches, status: syncStatus,
     final: finalBatch
   });
 }
@@ -2026,6 +2171,16 @@ export default {
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) { ctx.waitUntil(Promise.all([maintenance(env),...(env.TOURNAMENTS?[maintenance(tournamentEnv(env))]:[])])); },
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(request.url);
+    if (url.pathname === "/internal/sync/teams" && request.method === "GET") {
+      const supplied = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") || "";
+      if (!env.FCE_SYNC_TOKEN || !secureToken(supplied, env.FCE_SYNC_TOKEN)) {
+        return json({ error: "Jeton de synchronisation invalide" }, 401);
+      }
+      const teams = await env.DB.prepare(`SELECT DISTINCT fff_team_id FROM team_competitions
+        WHERE season_id=? AND active=1 AND fff_team_id<>''`)
+        .bind(await activeSeasonId(env)).all<{ fff_team_id: string }>();
+      return json({ teams: (teams.results || []).map(team => team.fff_team_id) });
+    }
     if (url.pathname === "/internal/sync/matches" && request.method === "POST") {
       return ingestMatches(request, env);
     }
