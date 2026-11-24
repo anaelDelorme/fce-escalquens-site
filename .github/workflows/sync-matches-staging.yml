@@ -3,6 +3,10 @@ name: Synchroniser les matchs — préproduction
 on:
   workflow_dispatch:
     inputs:
+      zenrows_max_requests:
+        description: "Budget ZenRows (0 à 30 requêtes, 1 pour regrouper matchs et classements)"
+        type: number
+        default: 0
       diagnostic_calendrier:
         description: Tester la navigation publique du calendrier U15F
         type: boolean
@@ -43,7 +47,8 @@ jobs:
           FCE_ALLOW_PARTIAL_MATCH_IMPORT: 'true'
           FCE_SITE_URL: ${{ secrets.FCE_STAGING_SITE_URL }}
           FCE_SYNC_TOKEN: ${{ secrets.FCE_STAGING_SYNC_TOKEN }}
-          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+          FCE_ZENROWS_MAX_REQUESTS: ${{ github.event_name == 'workflow_dispatch' && inputs.zenrows_max_requests || '0' }}
+          ZENROWS_API_KEY: ${{ github.event_name == 'workflow_dispatch' && inputs.zenrows_max_requests > 0 && secrets.ZENROWS_API_KEY || '' }}
 
 
   diagnostic:
@@ -61,4 +66,5 @@ jobs:
       - name: Tester le passage à la semaine suivante
         run: node scripts/sync-matches.mjs --diagnostic-calendrier
         env:
+          FCE_ZENROWS_MAX_REQUESTS: "1"
           ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}

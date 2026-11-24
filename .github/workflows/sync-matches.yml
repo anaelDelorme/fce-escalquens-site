@@ -2,6 +2,11 @@ name: Synchroniser les matchs — production
 
 on:
   workflow_dispatch:
+    inputs:
+      zenrows_max_requests:
+        description: "Budget ZenRows (0 à 30 requêtes, 1 pour regrouper matchs et classements)"
+        type: number
+        default: 0
 
   schedule:
     - cron: "7 20 * * 1" # lundi 20h07
@@ -48,7 +53,8 @@ jobs:
         env:
           FCE_SITE_URL: ${{ secrets.FCE_SITE_URL }}
           FCE_SYNC_TOKEN: ${{ secrets.FCE_SYNC_TOKEN }}
-          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
+          FCE_ZENROWS_MAX_REQUESTS: ${{ github.event_name == 'workflow_dispatch' && inputs.zenrows_max_requests || '0' }}
+          ZENROWS_API_KEY: ${{ github.event_name == 'workflow_dispatch' && inputs.zenrows_max_requests > 0 && secrets.ZENROWS_API_KEY || '' }}
 
       - name: Ouvrir l’alerte de synchronisation
         if: failure()

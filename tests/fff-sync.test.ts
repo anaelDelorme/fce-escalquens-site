@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { browserCollectCompetitionMatches, browserCollectCalendarFallback, browserCollectTeamMonths, fetchCompleteMatches, missingTeamMonthTargets } from '../scripts/fff-match-coverage.mjs';
-import { acceptsPartialImport, fetchZenRows, mergeMatchPayloads, normalizeEpreuves, normalizeEpreuvesFal } from '../scripts/sync-matches.mjs';
+import { acceptsPartialImport, fetchZenRows, zenRowsBudget, mergeMatchPayloads, normalizeEpreuves, normalizeEpreuvesFal } from '../scripts/sync-matches.mjs';
 import worker from '../src/worker';
 import { TestDatabase } from './d1';
 
@@ -18,6 +18,26 @@ const plateau = {
   equipes: [{ club: { clNo: 101544 }, eqNom: 'Escalquens Labege', eqCod: 1, caCod: 'U13' }],
   phNo: 12, poNo: 45609, joNo: 41646, siNo: 3, joDate: date
 };
+
+test('ZenRows : aucun appel sans budget et plafond commun aux appels concurrents', async () => {
+  let calls = 0;
+  const request = async () => {
+    calls++;
+    return new Response(null, {status: 200});
+  };
+  for (const value of [undefined, '0', '31', '2.5']) {
+    const budget = zenRowsBudget(value, request);
+    await assert.rejects(budget.request('https://api.zenrows.com/v1/'), /Budget ZenRows/);
+  }
+  assert.equal(calls, 0);
+  const budget = zenRowsBudget('2', request);
+  const outcomes = await Promise.allSettled(Array.from({length: 4}, () => budget.request('https://api.zenrows.com/v1/')));
+  assert.equal(outcomes.filter(result => result.status === 'fulfilled').length, 2);
+  assert.equal(calls, 2);
+  const refused = zenRowsBudget('2', async () => new Response(null, {status: 429}));
+  await refused.request('https://api.zenrows.com/v1/');
+  assert.equal(refused.available(), false);
+});
 
 test('FFF : pagination intégrale, refus HTTP et pages tronquées', async () => {
   const endpoint = 'https://epreuves.fff.fr/api/data/matches?clNo=101544';
@@ -56,9 +76,13 @@ test('FFF : le calendrier U15F donne des matchs à importer malgré les refus me
 test('FFF : une session principale sans calendriers déclenche une collecte isolée', async t => {
   const originalKey = process.env.ZENROWS_API_KEY;
   process.env.ZENROWS_API_KEY = 'local-test';
+  const originalBudget = process.env.FCE_ZENROWS_MAX_REQUESTS;
+  process.env.FCE_ZENROWS_MAX_REQUESTS = '2';
   t.after(() => {
     if (originalKey === undefined) delete process.env.ZENROWS_API_KEY;
     else process.env.ZENROWS_API_KEY = originalKey;
+    if (originalBudget === undefined) delete process.env.FCE_ZENROWS_MAX_REQUESTS;
+    else process.env.FCE_ZENROWS_MAX_REQUESTS = originalBudget;
   });
   const script = (id: string, status: number, body: unknown) =>
     `<script id="${id}">${JSON.stringify({ status, body })}</script>`;
