@@ -503,6 +503,7 @@ async function collectStandingsSeparately(payloads, seasonYear){
 }
 
 export async function fetchZenRows(targetUrls){
+  const singleRequest=process.env.FCE_ZENROWS_MAX_REQUESTS==='1';
   // L'application Angular lit un jeton dynamique dans ng-state et l'envoie
   // dans X-Competition. Sans cet en-tête, l'API répond 200 avec des listes vides.
   const browserTargets=[
@@ -517,7 +518,8 @@ export async function fetchZenRows(targetUrls){
     const roots=Array.isArray(state)?state:[state];
     const entries=roots.flatMap(item=>Object.entries(item||{}));
     const securityToken=entries.find(([key])=>key==='VLJAXE')?.[1]||entries.find(([key,value])=>key.includes('/api/app-security-token/')&&value?.body?.token)?.[1]?.body?.token;
-    if(!securityToken){document.documentElement.setAttribute('data-fce-sync-error','token-X-Competition-introuvable');return}
+    const singleRequest=${singleRequest};
+    if(!securityToken&&!singleRequest){document.documentElement.setAttribute('data-fce-sync-error','token-X-Competition-introuvable');return}
     const fetchCompleteMatches=${fetchCompleteMatches.toString()};
     const saved=[];
     const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -591,15 +593,30 @@ export async function fetchZenRows(targetUrls){
       );
     };
 
-    await runLimited(targets,4);
+    if(securityToken)await runLimited(targets,4);
 
-    const monthlyFailed=saved.some(item=>item.id.startsWith('fce-matches-')&&item.status!==200);
+    const monthlyFailed=!securityToken||saved.some(item=>item.id.startsWith('fce-matches-')&&item.status!==200);
     const fallback=await (${browserCollectCalendarFallback.toString()})(state,${Number(targetUrls.seasonYear)},'${CLUB_NO}',monthlyFailed);
     const calendarOutput=document.createElement('script');
     calendarOutput.id='fce-calendar-fallback';
     calendarOutput.type='application/json';
     calendarOutput.textContent=JSON.stringify({status:200,body:fallback});
     document.body.appendChild(calendarOutput);
+
+    if(singleRequest){
+      const standingsTargets=[...${JSON.stringify(knownCompetitions(targetUrls.seasonYear))},...(fallback.poolPaths||[]).map(pool=>pool.path)];
+      const standingsInputs=[...saved,...(fallback.collections||[]).map((body,index)=>({id:'fce-matches-public-'+index,status:200,body}))];
+      try{
+        await (${browserCollectStandings.toString()})(standingsInputs,'${CLUB_NO}','${CLUB_CODE}',${Number(targetUrls.seasonYear)},standingsTargets);
+      }catch{
+        // Les matchs et plateaux collectés restent disponibles.
+      }
+      const outputs=[...document.querySelectorAll('script[id^="fce-"]')];
+      document.head.replaceChildren();
+      document.body.replaceChildren(...outputs);
+      document.documentElement.setAttribute('data-fce-sync-done','1');
+      return;
+    }
 
     const min=Date.now()-7*86400000,max=Date.now()+45*86400000,details=new Map();
     for(const result of saved.filter(item=>item.id.startsWith('fce-matches-')&&item.status===200)){
@@ -840,10 +857,12 @@ export async function fetchZenRows(targetUrls){
     const body=await runFffBrowser(fetchScript,'html[data-fce-sync-done="1"]','ZenRows');
     payloads=epreuvesPayloadFromZenRows(body);
   }catch(error){
+    if(singleRequest)throw error;
     if(!targetUrls.teamPeriods?.length)throw error;
     console.log('::warning title=Collecte FFF::Session principale indisponible, recours aux calendriers publics.');
     payloads=epreuvesPayloadFromZenRows('');
   }
+  if(singleRequest)return payloads;
   let registeredTeams=[];
   if(payloads.matchMonths<12&&targetUrls.teamPeriods?.length){
     try{

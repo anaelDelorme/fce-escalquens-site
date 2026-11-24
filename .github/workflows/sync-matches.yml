@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       zenrows_max_requests:
-        description: "Nombre maximal de requêtes ZenRows payantes (0 à 30)"
+        description: "Budget ZenRows (0 à 30 requêtes, 1 pour regrouper matchs et classements)"
         type: number
         default: 0
 
