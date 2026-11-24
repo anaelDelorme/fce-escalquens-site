@@ -11,6 +11,25 @@ const standingsEndpoint=siteUrl+'/internal/sync/standings';
 const statusEndpoint=siteUrl+'/internal/sync/status';
 const token=process.env.FCE_SYNC_TOKEN;
 
+export function zenRowsBudget(value, request=fetch){
+  const limit=/^(?:[1-9]|[12][0-9]|30)$/.test(String(value||''))?Number(value):0;
+  let remaining=limit;
+  return {
+    available:()=>remaining>0,
+    async request(url,options){
+      if(!remaining)throw new Error('Budget ZenRows épuisé ou désactivé');
+      remaining--;
+      const response=await request(url,options);
+      if([401,402,403,429].includes(response.status))remaining=0;
+      return response;
+    }
+  };
+}
+
+let paidRequests;
+const zenRows=()=>paidRequests??=zenRowsBudget(process.env.FCE_ZENROWS_MAX_REQUESTS);
+const zenRowsEnabled=()=>Boolean(process.env.ZENROWS_API_KEY)&&zenRows().available();
+
 let latestStandings=[];
 let latestStandingsInfo={
   attempted:false,
@@ -262,7 +281,7 @@ async function fetchPlateauDetailsZenRows(falPayload,existingEntries=[]){
   url.searchParams.set('json_response','false');
   url.searchParams.set('js_instructions',JSON.stringify(instructions));
 
-  const response=await fetch(url,{headers:{accept:'application/json'},redirect:'follow'});
+  const response=await zenRows().request(url,{headers:{accept:'application/json'},redirect:'follow',signal:AbortSignal.timeout(90000)});
   const body=await response.text();
   if(!response.ok)throw new Error(`ZenRows plateaux HTTP ${response.status}`);
 
@@ -355,7 +374,7 @@ async function runFffBrowser(evaluate,ready,label, pagePath){
   url.searchParams.set('proxy_country','fr');
   url.searchParams.set('json_response','false');
   url.searchParams.set('js_instructions',JSON.stringify(instructions));
-  const response=await fetch(url,{headers:{accept:'application/json'},redirect:'follow',signal:AbortSignal.timeout(90000)});
+  const response=await zenRows().request(url,{headers:{accept:'application/json'},redirect:'follow',signal:AbortSignal.timeout(90000)});
   const body=await response.text();
   if(!response.ok)throw new Error(`HTTP ${response.status}`);
   const credits=response.headers.get('x-request-credits');
@@ -1014,6 +1033,7 @@ async function fetchEpreuves(targetUrls){
     if(!payloadItems(monthlyMatches).length)throw new Error('API directe : aucun match sur la saison');
     const direct={matches:monthlyMatches,monthlyMatches,fal:mergeFalPayloads(fal),matchMonths:matches.length,falMonths:fal.length};
     if(matches.length===12&&fal.length===12)return {payloads:direct,transport:'direct'};
+    if(!zenRowsEnabled())return {payloads:direct,transport:'direct partiel'};
     try{
       const fallback=await fetchZenRows(targetUrls);
       return {payloads:{
@@ -1028,6 +1048,7 @@ async function fetchEpreuves(targetUrls){
       return {payloads:direct,transport:'direct partiel'};
     }
   }catch(directError){
+    if(!zenRowsEnabled())throw directError;
     console.log(`Accès FFF direct indisponible, essai via ZenRows : ${String(directError?.message||directError).replace(/\r?\n/g,' ')}`);
     try{return {payloads:await fetchZenRows(targetUrls),transport:'zenrows-browser'}}
     catch(zenrowsError){throw new Error(`FFF direct : ${directError?.message||directError} ; ZenRows : ${zenrowsError?.message||zenrowsError}`)}
@@ -1269,7 +1290,7 @@ async function collectEpreuvesFFF(){
   console.log(`FFF DOFA : ${additions['hydra:member'].length}/${dofa.rows.length} rencontres de la saison exploitables (${dofa.origin}), ${merged['hydra:member'].length-payloadItems(payloads.matches).length} inédites.`);
   payloads.matches=merged;
 
-  if(!payloads.standings?.length&&process.env.ZENROWS_API_KEY){
+  if(!payloads.standings?.length&&zenRowsEnabled()){
     await collectStandingsSeparately(payloads,seasonYear);
   }
 
@@ -1280,7 +1301,7 @@ async function collectEpreuvesFFF(){
 
   latestStandingsInfo={
     ...(payloads.standingsMeta||{}),
-    attempted:Boolean(process.env.ZENROWS_API_KEY)
+    attempted:Boolean(payloads.standingsMetaPresent)
   };
 
   if(latestStandingsInfo.attempted){
